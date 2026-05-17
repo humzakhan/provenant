@@ -95,15 +95,26 @@ This entry is purely audit-visible — the kernel still aborts the run as docume
 
 ## API security
 
-### Reviewer-principal namespace (`system:` reserved prefix)
+### Principal namespace (`system:` reserved prefix, IAM-wide)
 
-The HITL audit chain emits `EntryKindHITLDecision` rows with a non-deterministic `reviewer_principal` field that names the actor that committed the decision (see [`subsystems/hitl.md`](../subsystems/hitl.md#rest-api-v0) and [`subsystems/audit.md`](../subsystems/audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration)). The string `"system:escalation-sweep"` is the reserved sentinel used when the escalation-timeout sweep emits a `decision = expired` row (no human reviewer acted). To keep the namespace unambiguous:
+The audit chain emits several `*_principal` fields naming actors on the non-deterministic side of audit entries: `EntryKindHITLDecision.reviewer_principal`, `EntryKindHITLDispatched.routing_principal`, `EntryKindRestorePendingAck.operator_principal_raw` (and the deterministic-hash form `operator_principal_hash`), `EntryKindRunStarted.initiator_principal`, and `runs.initiator` (the per-run initiator string). The `"system:"` prefix is reserved **IAM-wide** as the kernel-acting actor namespace. The rule:
 
-- The **`"system:"` prefix is reserved for kernel-emitted decisions.** No human reviewer identifier may use it.
-- The IAM directory / reviewer-pool provisioning surface (the IAM-side counterpart to the bearer-token flow below) rejects any reviewer principal whose identifier starts with `system:` at registration time.
-- A `system:`-prefixed identifier appearing on `EntryKindHITLDecision.non_deterministic.reviewer_principal` from a non-sweep code path is a typed integrity error (`kernel_integrity`) and is rejected at audit-sink write time.
+- The **`"system:"` prefix is reserved for kernel-emitted actors on ALL `*_principal` fields and on `runs.initiator`.** No human-registered IAM principal may use it on any of these surfaces.
+- The IAM directory / reviewer-pool / operator-pool provisioning surface rejects any registered principal whose identifier starts with `system:` at registration time.
+- A `system:`-prefixed identifier appearing on **any** `*_principal` field or on `runs.initiator` from a non-kernel code path is a typed integrity error (`kernel_integrity`) and is rejected at audit-sink / `runs` write time.
 
-This rule makes "human vs kernel-emitted decision" a string-prefix test on the chain without requiring a separate boolean field, and prevents an operator from accidentally provisioning a reviewer whose identifier collides with the sentinel.
+**Canonical sentinel vocabulary (pinned).** The kernel emits exactly the following `"system:"` sentinels, enumerated here as the source of truth (also referenced from [`../subsystems/audit.md`](../subsystems/audit.md) and [`../subsystems/hitl.md`](../subsystems/hitl.md)):
+
+| Sentinel | Emitted on | Code path |
+|---|---|---|
+| `system:escalation-sweep` | `EntryKindHITLDecision.reviewer_principal` (with `decision = expired`); `EntryKindHITLDispatched.routing_principal` when a sweep re-dispatches an expired review | escalation-timeout sweep |
+| `system:orphan-sweep` | `EntryKindRunStarted.initiator_principal` and `runs.initiator` when the orphan-recovery sweep re-initiates a follow-on run (rare; today the sweep does not re-initiate, but the namespace is reserved); also stamped on `EntryKindRunOrphanRecovered`-adjacent fields where an initiator is required | orphan-run sweep |
+| `system:dr-restore` | `EntryKindRestorePendingAck.operator_principal_raw` (with `operator_principal_hash` computed normally) when the DR-restore path emits the ack without a human operator; also `EntryKindRunStarted.operator_principal_*` for runs the DR-restore path replays as part of a restore-verify pass | DR-restore path |
+| `system:audit-verify` | `routing_principal` and any `*_principal` field stamped by the scheduled chain-verifier task when it appends a `chain_verified` adjacency event | scheduled verifier |
+
+No other `"system:"` identifier is legal. The kernel rejects an attempt to emit a `"system:"` value not in this table from any code path; adding a new sentinel requires extending the table and bumping `kernel_version`.
+
+This rule makes "human vs kernel-emitted actor" a string-prefix test on the chain without requiring a separate boolean field, and prevents an operator from accidentally provisioning an IAM principal whose identifier collides with one of the sentinels.
 
 - Bearer tokens scoped to tenant, skills, and tools.
 - Token rotation: tokens expire on a configurable schedule (default 90 days); rotation is a `POST /v1/admin/tokens/rotate` operation that issues a new token and revokes the old after a grace period.

@@ -210,6 +210,77 @@ var Subtract = Formula{
 
 The registry blocks unit-incompatible derivations: you cannot subtract a USD token from an EUR token without going through a currency conversion formula that has FX rate tokens as input.
 
+## Kernel public types
+
+The kernel's public Go types are pinned here as the source of truth. Independent storage adapters and Phase 5 bindings project these into their concrete persistence shapes per the projection rules below.
+
+### `AuditEntry` (in-memory shape) and three-column persistence projection
+
+```go
+package kernelpublic
+
+import (
+    "encoding/json"
+    "time"
+)
+
+// AuditEntry is the in-memory kernel-public shape for a single chain row.
+// The kernel writes AuditEntry values; AuditSink adapters project them onto
+// the three-column persistence shape declared in subsystems/storage.md.
+type AuditEntry struct {
+    Seq      uint64          // monotonic per tenant; assigned by AuditSink at flush
+    Kind     EntryKind
+    At       time.Time       // wall clock; NOT hashed (non-deterministic)
+    PrevHash []byte          // sha256 of the previous entry's Hash; genesis is sha256("provenant-genesis:" || tenant_id)
+    Hash     []byte          // sha256 of the hash-input bytes (see HashInputCanonical)
+    Payload  PayloadEnvelope
+}
+
+// PayloadEnvelope splits every audit payload into a deterministic sub-object
+// (hashed into the chain) and a non-deterministic sub-object (stored verbatim
+// but excluded from the hash input). HashInputCanonical is the JCS-canonical
+// encoding of Deterministic alone, kept on the in-memory value for debug-only
+// purposes (recomputable from Deterministic; kernel asserts equality on every
+// write as a tamper-resistance canary).
+type PayloadEnvelope struct {
+    Deterministic     json.RawMessage // JCS-canonical or raw; the kernel canonicalizes before hashing
+    NonDeterministic  json.RawMessage // free-form; never hashed
+    HashInputCanonical []byte         // JCS(Deterministic), verbatim; debug-only, NOT persisted in pack files
+}
+```
+
+**Projection rule (AuditEntry → three-column persistence).** `AuditSink` adapters MUST project an `AuditEntry` onto the `audit_entries` row defined in [`storage.md`](storage.md#schema-deltas-required-by-cycles-35-load-bearing-columns) exactly as:
+
+| Persisted column | Source | Rule |
+|---|---|---|
+| `seq` | `AuditEntry.Seq` | assigned by sink at flush; not provided by kernel |
+| `kind` | `AuditEntry.Kind` | string form of the enum |
+| `at` | `AuditEntry.At` | non-deterministic; wall clock |
+| `prev_hash` | `AuditEntry.PrevHash` | verbatim bytes |
+| `hash` | `AuditEntry.Hash` | verbatim bytes |
+| `payload_deterministic` | `AuditEntry.Payload.Deterministic` | verbatim canonical JSON |
+| `payload_non_deterministic` | `AuditEntry.Payload.NonDeterministic` | verbatim JSON |
+| `hash_input_canonical` | `AuditEntry.Payload.HashInputCanonical` | **equals `JCS(payload_deterministic)` verbatim**; the kernel computes it once and the sink persists it as a tamper-resistance canary so chain verification can re-derive the hash without re-canonicalizing |
+
+**Hash construction (re-pin, authoritative cross-reference).** `AuditEntry.Hash` is computed by the kernel — not the sink — as `sha256(prev_hash || seq_bytes || run_id || tenant_id || kind || hash_input_canonical)`, per [`audit.md`](audit.md#hash-construction). `hash_input_canonical = JCS(Deterministic)`; the sink MUST NOT re-canonicalize on persistence (re-canonicalization risks a JCS-library-version divergence that silently breaks chain verification across deployments).
+
+**Round-trip property.** An `AuditEntry` written by the kernel, projected onto the three-column row, read back, and reconstituted into an `AuditEntry` MUST be byte-identical to the original on every field. Phase 0's done-when adds a fixture-based projection round-trip test covering every `EntryKind` listed in [`audit.md`](audit.md#entry-kinds).
+
+### `Normalizer.Lookup` accessor
+
+The kernel's compile-time normalizer registry (see [`skills.md`](skills.md#registration-mechanism-pinned)) exposes a single public accessor whose signature is pinned uniformly with the rest of the kernel public surface, which uses `(value, error)`:
+
+```go
+package kernelpublic
+
+// Lookup returns the registered Normalizer for the given builtin_id, or a
+// typed error if the ID is not registered. The error class for an unknown
+// ID is skill.normalizer_id_unknown.
+func (r *NormalizerRegistry) Lookup(builtinID string) (Normalizer, error)
+```
+
+A missing builtin ID returns `(nil, &SkillError{Class: "skill.normalizer_id_unknown", BuiltinID: builtinID})`. The `(Normalizer, bool)` form previously discussed in [`skills.md`](skills.md) is **superseded** by this signature; the convention split is resolved in favor of `error` to match every other kernel public accessor (Store, AuditSink, TransactionalScope methods). [`skills.md`](skills.md) is updated in tandem.
+
 ## TransactionalScope (joint-transaction primitive)
 
 The parallel-block atomicity invariant in [`audit.md`](audit.md#parallel-sibling-deterministic-order) ("tokens and `audit_entries` are written in a single transaction at flush time") cannot be honored when `Store` and `AuditSink` are arbitrary separately-injected backends. The kernel public surface therefore declares a third I/O interface — `TransactionalScope` — that hosts MUST inject alongside `Store` and `AuditSink`. The interface is enumerated here as the source of truth; [`../../architecture.md`](../../architecture.md) §3.1 references this definition.

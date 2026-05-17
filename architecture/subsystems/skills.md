@@ -96,12 +96,15 @@ provenant_kernel:
 required:
   - name: ledger.get_balance
     version: "^1.0.0"
+    credential_id: ledger.sap_eu        # optional; logical credential identifier; omit / null for pure-Go tools
   - name: ledger.get_transactions
     version: "^1.0.0"
+    credential_id: ledger.sap_eu
   - name: extract.bank_statement
     version: "^1.0.0"
+    credential_id: textract.aws_us_east_1
   - name: reconcile.match
-    version: "^1.0.0"
+    version: "^1.0.0"                   # pure-Go; no credential_id
   - name: calc.subtract
     version: "^1.0.0"
   - name: calc.sum
@@ -109,6 +112,12 @@ required:
   - name: policy.lookup
     version: "^1.0.0"
 ```
+
+**`credential_id` field (load-bearing for credential-identity baseline).** Each entry in `tools.yaml` MAY declare an optional `credential_id` naming the logical credential the tool dispatches under (e.g., `ledger.sap_eu` is the entry in the tenant secret store the tool reads). The field is the **static manifest** input to the kernel's `credential_identity_baseline` computation at `EntryKindRunStarted` (see [`cross-cutting/security.md`](../cross-cutting/security.md#silent-credential-rotation-detection-per-run-identity-baseline) and [`audit.md`](audit.md)): the baseline map is built by iterating `tools.yaml`'s declared `credential_id` values and hashing the secret-store's stable identifier for each. A tool entry **without** a `credential_id` (pure-Go calculators, kernel-internal extractors) contributes nothing to the baseline; at every `tool_call_started` for such a tool, `credential_identity_witness = "none"` (the literal four-character string per [`audit.md`](audit.md#credential_identity_witness-positive-evidence-that-identity-check-ran)).
+
+Two siblings declaring the same `credential_id` share a baseline entry; the pre-check phase in [`audit.md`](audit.md#parallel-batch-credential-rotation-rule) reads each `credential_id` exactly once per batch.
+
+The static manifest is the **only** source for the baseline. A tool's runtime `ToolBackend.Credentials()` accessor (see [`tools.md`](tools.md#tool-interface)) is consulted at runtime witness emission, but it MUST agree with the manifest's `credential_id` declaration on every dispatched call; a mismatch is a typed `kernel_integrity` error (`error_code = credential_id_manifest_mismatch`) and the run fails closed. This pins the deterministic decision rule for "witness vs none": **manifest declares `credential_id`** ⇒ witness present and equal to `base32(sha256(credential_id || ":" || observed_hash))[:hex_len]`; **manifest does not declare `credential_id`** ⇒ witness is the literal `"none"`.
 
 ### `guards.yaml`
 
@@ -172,7 +181,7 @@ normalizers:
 
 **v0 scope.** v0 ships only built-in normalizer IDs (`kind: builtin`) from a kernel-registered set; v0 does **not** load arbitrary Go or WASM code from skill packs. The kernel-registered built-in set in v0 is empty (no v0 backend needs locale normalization — SQL ledger, Textract, OpenFX all emit US/POSIX decimals); the slot exists so that the first non-empty backend (e.g., SAP-EU, planned v0.5) can ship a normalizer in tandem with the kernel-version bump that registers it.
 
-**Registration mechanism (pinned).** Built-in normalizers are registered at **compile time** in the kernel package `kernel/internal/normalizers/registry.go`, which exposes a private `map[string]Normalizer` populated by per-normalizer `init()` functions in sibling files (one normalizer per file, e.g., `kernel/internal/normalizers/numeric_locale_eu_comma_decimal.go`). The registry is **not** a runtime registry, not a boot-time JSON manifest, and not a plugin-loaded set; the kernel public surface exposes only a read-only `Lookup(builtin_id string) (Normalizer, bool)` accessor.
+**Registration mechanism (pinned).** Built-in normalizers are registered at **compile time** in the kernel package `kernel/internal/normalizers/registry.go`, which exposes a private `map[string]Normalizer` populated by per-normalizer `init()` functions in sibling files (one normalizer per file, e.g., `kernel/internal/normalizers/numeric_locale_eu_comma_decimal.go`). The registry is **not** a runtime registry, not a boot-time JSON manifest, and not a plugin-loaded set; the kernel public surface exposes only a read-only `Lookup(builtin_id string) (Normalizer, error)` accessor (see [`kernel.md`](kernel.md#normalizerlookup-accessor); a missing ID returns the typed `skill.normalizer_id_unknown` error).
 
 Implications, pinned here so two implementations cannot diverge:
 

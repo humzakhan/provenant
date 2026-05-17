@@ -56,8 +56,28 @@ type Tool interface {
     // reads to replay (captured-deterministic).
     DeterminismClass() DeterminismClass
 
+    // Credentials returns the logical CredentialRef(s) this backend will use
+    // when dispatched. Pure-Go tools (calc.*, reconcile.*) return an empty
+    // slice. The returned credential_id values MUST match the static
+    // declaration in the skill's tools.yaml entry; a mismatch is a kernel-
+    // integrity error (error_code = credential_id_manifest_mismatch) at
+    // dispatch time. See subsystems/skills.md "credential_id field" and
+    // cross-cutting/security.md "Silent credential rotation detection".
+    Credentials() []CredentialRef
+
     // Call executes the tool.
     Call(ctx context.Context, input json.RawMessage) (Result, error)
+}
+
+// CredentialRef is a typed accessor that names a logical credential the
+// backend will use. The kernel uses CredentialRef.ID to reconcile a runtime
+// dispatch with the skill's static tools.yaml manifest; the kernel does NOT
+// read CredentialRef.Provider for chain-determinism decisions (provider is
+// non-deterministic and lives only on the audit entry's non-deterministic
+// sub-object).
+type CredentialRef struct {
+    ID       string  // logical identifier from tools.yaml (e.g., "ledger.sap_eu")
+    Provider string  // secret-store backend, e.g., "vault" or "pg_pgcrypto"; non-deterministic
 }
 
 type MintablePath struct {
