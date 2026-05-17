@@ -177,7 +177,7 @@ Cross-cutting invariants in the data model:
 
 - Every consequential row carries `tenant_id`. Cross-tenant references are kernel-rejected at every join point.
 - IDs are ULIDs (lexicographically sortable).
-- Numeric values use `NUMERIC(38, 9)`; banker's rounding at mint time, audit-logged.
+- Numeric values use `NUMERIC(38, 9)` as the **canonical comparison/derivation precision** with banker's rounding applied at mint time and audit-logged. The original full-precision value as returned by the tool backend (e.g., 10–12-decimal FX rates from OpenFX, 38-decimal raw extraction confidences) is also persisted on the token in a `source_value_raw TEXT` column alongside the canonicalized `value NUMERIC(38,9)`. The audit chain hashes the canonical value; the `source_value_raw` is retained for provenance answers ("what did the upstream actually return?") and is included in audit packs. Derivation arithmetic (sum, subtract, percent-change) operates on the canonical value; raw-vs-canonical drift is reportable per token.
 - The schema is forward-only; rollbacks are reversing migrations, never reversions. This is what allows the audit chain to remain consistent across years.
 
 ## 5. Component interactions
@@ -205,10 +205,11 @@ The submit pipeline is the single output bottleneck. Every adapter, every mode, 
 
 The threat model, multi-tenant isolation guarantees, prompt-injection defense strategy, and credential-hygiene rules live in [`cross-cutting/security.md`](architecture/cross-cutting/security.md). The relevant integrated points for this synthesis view:
 
-- **Tenant isolation is kernel-enforced**, not just storage-enforced. Cross-tenant token references are rejected by `VerifyToken` regardless of the storage layer.
+- **Tenant isolation is kernel-enforced**, not just storage-enforced. `VerifyToken` independently asserts that the returned token's `tenant_id` equals the verifying run's `tenant_id` and that the token's `run_id` is the verifying run (or, for the cross-run case explicitly enabled by skill config, a run within the same tenant). A `Store` implementation that returns rows from any tenant is caught at the kernel boundary: the kernel does not trust `Store` to filter by tenant. This is enforced via a kernel unit test that uses a deliberately permissive in-memory `Store` (returns all tokens regardless of `tenant_id` argument) and verifies that `VerifyToken` still rejects cross-tenant references. Without this check, the claim that tenant isolation survives storage-layer compromise would be false.
 - **Prompt injection defense is architectural**, not promptual. The pre-LLM guard pipeline is a code path the agent cannot route around; see [`subsystems/guards.md`](architecture/subsystems/guards.md#pre-llm-input-guards).
 - **Audit tamper-evidence** is the per-tenant hash chain over canonicalized JSON entries; tampering is detectable, not preventable (we do not defend against root on the host).
 - **Skill-pack supply chain** is signed-pack-with-admin-approval ([ADR-0006](architecture/adrs/0006-skill-pack-format.md)); v0 ships unsigned local packs only, v0.5 adds the hosted registry with signing.
+- **Skill-pack content pinning (v0).** Even without signing, every run records the SHA-256 digest of the loaded skill pack's canonical content (every file in the pack tree, sorted, concatenated with path prefixes, hashed) in the `run_started` audit entry. The digest covers prompts, guards config, manifest, examples, and templates. `provenant replay` recomputes the digest from the on-disk skill pack and refuses to replay if the digest does not match the recorded digest. This catches silent mutation of `prompts/skill.md` between runs — without it, the deterministic-portion hash chain could be identical across two runs whose actual agent input differed. Skill-pack signing in v0.5 is a stronger version of this same pin (signature instead of digest comparison).
 
 For the full threat list and mitigation table, read the cross-cutting doc.
 

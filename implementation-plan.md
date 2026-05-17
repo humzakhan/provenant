@@ -46,6 +46,7 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
 - An integration test starts Postgres (testcontainers or docker-compose), inserts a synthetic run with 50 tokens, 20 tool calls, and 100 audit entries; the test then verifies the chain and replays the entries to reconstruct the run state byte-identically.
 - Killing the test process mid-write and re-running the verifier flags the truncated chain.
 - A property test mutates a random audit row and confirms the verifier detects the tamper.
+- **Orphan-run recovery is implemented and tested.** On `provenant-server` startup, any run in `running` or `pending` status whose last audit entry is older than a configurable threshold (default 2× `max_wall_clock`) is moved to `failed: orphaned` with an audit entry recording the recovery. A test forcibly kills the process mid-write and verifies that on restart the orphaned run is marked `failed: orphaned` with the audit chain intact, rather than left in `running` indefinitely or silently re-tried.
 
 **Deferred from this phase.** Multi-tenant SaaS isolation modes beyond the schema (row-level security wiring is v0; SaaS-grade tenant onboarding is v0.5). Cross-region object-store replication.
 
@@ -69,6 +70,7 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
 - Injecting an ungrounded number into the synthetic answer is rejected by token grounding.
 - Injecting a prompt-injection pattern into a synthetic tool output triggers L2 quarantine.
 - All validators have unit tests; the pipeline has integration tests.
+- **A pure-kernel micro-benchmark** measures `kernel.SubmitAnswer` p95 overhead (validator pipeline + per-claim token grounding, with mocked I/O) on a representative recon payload. The result is recorded as the kernel's intrinsic overhead floor and compared against the 50 ms `submit_answer` budget declared in [`architecture.md`](architecture.md) §7.3. If the kernel alone exceeds the budget, Phase 3 does not start until the kernel is optimized or the budget is renegotiated in an ADR. This isolates kernel cost from MCP/HTTP transport cost before Phase 4 inherits both.
 
 **Deferred from this phase.** External-system tool backends (Textract, OFAC, OpenFX) wire-up; that's Phase 3's responsibility. BoN-MAV mode (validator pipeline is wired for it but the harness re-prompt logic ships in v0.5). Custom per-skill numeric extractors.
 
@@ -90,6 +92,7 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
 - `provenant run recon --input ./fixtures/may-2026-recon.json --model claude-opus-4-7 --tenant acme` completes end-to-end with a passing `submit_answer` for a known-good fixture.
 - `provenant audit verify <run_id>` returns OK; `provenant audit pack <run_id>` produces a bundle containing the audit chain, the token graph, the guard outcomes, and every prompt+response.
 - `provenant replay <run_id>` reconstructs the deterministic portion (tool calls, validator outcomes, audit chain) byte-identically across two consecutive replays.
+- **Harness-overhead isolation benchmark.** The CLI harness records, per run, the time spent in: (a) model API calls, (b) tool backends, (c) kernel pipeline (validators + token grounding + audit append), (d) harness orchestration (prompt assembly + scheduling). The Phase 3 done criterion publishes (c) + (d) — the Provenant-attributable overhead — as a baseline number. Phase 4's MCP-overhead measurement subtracts this baseline so transport cost is not conflated with harness cost.
 
 **Deferred from this phase.** Other model classes (OpenAI, Azure, local). Other skill packs. The runtime layer's MCP and HTTP surfacing (Phase 4). Streaming model responses.
 
@@ -104,12 +107,14 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
 - Wire up the runtime process: configuration loading, signal handling, graceful shutdown, observability (Prometheus metrics, OTel traces, JSON logs per [`cross-cutting/observability.md`](architecture/cross-cutting/observability.md)).
 - Ship the `provenant-server` binary (the runtime daemon) alongside the existing `provenant` CLI.
 - Add the `provenant-mcp-client` stdio-to-HTTP wrapper used by Claude Code et al.
+- **Ship the v0 HITL routing surface** (the web UI is deferred to v0.5; the routing itself is v0 scope per [`subsystems/hitl.md`](architecture/subsystems/hitl.md)). This includes: the `hitl_reviews` state machine (`pending` → `approved` | `rejected` | `escalated` | `expired`), the REST endpoints `POST /v1/runs/{run_id}/hitl/decision`, `GET /v1/hitl/pending`, `GET /v1/hitl/reviews/{review_id}`, the corresponding MCP tools, the kernel-side state transition logic with audit-log entries, and the harness path that moves a run from `awaiting_review` back to `running` (on approval) or `failed` (on rejection) when a decision arrives.
 
 **Done when.**
 
 - A Claude Code instance configured against the Provenant MCP server completes the same recon fixture from Phase 3. The audit chain's deterministic portion is byte-identical to the Phase 3 CLI run on the same input. (LLM-portion variance is allowed and measured.)
 - The same fixture run via HTTP API directly produces the same byte-identical deterministic-portion audit chain.
 - Cross-tenant access attempts are rejected. Invalid bearer tokens are rejected. MCP latency overhead is below the 50ms p95 budget on top of tool execution.
+- An integration test escalates a run to `awaiting_review`, posts a HITL decision via the REST endpoint, and verifies the run resumes (or fails) deterministically; an audit-chain entry records the decision.
 
 **Deferred from this phase.** LangChain and OpenAI Agents adapters (v0.5). Per-tenant Grafana dashboards. Per-tenant rate limits beyond the global cap. Web HITL UI.
 
@@ -119,7 +124,10 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
 
 **Tasks.**
 
-- Decide between FFI-binding and sidecar-only embedding. The decision rests on Phase 0-4 ergonomics learnings, the Go-as-kernel-language open question ([`architecture.md`](architecture.md) §2.1.1) resolution, and prototype-driven latency measurements. Document the decision in an ADR before implementation.
+- **Phase 5a — decision gate (must complete before 5b or 5c).** Resolve between FFI-binding and sidecar-only embedding. The decision rests on Phase 0-4 ergonomics learnings, the Go-as-kernel-language open question ([`architecture.md`](architecture.md) §2.1.1) resolution, and prototype-driven latency measurements. Document the decision in an ADR before implementation. Prerequisites for each path:
+  - **Sidecar path prerequisites** (must hold at Phase 4 exit, verified explicitly): Phase 4's measured MCP/HTTP overhead on the recon fixture is at or below the 50 ms p95 budget set in [`architecture.md`](architecture.md) §7.3, *after* subtracting the Phase 3 harness-overhead baseline. If the budget is missed, the team produces an explicit overhead-reduction plan or renegotiates the budget in an ADR before entering Phase 5b.
+  - **FFI path prerequisites** (must hold at Phase 0 / Phase 2 exit, verified explicitly): kernel public types (`Token`, `decimal.Decimal`, `AuditEntry`, error shapes) have a documented C-ABI-projection strategy. If Phase 0's kernel-public-surface ADR does not include this projection, Phase 5b cannot begin without a return trip to Phase 0 to refactor those types.
+- **Phase 5b (FFI) or 5c (sidecar)** — implementation of the chosen path:
 - If FFI: design and freeze a C-ABI subset of the kernel's public API. Implement a Python binding (`provenant-py`) that wraps it. Marshal tokens, decimal values, and audit entries across the boundary.
 - If sidecar: harden the HTTP API (or a minimal MCP profile) for sub-50ms-overhead loopback use. Implement a Python client (`provenant-py`) that speaks it. The client must inject the same `tenant_id`, `run_id`, and tool-call sequence as a Go host would.
 - Build a Python test driver that:
@@ -151,6 +159,7 @@ Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a
   - **Accuracy** — fraction of released answers that match the labeled correct answer for cases with ground truth.
 - Implement `provenant eval --skill recon --against ./fixtures/case-bank.jsonl`: runs every case, produces the four-metric report, exits non-zero if any metric drops below the skill's configured threshold.
 - Document the recommended CI integration pattern.
+- **Implement the `submit_answer_rejection_rate` operational alarm.** A skill that produces faithfulness=1.0 because every answer is rejected pre-enforcement is a useless deployed system; the four metrics alone do not flag this. The eval harness and the runtime emit a `submit_attempts_total` and `submit_releases_total` metric pair (per-skill, per-tenant); the derived `release_rate = releases / attempts` is alarmed in the skill's `eval/thresholds.yaml` with a `release_rate_min` threshold (default 0.5; configurable per skill). A skill that falls below the threshold in CI eval or in production is release-blocked / paged. This ensures "working substrate, useless agent" cannot pass eval.
 
 **Done when.**
 

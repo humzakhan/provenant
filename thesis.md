@@ -10,7 +10,9 @@ A finance team that adopts an agent today either accepts unreviewable output (an
 
 ## The Core Thesis
 
-Provenance is an enforcement boundary, not a logging concern: if the substrate makes it architecturally impossible for an agent to release a number without verifiable lineage to a tool call, the agent becomes a usable financial analyst regardless of the host framework or model.
+Provenance is an enforcement boundary, not a logging concern: if the substrate makes it architecturally impossible for an agent to release a Provenant-signed answer without verifiable lineage to a tool call, the agent becomes a usable financial analyst regardless of the host framework or model.
+
+The enforcement boundary is the `submit_answer` exit. In Mode A (CLI / embedded Go harness) the substrate owns the loop and `submit_answer` is the only output channel: the non-bypassable invariant is architectural. In Mode B (MCP host driving its own loop) the substrate does not own the host's text channel; the host can in principle emit text that never went through `submit_answer`. Such output is **not** Provenant-signed: it does not appear in the audit pack as a released answer, the audit chain records the absence, and Mode B skill packs must instruct the host that only `submit_answer` output carries Provenant attestations. For deployments where unsigned host-channel output is unacceptable, Mode A is the required deployment shape. See [`architecture/subsystems/harness.md`](architecture/subsystems/harness.md#mode-b-specifics-adapter-side-harness) and [ADR-0007](architecture/adrs/0007-mcp-as-primary-adapter.md).
 
 ## The Solution
 
@@ -20,7 +22,7 @@ Four kernel invariants are load-bearing and non-configurable (see [`architecture
 
 **Dual-mode pluggability is a first-class property.** Provenant must be usable in two architecturally distinct shapes, with identical invariants in each:
 
-1. **Code-level (embedded library/SDK).** A host application that already owns its agent loop links Provenant as a dependency. The kernel exposes a pure, I/O-free public API; the host drives tool dispatch, guard application, and `submit_answer` enforcement via function calls. The invariants hold because they are encoded in the kernel's types and pure functions, not in a process boundary.
+1. **Code-level (embedded library/SDK).** A host application that already owns its agent loop links Provenant as a dependency. The kernel exposes a pure, I/O-free public API; the host drives tool dispatch, guard application, and `submit_answer` enforcement via function calls. The invariants hold because they are encoded in the kernel's types and pure functions, not in a process boundary. **In v0, the embedded path is Go-only**: Go hosts link the kernel directly; non-Go hosts (Python, TypeScript) reach the same kernel through the runtime/sidecar shape below until Phase 5 of [`implementation-plan.md`](implementation-plan.md) delivers a non-Go binding (FFI or sub-50ms loopback sidecar). The "identical invariants" claim is a Phase-5 deliverable for non-Go hosts; v0 ships the Go embedded mode and the runtime mode and proves byte-identity between them.
 
 2. **Runtime-level (sidecar / MCP server / daemon).** A host that prefers process isolation, a non-Go runtime, or zero-code integration points at a Provenant runtime — an MCP server, an HTTP API, or a CLI harness — over the wire. The invariants hold because the runtime layer is a thin shell that delegates every enforcement decision to the same kernel that the embedded mode exposes.
 

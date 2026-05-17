@@ -261,6 +261,19 @@ Rollback: keep N-1 binary and N-1 schema available. Schema rollback is forward-o
 
 Quarterly DR drills are required; the operator runs `provenant disaster-drill --tenant <sample>` which restores a sample tenant from backups and verifies replay correctness end-to-end.
 
+### Postgres / object-store cross-consistency on restore
+
+The audit chain references blobs (prompts, responses, captured reads) by key. After a DR event in which Postgres and the object store are restored from snapshots taken at different times, the two stores can be inconsistent: `audit_entries.blob_ref` may point to a blob that does not yet exist (Postgres ahead of object store) or a blob may have no referring row (object store ahead of Postgres).
+
+The reconciliation procedure that runs **before** the restored deployment accepts traffic:
+
+1. `provenant restore-verify --tenant <id>` walks every `blob_ref` in `audit_entries` for the tenant and checks existence in the object store. Missing blobs are reported; the run state of each affected `run_id` is marked `restore_pending` and excluded from `audit pack` until reconciled. **`audit verify` does not return OK** on a chain that references missing blobs; this addresses the failure mode in which evidence has been silently lost.
+2. Conversely, blobs in the object store whose referencing audit row is not present in Postgres are listed but retained (object-store retention is the safer side; deletion is a separate operator action).
+3. The operator either restores from a more recent backup of the lagging store, or accepts the partial loss by promoting affected runs to `restore_pending_acknowledged` with an audit entry recording the gap.
+4. Only after `restore-verify` reports clean (or all gaps are acknowledged) does the server resume accepting writes.
+
+This is a documented v0 DR procedure; full cross-store atomic restore (e.g., consistent snapshots across Postgres and object store) is a v0.5+ concern.
+
 ## Open questions
 
 1. **Kubernetes operator**. Many customers run Kubernetes; should we ship a Provenant Operator for declarative tenant management? Proposal: yes, for v0.5; v0 ships Helm charts.

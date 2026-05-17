@@ -78,14 +78,15 @@ CREATE INDEX idx_audit_tenant_seq ON audit_entries(tenant_id, seq);
 Each entry's `hash` is:
 
 ```
-hash = sha256(prev_hash || seq_bytes || run_id || tenant_id || kind || canonical(payload) || at_iso)
+hash = sha256(prev_hash || seq_bytes || run_id || tenant_id || kind || canonical(payload))
 ```
 
 Where:
 
 - `canonical(payload)` is JCS (RFC 8785) canonical JSON.
-- `at_iso` is RFC 3339 nanosecond precision.
 - The first entry per tenant has `prev_hash = sha256("provenant-genesis:" || tenant_id)`.
+- **Wall-clock timestamps are excluded from the hash.** `at` is stored on every row but is not part of the deterministic hash chain. It is recorded for human auditors and operational queries only, and is classified as a non-deterministic-portion field. This is what makes the chain byte-identical between embedded mode (host-injected `Clock`, e.g., a Python event-loop monotonic clock) and runtime mode (daemon wall clock). The deterministic portion of the chain consists of `(prev_hash, seq, run_id, tenant_id, kind, canonical(payload))`; the non-deterministic portion is `at` plus any payload field explicitly marked `non_deterministic` (model latencies, retry counters, host-clock readings).
+- Payload fields that would otherwise inject clock variance (e.g., `model_response.latency_ms`, `tool_call.duration_ms`) are emitted under a reserved `non_deterministic` sub-object that the canonicalizer excludes from the hash input. The schema for each `EntryKind` declares which fields are deterministic.
 
 Verification walks the tenant's chain from genesis, recomputing each `hash` and comparing to the stored value. Any mismatch surfaces the corrupted entry.
 

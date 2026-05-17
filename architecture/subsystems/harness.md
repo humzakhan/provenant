@@ -128,11 +128,13 @@ When the model emits a `tool_use` (or equivalent), the harness:
 1. Looks up the tool by canonical name in the registry.
 2. Validates the input payload against the tool's input schema. **Fail-closed** on schema mismatch — the agent receives an error response without the tool being called.
 3. Invokes the tool. Audit middleware wraps every call.
-4. The tool returns a `Result` with output and minted tokens.
+4. The tool returns a schema-validated `Result` payload (no tokens). The kernel — not the tool — then mints tokens from the values at the tool's declared `mintable_paths`, per [`architecture.md`](../../architecture.md) §5.2. Tools cannot construct `Token` values. Any field a downstream validator needs (e.g., `confidence.extraction_min`) must be on a declared `mintable_path` in the tool's schema; if it is not, the tool registration is rejected at load time with a clear error rather than silently dropping the field at runtime. The conformance test in [`tools/README.md`](../tools/README.md) verifies that every validator referenced by a skill has a `mintable_path` source in at least one tool the skill uses.
 5. Pre-LLM guards run on the tool response payload (a tool can be a source of prompt injection — see [`guards.md`](guards.md#pre-llm-input-guards)).
 6. The sanitized response feeds back into the model's context as a `tool_result`.
 
 Tool calls within a single agent step can be **parallel** if the model emits multiple in the same response (Claude's parallel tool use). The harness dispatches them concurrently and waits on all before the next model call.
+
+**Parallel-failure semantics (resolved).** When one sibling fails (schema mismatch, backend error, guard rejection), the harness **does not cancel** other in-flight siblings; it waits for all to complete and reports the union of results in the next agent observation. This is the only choice that preserves replay determinism: cancellation order would depend on real-wall-clock scheduling, which is non-deterministic. Each sibling's success or failure is recorded as its own `tool_call_completed` (or `tool_call_failed`) audit entry; tokens minted by successful siblings persist regardless of sibling failures (their lineage is sibling-independent). The agent sees the structured per-call errors and decides whether to retry, abort, or proceed.
 
 ## Model abstraction
 
@@ -206,8 +208,9 @@ In MCP / LangChain / OpenAI Agents modes, the host agent owns the loop. Provenan
 We mitigate these by:
 
 1. The MCP adapter exposes the skill pack's prompts as **MCP prompts**. Hosts that support prompt invocation (Claude.ai) attach our kernel header. For hosts that don't auto-attach (Claude Code by default), the user must explicitly invoke `/prompt provenant.recon` or similar.
-2. The `submit_answer` tool is the only path that returns "official" output to the user. Anything the agent emits through the host's text channel without going through `submit_answer` is logged but not signed by Provenant. Skill pack documentation must clarify this.
-3. For deployments that need full enforcement, Mode A (CLI harness) is the recommended path.
+2. The `submit_answer` tool is the only path that returns "official" output to the user. Anything the agent emits through the host's text channel without going through `submit_answer` is **not Provenant-signed**. The audit pack's `run_completed` entry explicitly records whether the run ended via `submit_answer` (signed) or without it (`exit_kind: host_text_only`). The kernel-immutable `submit_answer` schema includes a `signature_marker` field that the audit pack and `provenant audit pack` output prominently display; consumers of MCP output can use this marker to detect that host-channel text is unsigned by Provenant.
+3. Skill pack documentation (kernel-immutable header text, included in every Mode B prompt the host pulls via MCP) instructs the model that only `submit_answer` output is released to the user; non-`submit_answer` text is treated as scratch.
+4. For deployments that need architectural non-bypassability of the host text channel itself, Mode A (CLI harness) is the required path. This is documented in [`thesis.md`](../../thesis.md) and called out in [ADR-0007](../adrs/0007-mcp-as-primary-adapter.md) as the consequence of choosing MCP-first.
 
 ## Storage
 
@@ -243,8 +246,7 @@ CREATE TABLE runs (
 ## Open questions
 
 1. **Streaming model responses.** The current contract waits for complete responses. Streaming would improve UX but complicates guard application on tool_use blocks. Proposal: stream text, batch tool_use, finalize at end-of-response.
-2. **Parallel tool calls within a step.** Schema mismatch on one call: do we cancel siblings, or let them complete and report all errors? Proposal: let siblings complete; aggregate errors in the next agent observation.
-3. **Mode B prompt injection of the kernel header.** Should the MCP adapter attempt to forcibly inject the kernel header into the host's system prompt? Probably not (it's the host's prompt), but we should document the limitation prominently.
+2. **Mode B prompt injection of the kernel header.** Should the MCP adapter attempt to forcibly inject the kernel header into the host's system prompt? Probably not (it's the host's prompt), but we should document the limitation prominently.
 
 ## References
 
