@@ -102,13 +102,13 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 
 | EntryKind | Deterministic fields | Non-deterministic fields |
 |---|---|---|
-| `run_started` | `skill_id`, `skill_version`, `skill_pack_hash` (see §6 below), `model_id`, `input_hash`, `tenant_id` (mirrored), `bounds`{`max_steps`,`max_wall_clock_seconds`,`max_cost_usd`}, `kernel_version` | `initiator_principal`, `host_clock_offset_ms` |
+| `run_started` | `skill_id`, `skill_version`, `skill_pack_hash` (see §6 below), `model_id`, `input_hash`, `tenant_id` (mirrored), `bounds`{`max_steps`,`max_wall_clock_seconds`,`max_cost_usd`}, `kernel_version`, `kernel_header_hash` (sha256 of the kernel-immutable header text bytes loaded from `kernel/internal/promptkernel/header_v<N>.go` for the running kernel — see [`harness.md`](harness.md#kernel-immutable-header-text-definition); guards against header-file drift vs kernel_version), `host_conformance_attestation` (see below) | `initiator_principal`, `host_clock_offset_ms` |
 | `prompt_sent` | `prompt_hash` (sha256 of canonical-JSON prompt envelope), `prompt_blob_ref`, `message_count`, `tool_def_hash` (sha256 of canonicalized tool-def list emitted to model) | `prompt_bytes`, `tokenizer_estimate` |
 | `model_response` | `response_hash` (sha256 of canonicalized response envelope), `response_blob_ref`, `stop_reason`, `tool_use_count`, `tokens_in`, `tokens_out` | `latency_ms`, `model_request_id`, `retry_count`, `cost_usd` |
-| `tool_call_started` | `tool_call_id` (kernel-assigned ULID; deterministic per replay — see §"Tool-call ID and seq determinism"), `tool_name`, `tool_version`, `input_hash`, `input_blob_ref`, `parent_step_id`, `sibling_group_id` (set when emitted from a parallel-dispatch batch), `sibling_index_in_group` (canonical 0-based index assigned at batch start — see §"Parallel-sibling deterministic order") | `started_at_wall` |
+| `tool_call_started` | `tool_call_id` (kernel-assigned ULID; deterministic per replay — see §"Tool-call ID and seq determinism"), `tool_name`, `tool_version`, `input_hash`, `input_blob_ref`, `parent_step_id` (deterministic identifier of the model-response step that emitted this tool_use — see §"parent_step_id construction"), `sibling_group_id` (set when emitted from a parallel-dispatch batch), `sibling_index_in_group` (canonical 0-based index assigned at batch start — see §"Parallel-sibling deterministic order") | `started_at_wall` |
 | `tool_call_completed` | `tool_call_id`, `output_hash`, `output_blob_ref`, `mintable_paths_hit` (sorted list), `result_status` ("ok") | `duration_ms`, `backend_endpoint` |
 | `tool_call_failed` | `tool_call_id`, `error_class` (kernel-defined enum: `schema_mismatch`, `guard_rejection`, `backend_error`, `timeout`, `kernel_integrity`), `error_message_canonical` (a kernel-canonicalized message — backend-error messages are mapped through a `(error_class, error_code)` → canonical string table; raw backend text is stored only in the non-deterministic sub-object) | `error_message_raw`, `duration_ms`, `retry_count` |
-| `token_mint` | `token_id` (kernel-assigned ULID — deterministic per replay), `source_tool_call_id`, `source_path`, `value_canonical` (the `NUMERIC(38,9)` decimal serialized per the canonicalization rule in [`architecture.md`](../../architecture.md) §4), `source_value_raw`, `unit`, `derivation`{`parents`,`op`} | — |
+| `token_mint` | `token_id` (kernel-assigned ULID — deterministic per replay), `source_tool_call_id`, `source_path`, `value_canonical` (the `NUMERIC(38,9)` decimal serialized per the canonicalization rule in [`architecture.md`](../../architecture.md) §4), `source_value_raw` (the verbatim string the upstream backend returned, after the canonical `source_value_raw` normalization rule in §"`source_value_raw` canonical form" below — required so two backends that return semantically-equal but textually-different forms (`1.00` vs `1.0` vs `1`) produce byte-identical chains), `unit`, `derivation`{`parents`,`op`} | — |
 | `guard_run` | `guard_name`, `guard_version`, `phase` (`pre_llm` \| `post_llm`), `severity_tier`, `action` (`pass` \| `redact` \| `quarantine` \| `block`), `target_hash` (hash of the input being guarded), `findings_canonical` | `duration_ms` |
 | `submit_attempt` | `payload_hash`, `payload_blob_ref`, `numeric_claim_count` | — |
 | `submit_rejected` | `payload_hash`, `validator_errors_canonical` (sorted by `(validator_name, claim_index)`) | `duration_ms` |
@@ -117,7 +117,7 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 | `hitl_decision` | `review_id`, `decision` (`approved` \| `rejected` \| `escalated` \| `expired`), `decision_rationale_hash` | `decided_at_wall`, `reviewer_principal` |
 | `run_completed` | `final_status` (`completed` \| `awaiting_review`), `exit_kind` (`submit_answer` \| `host_text_only`), `final_payload_hash` (set only when `exit_kind == submit_answer`; null otherwise) | `ended_at_wall`, `total_duration_ms`, `total_cost_usd` |
 | `run_failed` | `failure_class` (`exhausted` \| `timeout` \| `cost_cap` \| `integrity` \| `model_error` \| `aborted` \| `orphaned`), `failure_subcode` | `ended_at_wall`, `error_message_raw` |
-| `run_orphan_recovered` | `prior_status` (`pending` \| `running`), `last_entry_seq_before_recovery`, `threshold_seconds_used` (the per-skill `max_wall_clock_seconds × orphan_multiplier` actually applied — see [`harness.md`](harness.md) bounds and [`implementation-plan.md`](../../implementation-plan.md) Phase 1), `recovery_reason` | `swept_at_wall` |
+| `run_orphan_recovered` | `prior_status` (`pending` \| `running`), `last_entry_seq_before_recovery`, `threshold_seconds_used` (the per-skill `max_wall_clock_seconds × orphan_multiplier` actually applied; `orphan_multiplier` is pinned in the **skill manifest** (`bounds.orphan_multiplier`, default 2) and is **not** deployment-overridable — see [`harness.md`](harness.md#orphan-run-threshold-per-skill) and [`skills.md`](skills.md); two deployments running the same `(skill_id, skill_version)` therefore compute the same `threshold_seconds_used` and the field remains in the deterministic sub-object), `recovery_reason` | `swept_at_wall` |
 | `restore_pending` | `missing_blob_refs_canonical` (sorted list) | `verified_at_wall` |
 | `restore_pending_ack` | `acknowledged_blob_refs_canonical`, `operator_principal_hash` | `acknowledged_at_wall`, `operator_principal_raw` |
 
@@ -148,7 +148,64 @@ When the model emits a batch of N parallel tool_use blocks in a single response,
 
 This rule is load-bearing for the Phase 4 byte-identity done-when: without it, two replays of the same run whose siblings happen to finish in different wall-clock orders would diverge from the first sibling's `seq` onward, breaking every subsequent `prev_hash`. The buffering window is bounded by `max_wall_clock` (the same bound that already caps the parallel dispatch), so no new failure mode is introduced.
 
-Implementation note: the buffer is in-process kernel state. If the process crashes during a parallel block, no audit entries from that block were ever appended (atomicity), and the run is recovered as orphaned per the Phase-1 sweep — there is no "half-flushed batch" state.
+Implementation note (atomicity of token mint with audit): `kernel.Mint` does **not** persist `tokens` rows during a parallel block. Token records produced by sibling tool calls are held in the same per-group in-memory buffer that holds the `tool_call_*` and `token_mint` audit entries; at flush time, the `tokens` rows and the `audit_entries` rows are written in a **single transaction** (per-tenant advisory-lock-scoped) so the invariant "every persisted token has a corresponding `EntryKindTokenMint` audit entry" holds even on crash. If the process crashes during a parallel block, neither the tokens nor the audit entries from that block are persisted (atomicity); the run is recovered as orphaned per the Phase-1 sweep — there is no "half-flushed batch" state, and no orphan `tokens.source_call_id` pointing at a tool_call that was never audit-logged.
+
+Scope and constraints (v0):
+
+- **Single-turn parallel only.** The buffer-and-flush rule applies to N parallel `tool_use` blocks emitted in **a single model response turn**. If a model splits parallel tool-use emissions across multiple response turns (a behavior some Claude variants exhibit under load), the kernel treats each turn's tool_use blocks as an independent `sibling_group_id` derived from that turn's canonicalized response envelope. The kernel does **not** attempt to retroactively merge tool-use blocks across turns into one sibling group; doing so would make `sibling_group_id` depend on a non-local future-turn observation and break byte-identity on replay.
+- **Streaming tool responses are not permitted in v0.** The intra-sibling ordering invariant (a sibling's `tool_call_started` precedes its `token_mint` entries which precede its `tool_call_completed` / `tool_call_failed`) presupposes a fully-formed `tool_use` block at dispatch time. Streaming tool_use is listed in the Open Questions of [`harness.md`](harness.md) and is **out of scope for v0**; see KNOWN_TRADE_OFFS.md.
+
+### `parent_step_id` construction
+
+`parent_step_id` is the deterministic identifier of the model-response step from which a tool_use block was emitted. It is computed at the time the kernel ingests the model response and is the same for every sibling in a parallel batch:
+
+```
+parent_step_id = "ps_" || base32( sha256( run_id || step_index_be8 || response_hash ) )[0:26]
+```
+
+Where:
+
+- `step_index_be8` is the 0-based ordinal of the model-response step within the run, big-endian 8 bytes. The first model response in a run has `step_index = 0`.
+- `response_hash` is the deterministic `model_response.response_hash` (sha256 of the canonicalized model response envelope) recorded on the `EntryKindModelResponse` entry produced for this step.
+
+`step_index` is part of the kernel's per-run state and is incremented exactly when the harness records an `EntryKindModelResponse` entry. The first tool_use batch's `parent_step_id` therefore derives from `step_index=0` plus the first response envelope's hash; persistence of `step_index` across crashes is implicit because the audit chain (which is the source of truth) is replayable to recover it.
+
+This makes `parent_step_id` (a) deterministic per replay, (b) sibling-shared within a turn, (c) independent across turns even when the model emits two parallel batches in two response turns, and (d) recoverable from the audit chain without a separate counter table. Independent implementations (Phase 5 bindings) deriving `tool_call_id` will produce identical IDs given identical canonicalized response bytes.
+
+### `source_value_raw` canonical form
+
+`source_value_raw` exists to preserve upstream precision (e.g., 10–12-decimal FX rates, raw extraction confidences) for provenance answers. To make byte-identity hold across backends and language bindings that return semantically-equal but textually-different numeric forms (`1.00` vs `1.0` vs `1`, `1e3` vs `1000`), the kernel normalizes `source_value_raw` at mint time using the following rule before it is hashed into the chain:
+
+1. **Parse.** Reject inputs that do not match the canonicalization grammar in §"Numeric canonicalization" above; raise a typed `numeric.parse_error`.
+2. **Re-serialize verbatim-significant.** The normalized form is the unique shortest decimal string that preserves the input's significant digits and scale, computed as:
+   - Strip a leading `+`; preserve a leading `-` unless the value is exactly zero (in which case the sign is normalized to absent).
+   - Eliminate exponent form: convert `[mantissa]e[exp]` to plain decimal by shifting the decimal point. Reject inputs whose absolute exponent after parsing would require more than **38 total significant digits** to represent (typed `numeric.overflow`) or whose magnitude is non-zero but rounds to zero at the kernel's representable scale of 1e-38 (typed `numeric.underflow`). These error classes are first-class members of the kernel error enum and are returned to the agent as `tool_call_failed.error_class = backend_error` with `error_code` set to `numeric.overflow` / `numeric.underflow` / `numeric.parse_error`.
+   - No leading zeros on the integer part except the single `0` for values in `(-1, 1)`.
+   - Preserve trailing zeros that were **present in the input** as significant trailing zeros (`1.00` → `1.00`); do **not** strip them. This is the rule that disambiguates "the upstream said 1.00 (cents precision)" from "the upstream said 1.0 (tenths precision)". Inputs without a fractional separator (`1`) normalize to no fractional separator (`1`); inputs with a separator and zero fractional digits (`1.`) are rejected as malformed.
+   - `-0`, `-0.0`, etc. normalize to `0`, `0.0`, etc. (sign dropped, scale preserved).
+
+The result is recorded on the token row's `source_value_raw TEXT` column (already declared in [`architecture.md`](../../architecture.md) §4) and on `EntryKindTokenMint.deterministic.source_value_raw`. Both Go (`shopspring/decimal` with a thin wrapper that retains scale) and Python (`decimal.Decimal` with explicit scale handling) bindings produce identical normalized strings given identical inputs; the cross-language fixture vector under `kernel/testdata/numeric-canonical/` is extended to cover the trailing-zero, overflow, underflow, and sign-of-zero cases.
+
+`value_canonical` (the `NUMERIC(38,9)` hashed value used for arithmetic and verification) is unchanged by this rule; `source_value_raw` is the verbatim-precision sibling field, and they may differ when the upstream value carries more than 9 fractional digits.
+
+### `host_conformance_attestation`
+
+In Mode B (host-driven loop), runs may be initiated by a third-party host (Claude.ai, Cursor, a custom MCP host). The kernel cannot independently verify that the host runs the published `provenant mcp-conformance` suite; absence of attestation is not itself enforceable. The `host_conformance_attestation` field on `EntryKindRunStarted.deterministic` records what the host operator has declared at runtime-initialization time:
+
+```
+host_conformance_attestation = {
+  "mode": "mode_a" | "mode_b_attested" | "mode_b_untested",
+  "host_id": "<opaque string the host operator selects, e.g., 'claude-code-0.50.0'>",
+  "attestation_version": "<semver of the conformance suite the host claims to have passed, or empty string for mode_a / mode_b_untested>",
+  "attested_at": "<RFC3339 timestamp at which the operator most recently passed the suite, or empty for mode_b_untested>"
+}
+```
+
+- For Mode A (`provenant run`, embedded Go harness): the kernel fills this in itself with `mode = mode_a` and the kernel's own version as `attestation_version`. The operator cannot override.
+- For Mode B with attestation: the host operator configures these values once at runtime startup (a `host_conformance.yaml` referenced by the Provenant config); the runtime layer copies them verbatim into every `run_started` entry. The kernel does not validate the claim — the field is a self-declared, audit-pack-visible attestation, signed only by virtue of being on the per-tenant hash chain.
+- For Mode B without attestation: the kernel writes `mode = mode_b_untested` automatically when no `host_conformance.yaml` is loaded.
+
+`provenant audit pack` displays the attestation status prominently on the pack README and on `audit.pdf` cover sheet, so a downstream reviewer can distinguish a Mode-A run, a Mode-B run with a self-declared conformance pass, and a Mode-B run with no attestation. Stronger attestation (operator-signed JWT, hosted Provenant attestation service) is deferred to v0.5+ and tracked in KNOWN_TRADE_OFFS.md.
 
 ### Numeric canonicalization (cross-language replay)
 

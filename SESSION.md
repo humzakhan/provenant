@@ -55,3 +55,27 @@
 **TRADE-OFF:** 0
 **Documents changed:** architecture.md, implementation-plan.md, architecture/subsystems/audit.md, architecture/subsystems/harness.md, architecture/cross-cutting/deployment.md, SESSION.md
 **Outstanding:** The buffer-and-flush rule for parallel siblings introduces a new failure mode worth a Phase-1/Phase-2 test: process death during a parallel block leaves no entries from that block in the audit sink, and the orphan sweep is the only recovery path. The implementation-plan tests cover this transitively (orphan sweep + parallel-sibling shuffle property test) but no single integration test combines them. Flagged for the next critic pass as: "Is there a test that asserts a crash mid-parallel-batch is recovered as exactly one orphan-recovery entry, with no half-flushed sibling entries, on restart?" Also: the kernel-immutable header text is locked at `kernel/internal/promptkernel/header_v1.go`; any subsequent header revision is a kernel-version bump but its interaction with `skill_pack_hash` (which does not cover the kernel header) is one indirection the audit pack does not yet make verifiable — consider hashing kernel header text into `EntryKindRunStarted.deterministic.kernel_version` derivation or adding a `kernel_header_hash` deterministic field.
+
+## Critique Cycle 3 — 2026-05-17
+
+**Issues raised:** 10
+**VALID:** 7 —
+- #3 `kernel_header_hash` added to `EntryKindRunStarted.deterministic` + release-time content-hash test
+- #5 Token mint atomicity with audit entry under parallel-batch (single-transaction flush; tokens buffered alongside audit entries)
+- #6 Typed `numeric.overflow` / `numeric.underflow` / `numeric.parse_error` error classes; >38-significant-digit overflow and underflow-to-zero handling defined; fixture vector extended
+- #8 `orphan_multiplier` pinned in skill manifest (`bounds.orphan_multiplier`); not deployment-overridable; cross-deployment byte-identity preserved on orphan-recovered runs
+- #9 `source_value_raw` canonical normalization rule defined (preserves trailing-zero significance, sign-of-zero normalization, exponent elimination, overflow/underflow typed errors)
+- #10 `parent_step_id` construction defined (`ps_` + base32 of `sha256(run_id || step_index_be8 || response_hash)`)
+- #1+#2+#5 implementation-note tightening: parallel-block atomicity (tokens + audit entries in a single transaction at flush time)
+
+**INVALID:** 0
+**TRADE-OFF:** 3 —
+- #1+#2 Streaming and split-turn parallel tool_use deferred (v0 is single-turn, non-streaming parallel only)
+- #4 Live progress observability for buffered parallel blocks (Prometheus gauge surfaces sibling state live; audit chain remains buffered)
+- #7 Host conformance attestation is self-declared in v0 (`host_conformance_attestation` field on `run_started.deterministic`; cryptographic / hosted-service attestation deferred)
+
+**Documents changed:** architecture/subsystems/audit.md, architecture/subsystems/harness.md, architecture/subsystems/skills.md, implementation-plan.md, KNOWN_TRADE_OFFS.md, SESSION.md
+**Outstanding:**
+- The `host_conformance_attestation` field is deterministic but its content is operator-supplied at startup; two deployments of the same Mode-B host claiming different attestation versions will produce different chains. This is by design (the field captures a deployment-time fact), but it means "cross-mode byte-identity" is only guaranteed when `host_conformance_attestation` is held constant — flagged for cycle 4: is the cross-mode byte-identity claim in [`thesis.md`](thesis.md) and [`architecture.md`](architecture.md) §3 narrow enough to admit this, or do we need a "non-deterministic" classification for this field after all?
+- The token-mint-atomicity-across-parallel-block guarantee assumes the `Store` and `AuditSink` share a transaction scope at flush time. Today's interface contracts ([`architecture.md`](architecture.md) §3.1) declare them as separate injected interfaces; a host that injects two stores backed by different databases would silently lose atomicity. Flagged for cycle 4: does the kernel public surface need a `TransactionalScope` interface that `Store` and `AuditSink` jointly implement, or is the contract that "embedding hosts MUST use a shared transactional substrate" sufficient documentation?
+- Numeric `source_value_raw` rule rejects `1.` as malformed but accepts `1` and `1.0`. A backend that returns trailing-separator-only values (uncommon but legal in some JSON dialects) will surface as `numeric.parse_error` rather than normalizing. Acceptable for v0; flagged in case real backends are observed emitting this form.

@@ -67,6 +67,13 @@ bounds:
   max_steps: 30
   max_wall_clock_seconds: 300
   max_cost_usd: 1.00
+  orphan_multiplier: 2            # used by the orphan sweep: a run is swept if its last entry
+                                  # is older than max_wall_clock_seconds * orphan_multiplier.
+                                  # Pinned in the manifest — NOT deployment-overridable — so that
+                                  # the deterministic `threshold_seconds_used` recorded on
+                                  # EntryKindRunOrphanRecovered is identical across deployments
+                                  # of the same (skill_id, skill_version). See
+                                  # architecture/subsystems/harness.md and architecture/subsystems/audit.md.
 
 hitl:
   routing:
