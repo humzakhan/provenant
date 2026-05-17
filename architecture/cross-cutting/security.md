@@ -95,6 +95,16 @@ This entry is purely audit-visible — the kernel still aborts the run as docume
 
 ## API security
 
+### Reviewer-principal namespace (`system:` reserved prefix)
+
+The HITL audit chain emits `EntryKindHITLDecision` rows with a non-deterministic `reviewer_principal` field that names the actor that committed the decision (see [`subsystems/hitl.md`](../subsystems/hitl.md#rest-api-v0) and [`subsystems/audit.md`](../subsystems/audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration)). The string `"system:escalation-sweep"` is the reserved sentinel used when the escalation-timeout sweep emits a `decision = expired` row (no human reviewer acted). To keep the namespace unambiguous:
+
+- The **`"system:"` prefix is reserved for kernel-emitted decisions.** No human reviewer identifier may use it.
+- The IAM directory / reviewer-pool provisioning surface (the IAM-side counterpart to the bearer-token flow below) rejects any reviewer principal whose identifier starts with `system:` at registration time.
+- A `system:`-prefixed identifier appearing on `EntryKindHITLDecision.non_deterministic.reviewer_principal` from a non-sweep code path is a typed integrity error (`kernel_integrity`) and is rejected at audit-sink write time.
+
+This rule makes "human vs kernel-emitted decision" a string-prefix test on the chain without requiring a separate boolean field, and prevents an operator from accidentally provisioning a reviewer whose identifier collides with the sentinel.
+
 - Bearer tokens scoped to tenant, skills, and tools.
 - Token rotation: tokens expire on a configurable schedule (default 90 days); rotation is a `POST /v1/admin/tokens/rotate` operation that issues a new token and revokes the old after a grace period.
 - TLS required for all transports in production deployments.

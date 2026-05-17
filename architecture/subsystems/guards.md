@@ -230,6 +230,23 @@ Validators run in the order declared by the skill pack's `guards.yaml`. Two mode
 - **Collect-all** (default): every validator runs; errors are aggregated and returned together so the agent sees the full list.
 - **Fail-fast**: pipeline halts on first failure. Used for latency-sensitive paths.
 
+**`crashed` / `timeout` mapping onto `Result`.** The `EntryKindGuardRun.action` enum is six-valued (`pass`, `redact`, `quarantine`, `block`, `crashed`, `timeout`) per [`audit.md`](audit.md#guard-failure-mode-determinism-crashed--timeout). A validator that panics or times out does not return a `Result` of its own — the pipeline layer synthesizes one on its behalf, so the rest of the pipeline can be reasoned about as if every validator returned a `Result`. The synthesis rule is pinned here to make the audit chain across two implementations byte-identical:
+
+| Audit `action` | Synthesized `Result` | Errors |
+|---|---|---|
+| `pass` | `Result{Passed: true, Errors: []}` | none |
+| `redact` / `quarantine` | `Result{Passed: true, Errors: []}` (pre-LLM only) | the redaction / quarantine is recorded in `guard_runs.actions`, not as `Errors` |
+| `block` | `Result{Passed: false, Errors: [...]}` | validator-returned `Errors` (clean rejection) |
+| `crashed` | `Result{Passed: false, Errors: [{Code: "crashed", Message: "<canonical>", Path: "", Tokens: [], Hint: ""}]}` | synthesized; `Message` is the canonical string `"guard panicked"` (the raw panic text lives in non-deterministic `error_message_raw`, not in `Errors`) |
+| `timeout` | `Result{Passed: false, Errors: [{Code: "timeout", Message: "<canonical>", Path: "", Tokens: [], Hint: ""}]}` | synthesized; `Message` is the canonical string `"guard exceeded its declared timeout"` |
+
+**Pipeline-mode interaction.**
+
+- **`collect_all` mode.** A `crashed` or `timeout` validator contributes its synthesized `Error` to the aggregated list and **the pipeline continues to subsequent validators.** This is the explicit choice over an alternative reading (abort-on-crash) because: (a) it produces a deterministic N+1 chain (every subsequent validator runs and emits its own deterministic `guard_run` entry), (b) it surfaces every issue to the agent in one round-trip per the collect-all contract, (c) "the agent sees the full list" is the collect-all promise and a crashed validator is one entry in that list, not a circuit-breaker.
+- **`fail_fast` mode.** A `crashed` or `timeout` validator halts the pipeline on its own entry, exactly as a clean `block` would. No subsequent validators run; the chain has the entry for the crashed/timed-out validator and no further `guard_run` entries from this submit attempt.
+
+In both modes, a non-empty `Errors` list (synthesized or returned) makes the overall submit attempt fail-closed; the pipeline-decision layer never releases an answer whose pipeline contains a `crashed` or `timeout` entry. This is the cycle-6 pin on the cycle-5 critic #6 ambiguity: continue-after-crash in collect-all, abort-on-crash in fail-fast.
+
 Failure does not end the run. The agent receives the structured error list and chooses how to respond:
 
 1. Fix the issue (recalculate, re-extract, re-classify) and resubmit.

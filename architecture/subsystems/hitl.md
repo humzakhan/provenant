@@ -164,7 +164,7 @@ approved | edited | rejected | escalated | expired
 - `edited`: reviewer changes a value or text; `edits` array required.
 - `rejected`: reviewer rejects the whole output; the run fails.
 - `escalated`: reviewer routes to a higher tier.
-- `expired`: no human action within the configured deadline; emitted by the escalation-timeout sweep, not by a reviewer call. Treated as `failed` at the run level (see harness state machine) unless the skill manifest configures `on_expiry: escalate`.
+- `expired`: no human action within the configured deadline; emitted by the escalation-timeout sweep, not by a reviewer call. Treated as `failed` at the run level (see harness state machine) unless the skill manifest configures `on_expiry: escalate`. For `expired` decisions, the `EntryKindHITLDecision` entry's non-deterministic `reviewer_principal` field carries the reserved sentinel string **`"system:escalation-sweep"`** (a literal; not a hash; not interpolated). The `"system:"` prefix is reserved for kernel-emitted decisions; **reviewer principals from the human-reviewer IAM directory are forbidden from using the `"system:"` prefix** — the IAM provisioning step (see [`cross-cutting/security.md`](../cross-cutting/security.md#api-security)) rejects any reviewer principal whose identifier starts with `system:`. This rule preserves "every decision has a non-null `reviewer_principal`" without polluting the human-reviewer namespace, and makes "was this decision human or system-emitted?" a string-prefix test on the chain.
 
 [`audit.md`](audit.md)'s `EntryKindHITLDecision` enum is amended below to match.
 

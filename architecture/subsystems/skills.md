@@ -170,7 +170,18 @@ normalizers:
     builtin_id: numeric.locale.eu_comma_decimal
 ```
 
-**v0 scope.** v0 ships only built-in normalizer IDs (`kind: builtin`) from a kernel-registered set; v0 does **not** load arbitrary Go or WASM code from skill packs. The kernel-registered built-in set in v0 is empty (no v0 backend needs locale normalization — SQL ledger, Textract, OpenFX all emit US/POSIX decimals); the slot exists so that the first European-locale backend (e.g., SAP-EU, planned v0.5) can ship a normalizer without a kernel-version bump.
+**v0 scope.** v0 ships only built-in normalizer IDs (`kind: builtin`) from a kernel-registered set; v0 does **not** load arbitrary Go or WASM code from skill packs. The kernel-registered built-in set in v0 is empty (no v0 backend needs locale normalization — SQL ledger, Textract, OpenFX all emit US/POSIX decimals); the slot exists so that the first non-empty backend (e.g., SAP-EU, planned v0.5) can ship a normalizer in tandem with the kernel-version bump that registers it.
+
+**Registration mechanism (pinned).** Built-in normalizers are registered at **compile time** in the kernel package `kernel/internal/normalizers/registry.go`, which exposes a private `map[string]Normalizer` populated by per-normalizer `init()` functions in sibling files (one normalizer per file, e.g., `kernel/internal/normalizers/numeric_locale_eu_comma_decimal.go`). The registry is **not** a runtime registry, not a boot-time JSON manifest, and not a plugin-loaded set; the kernel public surface exposes only a read-only `Lookup(builtin_id string) (Normalizer, bool)` accessor.
+
+Implications, pinned here so two implementations cannot diverge:
+
+- **Each `builtin_id` is part of the kernel's public API contract.** Adding, renaming, or removing a `builtin_id` is a kernel-version bump (and an audit-chain-format event if any deployed chain references the old ID).
+- **Old chains with `normalizer_applied = null` remain valid across version bumps.** `normalizer_applied` is in the deterministic payload and `null` is a legal canonical value; a v0 chain (empty registry, every token has `normalizer_applied = null`) replays byte-identically on a v0.5 kernel that has registered new IDs.
+- **A pack referencing an unregistered `builtin_id` is rejected at pack-load time** with a typed `skill.normalizer_id_unknown` error. Loading is strict; there is no "soft missing normalizer" mode.
+- **The v0 registry is empty.** A Phase 0 unit test asserts `len(normalizers.Registry()) == 0`; the first non-empty entry is a v0.5+ kernel-version event with its own ADR.
+
+Phase 2 task list does not load any normalizer (the registry is empty), but the registry plumbing — `kernel/internal/normalizers/registry.go`, the `Normalizer` interface, the `Lookup` accessor, and the pack-load-time `skill.normalizer_id_unknown` rejection path — ships in Phase 2 as part of the pack-loader code path so the format is enforceable from day one. See [`implementation-plan.md`](../../implementation-plan.md#phase-2--tool-registry-and-guard-pipeline-pre--post).
 
 **Hashing.** The `normalizers/` directory is included in the skill-pack content digest under the same rules as `prompts/` and `guards.yaml` (see [`audit.md`](audit.md#skill-pack-content-digest-procedure)): two packs with different normalizer configurations produce different `skill_pack_hash` values, so a skill that silently changes its normalization is caught on replay.
 

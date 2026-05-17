@@ -132,7 +132,41 @@ The audit chain's parallel-sibling buffer-and-flush rule (see [`subsystems/audit
 - A span event per transition: `sibling.started{sibling_index}`, `sibling.completed{sibling_index}`, `sibling.failed{sibling_index, error_class}`.
 - Span attributes carry `tenant_id`, `run_id`, `sibling_group_id`, and `sibling_count`. These are OTLP attributes (the trace backend can handle the cardinality), **not** Prometheus labels.
 
-Operators alert on long-in-flight siblings via the trace backend (Tempo / Jaeger query) or via the `provenant run inspect <run_id>` SQL view over an in-memory ephemeral table the runtime maintains for live sibling state. The trace surface is explicitly labeled "not part of the replay-deterministic chain; emitted live; not buffered" and is independent of `audit_entries`. The Phase 4 done-when requires that the span+events surface at least the sibling count and per-sibling started/completed/failed transitions during a parallel block.
+Operators alert on long-in-flight siblings via the trace backend (Tempo / Jaeger query) or via the `provenant run inspect <run_id>` SQL view (specified below) over an in-memory ephemeral table the runtime maintains for live sibling state. The trace surface is explicitly labeled "not part of the replay-deterministic chain; emitted live; not buffered" and is independent of `audit_entries`. The Phase 4 done-when requires that the span+events surface at least the sibling count and per-sibling started/completed/failed transitions during a parallel block.
+
+#### `provenant run inspect` live-state table specification
+
+The `run inspect <run_id>` SQL view is backed by a per-process in-memory map exposed to SQL clients via a sidecar `/internal/inspect` endpoint on the `provenant-server` runtime (the chosen mechanism; Postgres FDW is not used — it would require operator-level FDW configuration that the runtime cannot self-install). The CLI subcommand `provenant run inspect <run_id>` is a thin wrapper that calls `/internal/inspect` and prints the response in tabular form.
+
+**Table shape (one row per dispatched sibling).**
+
+| Column | Type | Source |
+|---|---|---|
+| `run_id` | TEXT | dispatch context |
+| `sibling_group_id` | TEXT | parallel-batch ID per [`subsystems/audit.md`](../subsystems/audit.md#parallel-sibling-deterministic-order) |
+| `sibling_index` | INT | canonical 0-based index within the group |
+| `tool_call_id` | TEXT | deterministic kernel-assigned ID |
+| `state` | TEXT | `started` \| `completed` \| `failed` |
+| `started_at` | TIMESTAMPTZ | wall clock at dispatch |
+| `completed_at` | TIMESTAMPTZ | wall clock at completion (null while `state = started`) |
+
+**Primary key.** `(run_id, sibling_group_id, sibling_index)`. The same `(run_id, sibling_group_id, sibling_index)` triple is never inserted twice within a process lifetime.
+
+**Lifecycle.**
+
+- **Insert** on dispatch (the same point that opens the `parallel_block` span event `sibling.started`).
+- **Update** on completion or failure (the same point that emits `sibling.completed` / `sibling.failed`).
+- **Garbage collection.** Rows for a `(run_id, sibling_group_id)` are removed from the map at parallel-block flush — the same point the buffered audit entries are appended. The retention rationale: once the deterministic audit chain holds the canonical record, the live-state row's only purpose (in-flight visibility) is gone. Orphan-recovered runs (the orphan sweep moves a run to `failed: orphaned`) sweep their rows out of the map as part of the same recovery procedure that emits `EntryKindRunOrphanRecovered`.
+
+**Concurrency model.** A single `sync.Map`-shaped structure scoped per process; insert/update are O(1) under a per-`(run_id, sibling_group_id)` mutex. Read traffic from `/internal/inspect` is read-locked; the structure is bounded by the count of in-flight parallel siblings across all live runs, which `max_steps × concurrency-per-step` bounds at thousands of rows per process worst-case — well inside in-memory capacity.
+
+**Restart behavior.** The table is in-memory and process-local; **on `provenant-server` restart it is empty by design**. `run inspect <run_id>` for a `run_id` not currently held by the running process returns the literal sentinel response `{"live_state": "none", "advice": "no live state; see audit chain for run history"}` rather than a stale or fabricated row. Operators needing post-restart visibility into what was in flight at crash time consult the audit chain plus the orphan-sweep entries (which name the in-flight runs that were recovered).
+
+**Concurrency with the orphan sweep.** When the orphan sweep moves a run to `failed: orphaned`, it acquires the per-`run_id` mutex briefly to delete all rows for that run from the live-state map (after emitting `EntryKindRunOrphanRecovered`). The map is the canonical "what is the runtime currently working on" surface; the audit chain is the canonical historical surface.
+
+**Cross-process scope.** The live-state map is **not** shared across `provenant-server` replicas in a multi-replica deployment. Each replica holds the rows for the runs it is currently executing. A multi-replica operator querying live state across replicas does so via the trace backend (where spans aggregate naturally), not via `run inspect`. The CLI's `--all-replicas` flag is deferred to v0.5+.
+
+This specification is load-bearing: without pinning columns, key, lifecycle, restart behavior, and concurrency model, two implementations of `provenant-server` would disagree about whether a row exists after flush or after restart, breaking operator debugging.
 
 ## Structured logs
 
