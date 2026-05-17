@@ -222,3 +222,20 @@
 - The new `skill.credential_id_unexpected` rejection rule means a future pack author who adds a `credential_id` "defensively" on a pure-Go tool will see a load-time failure they did not expect. The error message text and the skills.md author guidance do not yet explain this; cosmetic but flagged.
 - Cycle 7 outstanding items that remain genuinely open: provider-on-`run_started` recording, `system:` sentinel as kernel-public constant, Phase 0 snapshot-list generation from kernel.md, PDF cover-sheet rendering of `credential_identity_baseline`. None are load-bearing; all are cosmetic / Phase 0+ ergonomics.
 
+## Critique Cycle 10 — 2026-05-17
+
+**Issues raised:** 1
+**VALID:** 1 —
+- #1 Markdown↔Go enum drift-prevention mechanism was asserted (`error_code` table claims a CI diff-check against generated `kernel/public/errorcode/codes.go`; the `EntryKind` and `failure_subcode` enums similarly hand-wave at "kernel boots its enumeration validators from a single generated Go const block") but the **direction of canonicality**, the **generator tool**, and the **gate timing** were not pinned. Resolved by (a) declaring markdown table as the single source of truth, (b) introducing `tools/enumgen/` as the markdown-canonical Go generator that parses the three tables in `audit.md` by exact markdown anchors and emits `kernel/public/errorcode/codes.go`, `kernel/public/audit/entrykind.go`, `kernel/public/audit/failuresubcode.go`, (c) pinning `go generate ./kernel/public/...` as the invocation contract with hermeticity requirement (no network, no module fetch), (d) pinning `go generate + git diff --exit-code` as the CI gate, (e) requiring a `tools/enumgen/enumgen_test.go` unit test that asserts generated Go matches a golden fixture against a fixture audit.md slice. Documented at audit.md §"Canonical `error_code` table" closing paragraph and §"Per-EntryKind payload schema" footer; new Phase 0 done-when bullet in implementation-plan.md.
+
+**INVALID:** 0
+**TRADE-OFF:** 0
+
+**Documents changed:** architecture/subsystems/audit.md, implementation-plan.md, SESSION.md
+
+## STABLE (reached at cycle 10, hard cap)
+
+All VALID issues across cycles 1–10 resolved (73 total) or accepted as trade-offs (8 total). Cycle 10's single VALID issue (markdown↔Go enum drift-gate mechanism unpinned) was resolved within the same cycle by introducing tools/enumgen as the markdown-canonical generator and adding a `go generate + git diff --exit-code` Phase 0 done-when criterion. The cycle-10 fix did not receive a subsequent critic-verification pass because the 10-cycle hard cap was reached at this cycle. No unresolved VALID issues remain.
+
+Documents ready for implementation.
+

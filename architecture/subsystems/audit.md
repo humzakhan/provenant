@@ -125,6 +125,8 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 
 `exit_kind == host_text_only` is the only legal value for runs whose final answer left the substrate without going through `submit_answer` (Mode B specifics in [`harness.md`](harness.md)). When `exit_kind == host_text_only`, `final_payload_hash` is the JSON null value (not absent, not the empty string) and `signature_marker` is **not** emitted on the chain — its absence is the audit-pack-visible signal that the run produced no Provenant-attested output.
 
+**Drift-prevention mechanism (markdown-canonical generator).** The `EntryKind` Go const block in §"Entry kinds" above is **derived** from the per-EntryKind payload schema table headed by this section, not authored independently. The `tools/enumgen/` Go program (see §"Canonical `error_code` table" footer for the full mechanism) parses the per-EntryKind table by its exact markdown anchor (`### Per-EntryKind payload schema (deterministic-surface enumeration)`) and emits `kernel/public/audit/entrykind.go`. `go generate ./kernel/public/...` re-runs the generator; CI runs `go generate` followed by `git diff --exit-code` and fails the build on any markdown↔Go drift. Adding a new `EntryKind` is therefore a single edit to this table followed by `go generate`; hand-editing the generated Go file is reverted on the next CI pass.
+
 ### `run_failed.failure_subcode` enum
 
 `failure_subcode` is a deterministic field on `EntryKindRunFailed` and is hashed into the chain. To prevent independent implementations (Phase 5 bindings) from choosing divergent spellings — which would break the byte-identity invariants enforced in Phase 4 and Phase 5 — the set of legal values is **enumerated here as the single source of truth**. The kernel rejects an `EntryKindRunFailed` entry whose `failure_subcode` is not in this table at write time.
@@ -187,6 +189,14 @@ Extension rule: adding a new `failure_subcode` is an audit-chain-format change. 
 | `policy.lookup_miss` | `backend_error` | identity | `policy.lookup` could not find a snippet for the requested key (deterministic lookup miss, not a transient backend error) |
 
 This table is locked. The kernel boot enumerates these codes from a generated Go const block (`kernel/public/errorcode/codes.go`) whose contents are diff-checked against this table in CI; a contributor who edits one without the other fails the release-gate test.
+
+**Drift-prevention mechanism (markdown-canonical generator).** The markdown table above is the **single source of truth**; the Go const block is **derived**, not authored. A Go program under `tools/enumgen/` parses this `audit.md` document by exact markdown anchors (`### Canonical \`error_code\` table`, `### \`run_failed.failure_subcode\` enum`, and the `## Entry kinds` `EntryKind` Go const block in §"Entry kinds") and emits three generated files under `kernel/public/`:
+
+- `kernel/public/errorcode/codes.go` — `error_code` constants and the `AllErrorCodes` slice consumed by the boot-time validator.
+- `kernel/public/audit/entrykind.go` — `EntryKind` constants and the `AllEntryKinds` slice.
+- `kernel/public/audit/failuresubcode.go` — `failure_subcode` constants and the `AllFailureSubcodes` slice.
+
+The generator is invoked via `go generate ./kernel/public/...` (a `//go:generate` directive in each of the three target packages runs `go run ../../../tools/enumgen --table=<name>`). The generator reads only `architecture/subsystems/audit.md` from the repository tree — it does **not** fetch modules, hit the network, or read environment variables — so `go generate ./kernel/public/...` is hermetic on a clean checkout. CI runs `go generate ./kernel/public/...` followed by `git diff --exit-code`; any markdown↔Go drift (a contributor edits the table without re-running the generator, or edits the generated file without updating the table) fails the build. `tools/enumgen/` ships its own unit test (`tools/enumgen/enumgen_test.go`) that parses a fixture audit.md slice under `tools/enumgen/testdata/` and asserts the generated Go matches a golden fixture (`tools/enumgen/testdata/golden/`); the test guards the parser against silent breakage when this `audit.md` is edited in ways that change table layout. The contract is `tools/enumgen` is the only writer of the three generated files; hand-edits to those files are reverted by the next CI run.
 
 ### Tool-call ID and seq determinism
 
