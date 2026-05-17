@@ -54,7 +54,7 @@ The audit-chain payload-schema fixes adopted in cycles 3, 4, and 5 (see [`audit.
   - `hash_input_canonical TEXT NOT NULL` — the exact canonical-JSON bytes of `payload_deterministic` that were fed into the SHA-256 hash, retained for replay-debug (a verifier mismatch surfaces both the stored hash and the bytes that produced it). This column is **not** itself hashed; it is operational debug surface.
   - The two-column split is the source-of-truth surface; `audit.md` continues to describe the payload as a single object with `deterministic` / `non_deterministic` sub-objects for readability, and the storage layer projects between the two shapes.
 
-Phase 1's atlas migrations include all five additions in the initial migration. The Phase 1 done-when in [`implementation-plan.md`](../../implementation-plan.md#phase-1--storage-and-hash-chained-audit-log) is amended to assert that the synthetic-run integration test exercises every new column and that chain verification re-canonicalizes from `payload_deterministic` (not from `payload_deterministic || payload_non_deterministic`).
+Phase 1's atlas migrations include all five additions in the initial migration. The Phase 1 done-when in [`implementation-plan.md`](../../plans/implementation-plan.md#phase-1--storage-and-hash-chained-audit-log) is amended to assert that the synthetic-run integration test exercises every new column and that chain verification re-canonicalizes from `payload_deterministic` (not from `payload_deterministic || payload_non_deterministic`).
 
 ### Common columns
 

@@ -3,7 +3,7 @@
 Status: **Superseded by [ADR-0010](0010-mcp-equal-not-primary.md) (2026-05-17)**
 Date: 2026-05-17
 
-> **Supersession note (cycle 4, 2026-05-17).** This ADR's "MCP is primary; HTTP is secondary; CLI is full-enforcement" framing contradicts [`architecture.md`](../../architecture.md) §1 (which depicts HTTP, CLI, and MCP as adapter-shim equals) and §2.1.3 (which explicitly flags MCP-first-vs-MCP-equal as an open question, since resolved). [ADR-0010](0010-mcp-equal-not-primary.md) supersedes the "MCP-primary" framing: MCP, HTTP, and CLI are equal first-class adapters in v0; the order of shipping is now an engineering-sequencing question, not an architectural privileging. The rationale for MCP support (universal agent protocol, low-friction adoption, etc.) remains valid; the change is that the same rationale also applies, on its own terms, to HTTP and CLI.
+> **Supersession note (cycle 4, 2026-05-17).** This ADR's "MCP is primary; HTTP is secondary; CLI is full-enforcement" framing contradicts [`architecture.md`](../OVERVIEW.md) §1 (which depicts HTTP, CLI, and MCP as adapter-shim equals) and §2.1.3 (which explicitly flags MCP-first-vs-MCP-equal as an open question, since resolved). [ADR-0010](0010-mcp-equal-not-primary.md) supersedes the "MCP-primary" framing: MCP, HTTP, and CLI are equal first-class adapters in v0; the order of shipping is now an engineering-sequencing question, not an architectural privileging. The rationale for MCP support (universal agent protocol, low-friction adoption, etc.) remains valid; the change is that the same rationale also applies, on its own terms, to HTTP and CLI.
 
 ## Context
 
