@@ -242,6 +242,7 @@ CREATE TABLE captured_reads (
 | Output schema violation | Fail-closed; `tool_invalid_output` to agent; the tool is also flagged for triage (broken contract) |
 | Tool panic | Caught; treated as failure; tool marked unhealthy; subsequent calls in same run rejected |
 | Network/auth error in backend | Returned as `tool_unavailable`; agent may retry per skill policy |
+| Backend authentication failure caused by mid-run credential rotation | Returned as typed `credential.rotated` (`error_class = backend_error`, `error_code = credential.rotated`); the harness fails the run closed with `failure_subcode = credential_rotated` rather than retrying with the post-rotation credential — see [`cross-cutting/security.md`](../cross-cutting/security.md#credential-rotation-mid-run-failure-path-contract) |
 | `MintablePath` references a non-existent path | Mint is skipped for that path; warning logged; not fail-closed (tool may legitimately return partial data) |
 
 ## Tests

@@ -1,7 +1,9 @@
 # ADR-0001: Go as the kernel language
 
-Status: **Accepted**
+Status: **Accepted, scope-amended by [ADR-0009](0009-kernel-public-go-surface.md) (2026-05-17)**
 Date: 2026-05-17
+
+> **Amendment note (cycle 4, 2026-05-17).** The "Out of scope" clause below — "the kernel will not provide a Go-only public API to consumers; the public surface is MCP / HTTP / CLI" — was correct at the time it was written but contradicted the subsequent elevation of code-level embeddability to a first-class thesis requirement (see [`thesis.md`](../../thesis.md) and [`architecture.md`](../../architecture.md) §3.1, §3.4, and Phase 5 of [`implementation-plan.md`](../../implementation-plan.md)). [ADR-0009](0009-kernel-public-go-surface.md) supersedes that specific out-of-scope clause: the kernel **does** provide a Go-only public API as a v0 first-class surface, and a non-Go binding is a Phase 5 deliverable. The rest of this ADR (Go as the kernel language choice itself) remains accepted.
 
 ## Context
 
@@ -42,8 +44,8 @@ The Provenant kernel is implemented in Go. All adapters that run in the kernel p
 - We do not get Rust's memory-safety guarantees. We mitigate via standard practices: no `unsafe`, careful concurrency review.
 - Cross-language adapters (Python, TS) run out-of-process. Not a real loss — embedding cross-language was never a goal.
 
-**Out of scope:**
-- The kernel will not provide a Go-only public API to consumers; the public surface is MCP / HTTP / CLI. Consumers can use any language they prefer.
+**Out of scope (superseded by [ADR-0009](0009-kernel-public-go-surface.md)):**
+- ~~The kernel will not provide a Go-only public API to consumers; the public surface is MCP / HTTP / CLI. Consumers can use any language they prefer.~~ **Superseded.** The kernel provides a Go-only public API as a v0 first-class surface for code-level embedding; non-Go consumers reach the kernel through the runtime layer (MCP/HTTP/CLI) until Phase 5 ships a non-Go binding. See [ADR-0009](0009-kernel-public-go-surface.md).
 
 ## Alternatives considered
 

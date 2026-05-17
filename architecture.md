@@ -114,7 +114,7 @@ These are deliberately unresolved here. The hone critic/defender loop will adjud
    ```
    The current ADRs do not address this split. No decision is taken here; this is flagged for the critic loop.
 
-3. **MCP-first vs. MCP-only.** [ADR-0007](architecture/adrs/0007-mcp-as-primary-adapter.md) makes MCP primary. The dual-mode promise requires that the same kernel be reachable without MCP — directly as a library, or via raw HTTP for hosts that do not speak MCP. The runtime layer must treat MCP as one of N transports, not as the privileged path. The current adapter docs lean MCP-heavy; revisit whether HTTP and CLI deserve equal architectural standing.
+3. **MCP-first vs. MCP-only — resolved cycle 4.** ~~[ADR-0007](architecture/adrs/0007-mcp-as-primary-adapter.md) makes MCP primary.~~ Resolved by [ADR-0010](architecture/adrs/0010-mcp-equal-not-primary.md): MCP, HTTP, and CLI are equal first-class adapters; none has architectural primacy. The runtime layer treats MCP as one of N transports. Engineering-sequencing remains in [`implementation-plan.md`](implementation-plan.md) (CLI in Phase 3, MCP and HTTP in Phase 4). Listed here for cross-reference rather than as an open question.
 
 ## 3. Module boundary contract
 
@@ -125,7 +125,8 @@ The dual-mode promise from [`thesis.md`](thesis.md) requires a strict separation
 **Allowed in the kernel's public API:**
 
 - Function and method signatures whose parameters and return types are: Go primitives, kernel-defined value types (`Token`, `Claim`, `ValidationError`, `AuditEntry`, etc.), `context.Context`, `decimal.Decimal`, `time.Time`, and interfaces defined in the kernel.
-- Interfaces for every I/O dependency: `Store` (token + run + audit row persistence), `BlobStore` (large payload persistence), `ModelClient` (LLM invocation), `Clock`, `RandSource`, `AuditSink` (sequence + hash-chain append target), `ToolBackend` (per-tool I/O — SQL ledger, Textract, etc.).
+- Interfaces for every I/O dependency: `Store` (token + run + audit row persistence), `BlobStore` (large payload persistence), `ModelClient` (LLM invocation), `Clock`, `RandSource`, `AuditSink` (sequence + hash-chain append target), `ToolBackend` (per-tool I/O — SQL ledger, Textract, etc.), and `TransactionalScope` (joint-transaction primitive across `Store` and `AuditSink` — see below).
+- **`TransactionalScope` (joint-transaction primitive).** The parallel-block atomicity invariant in [`subsystems/audit.md`](architecture/subsystems/audit.md#parallel-sibling-deterministic-order) ("tokens and `audit_entries` are written in a single transaction at flush time") cannot be honored when `Store` and `AuditSink` are arbitrary separately-injected backends. The kernel public surface therefore declares `TransactionalScope` as a third interface that a host MUST inject alongside `Store` and `AuditSink` whenever it injects either, and that the host MUST back with a single transactional substrate (typically: the same Postgres connection pool backs all three). The kernel calls `TransactionalScope.WithTx(ctx, func(tx) { storeOp(tx); auditOp(tx) })` at parallel-block flush, at `submit_answer` persistence, and at orphan-recovery; if `WithTx` returns separate transactions per call or commits separately, the kernel detects the violation at runtime via a per-tx canary write (`audit_entries` and `tokens` written in the same tx must share a tx-local sequence the kernel checks before commit) and fails closed with `kernel_integrity`. A `NullTransactionalScope` provided in `kernel/internal/memstore/` is acceptable only for the in-memory test sink that backs both `Store` and `AuditSink` from the same map. Two-backend hosts that inject a Postgres `Store` and an S3 `AuditSink` are rejected at kernel boot: the kernel refuses to start if the host injects `Store` and `AuditSink` whose `TransactionalSubstrate()` markers disagree. This closes the cycle-3 outstanding item: "embedding hosts MUST use a shared transactional substrate" is now a typed contract, not documentation.
 - Pure functions: hash construction, schema validation, token derivation, numeric extraction, validator pipeline composition.
 
 **Forbidden in the kernel's public API surface:**
@@ -266,7 +267,7 @@ Aggregated for the critic/defender loop. Three are first-class and named above; 
 
 1. **Kernel language choice under dual-mode pluggability.** §2.1.1. Revisits [ADR-0001](architecture/adrs/0001-go-as-kernel-language.md) given the new requirement that the kernel be embeddable into non-Go hosts.
 2. **Top-level architecture/ structure under dual-mode pluggability.** §2.1.2. Proposes a possible `kernel/` + `runtime/` + `adapters/` + `bindings/` reshape; deliberately unresolved.
-3. **MCP-first vs. MCP-equal.** §2.1.3. Whether MCP should retain primary status or become one transport among equals.
+3. ~~**MCP-first vs. MCP-equal.** §2.1.3.~~ **Resolved cycle 4** by [ADR-0010](architecture/adrs/0010-mcp-equal-not-primary.md): MCP, HTTP, and CLI are equal first-class adapters.
 
 Per-subsystem open questions live in the "Open questions" sections of each [`subsystems/<name>.md`](architecture/subsystems/). They are not duplicated here.
 

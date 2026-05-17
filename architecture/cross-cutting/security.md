@@ -67,6 +67,15 @@ Why pre-LLM is insufficient alone: novel injections will pass naive pattern matc
 - Credentials are never logged. The audit log records *which* credential was used (by identifier) but never the credential value.
 - Credentials are never inserted into model context. Tool calls that need credentials use them internally; the credential is not part of the tool's input visible to the agent.
 
+### Credential rotation mid-run (failure-path contract)
+
+Credential rotation (operator-triggered or scheduled) may complete while a long-running agent run is mid-flight. The kernel defines a typed failure path:
+
+- A tool backend that encounters an authentication failure caused by a rotated credential MUST return a typed `credential.rotated` error (an `error_class = backend_error` with `error_code = credential.rotated`) rather than a generic `tool_unavailable`. This is distinct from `credential.expired` (rotation completed before run start) and from `credential.invalid` (configuration error).
+- The harness, on receipt of `credential.rotated` from any tool call, fails the run closed with `failure_class = aborted`, `failure_subcode = credential_rotated`. The run is not silently retried with the new credential — partial-run continuation under a different credential identity would silently change the audit pack's "*which* credential was used (by identifier)" answer mid-run and break the per-run principal invariant.
+- A `credential.rotated` failure emits a Prometheus counter `provenant_credential_rotated_run_failures_total{tenant_id,credential_id}` so operators can correlate rotation events with run failures. The audit chain records the rotation event via the existing `tool_call_failed` entry with the typed error class; no new EntryKind is required.
+- Operators rotating credentials with active runs in flight are documented to either drain (wait for `runs.status = completed | failed`) or accept the aborted-run blast radius. The kernel does not provide a "live credential swap" path in v0; that surface would require per-run credential-identity capture and re-validation, which is out of scope.
+
 ## API security
 
 - Bearer tokens scoped to tenant, skills, and tools.
