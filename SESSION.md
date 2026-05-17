@@ -204,3 +204,21 @@
 - Cycle 7 outstanding items remain open (provider-on-`run_started`, `tools.yaml.credential_id` pack-loader rejection, `system:` sentinel as kernel-public constant, Phase 0 snapshot-list generation from kernel.md, PDF cover-sheet rendering of `credential_identity_baseline`).
 - The `failure_subcode` enum table is now the source of truth, but no Phase 0/Phase 4 done-when explicitly asserts "kernel rejects an EntryKindRunFailed with a non-table `failure_subcode` at write time." A future cycle should bind this to a Phase 0 test (similar to the EntryKind write-rejection test) so the enum is enforced at build time, not just documented.
 
+## Critique Cycle 9 — 2026-05-17
+
+**Issues raised:** 3
+**VALID:** 3 —
+- #1 `tool_call_failed.error_message_canonical` referenced a `(error_class, error_code) → canonical string` mapping that did not exist; `error_code` values were scattered across audit/security/tools/kernel/skills with inconsistent naming (snake_case vs dotted). Added the canonical `error_code` table in audit.md as single source of truth with dotted-namespace convention (`credential.*`, `numeric.*`, `skill.*`, `tool.*`, `kernel.*`, `extract.*`, `policy.*`), the identity-mapping rule (`error_message_canonical == error_code` except for explicit parameterized templates), and write-time `AuditSink.Append` rejection of any unlisted code. Renamed non-conforming sites: `credential_id_manifest_mismatch` → `credential.id_manifest_mismatch` (tools.md, skills.md), `transactional_substrate_mismatch` → `kernel.transactional_substrate_mismatch` (kernel.md), `transactional_scope_split` → `kernel.transactional_scope_split` (kernel.md). Also pinned new codes for the cycle 7 outstanding gap (`skill.credential_id_missing`, `skill.credential_id_unexpected`).
+- #2 `tools.yaml.credential_id` was optional with no load-time check — a credentialed-backend pack author forgetting it silently dropped the credential from the baseline. Updated skills.md "Loading lifecycle" step 3 to bind each entry to its `ToolBackend` and reconcile `credential_id` against `Credentials()`: empty-with-declared → `skill.credential_id_unexpected`; non-empty-without-declared → `skill.credential_id_missing`; mismatched ID → `credential.id_manifest_mismatch`. Rewrote the `credential_id` field rule as "iff backend `Credentials()` is non-empty." Updated implementation-plan.md Phase 2 tasks (the load-time reconciliation step) and Phase 2 done-when (three fixture-pack rejection tests).
+- #3 Phase 0 done-when did not negative-test the write-time enumeration gates (`failure_subcode`, `EntryKind`, `error_code`). Added a single Phase 0 done-when item with three negative-tests over fixture entries asserting `AuditSink.Append` rejects out-of-enum values with `kernel_integrity` and no row written; closes the cycle 8 outstanding gap and binds the new cycle-9 `error_code` enum to a build-time test too.
+
+**INVALID:** 0
+**TRADE-OFF:** 0
+
+**Documents changed:** architecture/subsystems/audit.md, architecture/subsystems/kernel.md, architecture/subsystems/tools.md, architecture/subsystems/skills.md, implementation-plan.md, SESSION.md
+
+**Outstanding (for cycle 10):**
+- The canonical `error_code` table claims a CI-diff-check against a generated `kernel/public/errorcode/codes.go`; the exact generation / check mechanism (markdown-table parser vs hand-maintained Go const block with a snapshot test) is not pinned. A future cycle may want to specify it concretely so Phase 0 ships the gate rather than just promising it.
+- The new `skill.credential_id_unexpected` rejection rule means a future pack author who adds a `credential_id` "defensively" on a pure-Go tool will see a load-time failure they did not expect. The error message text and the skills.md author guidance do not yet explain this; cosmetic but flagged.
+- Cycle 7 outstanding items that remain genuinely open: provider-on-`run_started` recording, `system:` sentinel as kernel-public constant, Phase 0 snapshot-list generation from kernel.md, PDF cover-sheet rendering of `credential_identity_baseline`. None are load-bearing; all are cosmetic / Phase 0+ ergonomics.
+

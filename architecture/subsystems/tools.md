@@ -62,7 +62,8 @@ type ToolBackend interface {
     // when dispatched. Pure-Go tools (calc.*, reconcile.*) return an empty
     // slice. The returned credential_id values MUST match the static
     // declaration in the skill's tools.yaml entry; a mismatch is a kernel-
-    // integrity error (error_code = credential_id_manifest_mismatch) at
+    // integrity error (error_code = credential.id_manifest_mismatch — see
+    // the canonical error_code table in subsystems/audit.md) at
     // dispatch time. See subsystems/skills.md "credential_id field" and
     // cross-cutting/security.md "Silent credential rotation detection".
     Credentials() []CredentialRef

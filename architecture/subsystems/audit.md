@@ -108,7 +108,7 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 | `model_response` | `response_hash` (sha256 of canonicalized response envelope), `response_blob_ref`, `stop_reason`, `tool_use_count`, `tokens_in`, `tokens_out` | `latency_ms`, `model_request_id`, `retry_count`, `cost_usd` |
 | `tool_call_started` | `tool_call_id` (kernel-assigned ULID; deterministic per replay — see §"Tool-call ID and seq determinism"), `tool_name`, `tool_version`, `input_hash`, `input_blob_ref`, `parent_step_id` (deterministic identifier of the model-response step that emitted this tool_use — see §"parent_step_id construction"), `sibling_group_id` (set when emitted from a parallel-dispatch batch), `sibling_index_in_group` (canonical 0-based index assigned at batch start — see §"Parallel-sibling deterministic order"), `credential_identity_witness` (truncated content-addressed hash that proves the per-tool-call identity check ran for this dispatch — see §"`credential_identity_witness` (positive evidence that identity check ran)" below) | `started_at_wall` |
 | `tool_call_completed` | `tool_call_id`, `output_hash`, `output_blob_ref`, `mintable_paths_hit` (sorted list), `result_status` ("ok") | `duration_ms`, `backend_endpoint` |
-| `tool_call_failed` | `tool_call_id`, `error_class` (kernel-defined enum: `schema_mismatch`, `guard_rejection`, `backend_error`, `timeout`, `kernel_integrity`), `error_message_canonical` (a kernel-canonicalized message — backend-error messages are mapped through a `(error_class, error_code)` → canonical string table; raw backend text is stored only in the non-deterministic sub-object) | `error_message_raw`, `duration_ms`, `retry_count` |
+| `tool_call_failed` | `tool_call_id`, `error_class` (kernel-defined enum: `schema_mismatch`, `guard_rejection`, `backend_error`, `timeout`, `kernel_integrity`), `error_code` (dotted-namespace symbol from the canonical `error_code` table in §"Canonical `error_code` table" below; entries whose `error_code` is not in the table are rejected at write time), `error_message_canonical` (the canonical string for `(error_class, error_code)` per the table's identity-mapping rule; raw backend text is stored only in the non-deterministic sub-object) | `error_message_raw`, `backend_error_message`, `duration_ms`, `retry_count` |
 | `token_mint` | `token_id` (kernel-assigned ULID — deterministic per replay), `source_tool_call_id`, `source_path`, `value_canonical` (the `NUMERIC(38,9)` decimal serialized per the canonicalization rule in [`architecture.md`](../../architecture.md) §4), `source_value_raw` (the verbatim string the upstream backend returned, after the canonical `source_value_raw` normalization rule in §"`source_value_raw` canonical form" below — required so two backends that return semantically-equal but textually-different forms (`1.00` vs `1.0` vs `1`) produce byte-identical chains), `unit`, `derivation`{`parents`,`op`} | — |
 | `guard_run` | `guard_name`, `guard_version`, `phase` (`pre_llm` \| `post_llm`), `severity_tier`, `action` (`pass` \| `redact` \| `quarantine` \| `block` \| `crashed` \| `timeout`), `target_hash` (hash of the input being guarded), `findings_canonical` (see "Guard failure-mode determinism" below for the `crashed` and `timeout` cases) | `duration_ms`, `error_message_raw` (panic message text on `action=crashed`; absent otherwise) |
 | `submit_attempt` | `payload_hash`, `payload_blob_ref`, `numeric_claim_count` | — |
@@ -142,6 +142,51 @@ Naming rule: all subcodes are `snake_case` ASCII (lowercase `[a-z0-9_]+`, no lea
 | `orphan_recovered` | `orphaned` | The Phase-1 orphan-run sweep finalizes a run that had no terminal entry within its computed `threshold_seconds_used`; paired with the preceding `EntryKindRunOrphanRecovered` entry |
 
 Extension rule: adding a new `failure_subcode` is an audit-chain-format change. It requires (a) a `kernel_version` bump, (b) a new row appended to this table in the same canonical (added-at-version) order, and (c) the kernel boot-time enum validator updated in lock-step. Independent bindings consume the enum from this table — bindings that hard-code a different set (or different spellings) fail the Phase 5 cross-binding byte-identity test by construction.
+
+### Canonical `error_code` table
+
+`error_code` is a deterministic field on `EntryKindToolCallFailed` and is hashed into the chain. It is also referenced from kernel-integrity boot and runtime checks (see [`kernel.md`](kernel.md)), skill-pack load-time rejections (see [`skills.md`](skills.md)), and backend error contracts (see [`tools.md`](tools.md), [`cross-cutting/security.md`](../cross-cutting/security.md)). To prevent independent implementations (Phase 4 MCP-vs-HTTP byte-identity, Phase 5 cross-language bindings) from diverging on spellings, this table is **the single source of truth** for every `error_code` symbol that may appear on the chain. Sites that reference `error_code` (`kernel.md`, `tools.md`, `skills.md`, `security.md`, this file) cite codes by the exact symbol listed here.
+
+**Naming rule.** All `error_code` values are **dotted-namespace ASCII** (`[a-z0-9_]+(\.[a-z0-9_]+)+`), one of the namespaces below, followed by one or more `snake_case` segments. **Bare snake_case is not permitted in `error_code`** (snake_case is reserved for `failure_subcode` per §"`run_failed.failure_subcode` enum"). Independent bindings MUST emit the byte-identical dotted form listed here.
+
+**Namespaces.**
+
+- `credential.*` — credential lifecycle and identity-baseline rules.
+- `numeric.*` — numeric canonicalization and overflow/underflow conditions.
+- `skill.*` — skill-pack load-time and replay-time rejections.
+- `tool.*` — tool registry / schema / dispatch errors that are not credential or kernel-integrity.
+- `kernel.*` — kernel-integrity (boot-time substrate and tx-canary) failures.
+- `extract.*` — extractor-tool errors that flow through `tool_call_failed`.
+- `policy.*` — policy-lookup / membership-validator errors that flow through `tool_call_failed`.
+
+**Canonical-string mapping rule (pinned).** The canonical string emitted on `tool_call_failed.error_message_canonical` is the **identity image** of `error_code` — that is, `error_message_canonical == error_code` for every code in the table below — *except* for the small set of human-readable parameterized templates explicitly marked "templated" in the "Canonical string" column. A templated entry emits a fixed-format string with deterministic parameter slots filled in from the entry's deterministic payload fields; the template itself (the bytes outside the parameter slots) is pinned here and is part of the audit-chain format. Backend-specific raw text — the verbatim string from `pgx`, the AWS SDK, etc. — is **never** placed in `error_message_canonical`; it goes to the non-deterministic `backend_error_message` field on `tool_call_failed`.
+
+**Write-time enforcement.** `AuditSink.Append` rejects (with a typed `kernel_integrity` error) any `EntryKindToolCallFailed` whose `error_code` is not present in the table below. Adding a new `error_code` is an audit-chain-format change: it requires (a) a `kernel_version` bump, (b) a new row appended to this table in canonical (added-at-version) order, and (c) the kernel boot-time enum validator updated in lock-step.
+
+| `error_code` | Paired `error_class` | Canonical string | Emitted when |
+|---|---|---|---|
+| `credential.rotated` | `backend_error` | identity (`credential.rotated`) | Backend authentication failure on a mid-run rotated credential (see [`cross-cutting/security.md`](../cross-cutting/security.md#credential-rotation-mid-run-failure-path-contract)) |
+| `credential.expired` | `backend_error` | identity | Credential rotated before run start; backend rejects auth on first dispatch |
+| `credential.invalid` | `backend_error` | identity | Configuration error: backend rejects credential as malformed |
+| `credential.id_manifest_mismatch` | `kernel_integrity` | identity | A tool's runtime `ToolBackend.Credentials()` returns a `CredentialRef.ID` that disagrees with the `tools.yaml` declaration for that tool entry (see [`skills.md`](skills.md), [`tools.md`](tools.md)) |
+| `numeric.parse_error` | `backend_error` | identity | A numeric value at a `mintable_path` does not match the canonicalization grammar in §"Numeric canonicalization" |
+| `numeric.overflow` | `backend_error` | identity | Parsed numeric magnitude requires more than 38 total significant digits |
+| `numeric.underflow` | `backend_error` | identity | Parsed non-zero numeric magnitude rounds to zero at scale 1e-38 |
+| `skill.pack_digest_mismatch` | `kernel_integrity` | identity | `provenant replay` observes a `skill_pack_hash` mismatch between replay artifact and loaded pack (see §"Skill-pack content digest (procedure)") |
+| `skill.normalizer_id_unknown` | `kernel_integrity` | identity | Pack references a `builtin_id` that is not in `kernel/internal/normalizers/registry.go` (see [`skills.md`](skills.md), [`kernel.md`](kernel.md)) |
+| `skill.credential_id_missing` | `kernel_integrity` | identity | A `tools.yaml` entry whose bound `ToolBackend.Credentials()` returns non-empty fails to declare `credential_id` (load-time rejection — see [`skills.md`](skills.md) "Loading lifecycle") |
+| `skill.credential_id_unexpected` | `kernel_integrity` | identity | A `tools.yaml` entry declares `credential_id` for a tool whose bound `ToolBackend.Credentials()` returns empty (load-time rejection) |
+| `tool.schema_mismatch` | `schema_mismatch` | identity | Tool output fails its declared `OutputSchema()` validation |
+| `tool.input_schema_mismatch` | `schema_mismatch` | identity | Tool input fails its declared `InputSchema()` validation pre-dispatch |
+| `tool.timeout` | `timeout` | identity | Tool exceeded its declared per-call timeout |
+| `tool.guard_rejection` | `guard_rejection` | identity | A pre-LLM or post-LLM guard rejected the tool's output (the guard's `guard_name` is on the paired `guard_run` entry) |
+| `kernel.transactional_substrate_mismatch` | `kernel_integrity` | identity | `Store`, `AuditSink`, and `TransactionalScope` `TransactionalSubstrate()` markers disagree at boot (see [`kernel.md`](kernel.md)) |
+| `kernel.transactional_scope_split` | `kernel_integrity` | identity | Runtime tx-local canary check detects `Store` and `AuditSink` are not sharing a transaction |
+| `kernel.header_mismatch` | `kernel_integrity` | identity | The kernel-immutable header bytes hashed at boot do not match `kernel_header_hash` recorded on `run_started` |
+| `extract.confidence_below_threshold` | `backend_error` | identity | Extractor-tool emits confidence below the skill's configured threshold (paired with `confidence.extraction_min` guard) |
+| `policy.lookup_miss` | `backend_error` | identity | `policy.lookup` could not find a snippet for the requested key (deterministic lookup miss, not a transient backend error) |
+
+This table is locked. The kernel boot enumerates these codes from a generated Go const block (`kernel/public/errorcode/codes.go`) whose contents are diff-checked against this table in CI; a contributor who edits one without the other fails the release-gate test.
 
 ### Tool-call ID and seq determinism
 
