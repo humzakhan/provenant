@@ -1,0 +1,195 @@
+# Implementation Plan
+
+This plan sequences Provenant from empty repository to v0 — the scope defined in [`architecture/README.md`](architecture/README.md#v0-scope-summary) plus the dual-mode pluggability requirement stated in [`thesis.md`](thesis.md) and [`architecture.md`](architecture.md). Each phase ends with a working, testable artifact and a falsifiable "done when" criterion. Phases are sequential; later phases assume earlier-phase artifacts exist and pass.
+
+Decisions and rationale belong in [ADRs](architecture/adrs/). This document is a plan, not a justification.
+
+## Phase 0 — Establish the kernel module boundary
+
+**Goal.** Carve out the kernel as a pure-Go library with no I/O at the public API surface. This is the mechanical foundation of the dual-mode pluggability promise. Everything downstream depends on the boundary being right.
+
+**Tasks.**
+
+- Create the repository layout: `kernel/` (pure library), `runtime/` (transport + process lifecycle), `adapters/` (host-side shims), `tools/` (tool backends), `internal/` (shared non-public helpers).
+- Define kernel-public types: `Token`, `Source`, `Derivation`, `ToolDef`, `ToolCall`, `Claim`, `Payload`, `ValidationError`, `AuditEntry`, `EntryKind`, `Run`, run status enum.
+- Define kernel-public interfaces (every I/O dependency): `Store`, `BlobStore`, `ModelClient`, `Clock`, `RandSource`, `AuditSink`, `ToolBackend`.
+- Define kernel-public pure functions (skeletons; bodies filled in later phases): `Mint`, `VerifyToken`, `HashEntry` (canonical-JSON SHA-256), schema-validation helpers, numeric extractor.
+- Provide an in-memory `Store`, `BlobStore`, `AuditSink` in `kernel/internal/memstore/` for tests.
+- Add a `go vet`-style check (custom or `depguard`) that fails the build if any file under `kernel/...` imports `net/*`, `net/http`, `database/sql`, `github.com/jackc/pgx/...`, `os/exec`, or any MCP/HTTP/CLI package.
+- Set up CI: `go test ./kernel/...` with mocked I/O; lint; the import-guard check.
+
+**Done when.**
+
+- `go build ./kernel/...` succeeds.
+- `go test ./kernel/...` passes with the in-memory implementations of every injected interface.
+- The import-guard check passes; no `net/*` or `database/sql` import leaks through `kernel/`'s public API or any package transitively imported by it.
+- A short `architecture/adrs/0009-kernel-public-surface.md` (or equivalent) ratifies the import-guard list. (If the open question about Go-as-kernel from [`architecture.md`](architecture.md) §2.1 resolves to "switch language", this phase restarts; that is acceptable cost.)
+
+**Deferred from this phase.** Postgres-backed `Store`. S3-backed `BlobStore`. Real `ModelClient`. Tool implementations. Audit chain hash format finalization beyond the SHA-256-over-canonical-JSON contract.
+
+## Phase 1 — Storage and hash-chained audit log
+
+**Goal.** Persist runs, tokens, tool calls, and audit entries to Postgres. Build the hash chain. Make replay possible.
+
+**Tasks.**
+
+- Implement the Postgres-backed `Store` (`runtime/store/pg/`) using `pgx` + `sqlc`. Implements every kernel `Store` method.
+- Implement the S3-backed `BlobStore` (`runtime/blobstore/s3/`) with the in-memory `BlobStore` retained for tests.
+- Implement the Postgres-backed `AuditSink` with the per-tenant monotonic sequence and `prev_hash`/`hash` columns. The chain construction logic lives in the kernel as a pure function; the sink writes the rows the kernel produces.
+- Run atlas migrations for the v0 schema described in [`subsystems/storage.md`](architecture/subsystems/storage.md): `runs`, `tokens`, `tool_calls`, `captured_reads`, `guard_runs`, `audit_entries`, `cases`, `case_metrics`, `skills`, `tools_registry`, `hitl_reviews`, `tenants`.
+- Implement `provenant migrate up` (atlas wrapper) as a CLI subcommand stub.
+- Implement audit chain verification: given a `run_id` or `tenant_id`, walk entries and verify each `hash == HashEntry(prev_hash, payload, ...)`.
+- Implement audit replay: read all entries for a run in order, reconstruct the run state.
+
+**Done when.**
+
+- An integration test starts Postgres (testcontainers or docker-compose), inserts a synthetic run with 50 tokens, 20 tool calls, and 100 audit entries; the test then verifies the chain and replays the entries to reconstruct the run state byte-identically.
+- Killing the test process mid-write and re-running the verifier flags the truncated chain.
+- A property test mutates a random audit row and confirms the verifier detects the tamper.
+
+**Deferred from this phase.** Multi-tenant SaaS isolation modes beyond the schema (row-level security wiring is v0; SaaS-grade tenant onboarding is v0.5). Cross-region object-store replication.
+
+## Phase 2 — Tool registry and guard pipeline (pre + post)
+
+**Goal.** A tool can be registered, dispatched with schema validation, mint tokens, and have its output flow through pre-LLM guards. The post-LLM validator pipeline runs end-to-end against payloads without a model in the loop.
+
+**Tasks.**
+
+- Implement the tool registry: typed schema registration, `mintable_paths`, version pinning. Backends register via the kernel `ToolBackend` interface. See [`subsystems/tools.md`](architecture/subsystems/tools.md).
+- Implement audit middleware around every tool call: `tool_call_started`, `tool_call_completed` entries; full input + output captured (large payloads to blob store with pointer in the entry).
+- Implement token minting from `mintable_paths`. Unit-incompatible derivations rejected.
+- Implement the pre-LLM guard pipeline ([`subsystems/guards.md`](architecture/subsystems/guards.md#pre-llm-input-guards)): `pii.redact`, `injection.scan`, `injection.heuristic`, `source.authenticate`, `length.cap`. Severity tiers L1/L2/L3 honored. Every execution writes a `guard_runs` row.
+- Implement the post-LLM validator pipeline: `schema.output`, `arith.crossfoot`, `arith.tie`, `arith.sign`, `arith.balance`, `policy.coa_membership`, `policy.citation_exists`, `confidence.extraction_min`, `currency.consistent`.
+- Implement `kernel.SubmitAnswer`: numeric extraction, per-claim token grounding via `kernel.VerifyToken`, validator pipeline (collect-all and fail-fast modes), persistence on pass.
+- Implement at least the pure-Go tool backends end-to-end: `reconcile.match`, `calc.subtract`, `calc.sum`, `calc.percent_change`, `calc.variance`. These need no external systems and can be the first end-to-end tools.
+
+**Done when.**
+
+- An integration test feeds a recorded reconciliation tool-call sequence (no model) into the kernel; every tool call mints tokens correctly; every guard runs; a final synthetic `submit_answer` payload is verified end-to-end. The resulting trace is fully typed and schema-validated.
+- Injecting an ungrounded number into the synthetic answer is rejected by token grounding.
+- Injecting a prompt-injection pattern into a synthetic tool output triggers L2 quarantine.
+- All validators have unit tests; the pipeline has integration tests.
+
+**Deferred from this phase.** External-system tool backends (Textract, OFAC, OpenFX) wire-up; that's Phase 3's responsibility. BoN-MAV mode (validator pipeline is wired for it but the harness re-prompt logic ships in v0.5). Custom per-skill numeric extractors.
+
+## Phase 3 — Harness (Mode A) with one model class
+
+**Goal.** The CLI runs a reconciliation end-to-end against a real model (Claude), with one signed skill pack and the v0 tool backend set. Full audit + tokens + guard outcomes persisted.
+
+**Tasks.**
+
+- Implement the kernel harness (Mode A) per [`subsystems/harness.md`](architecture/subsystems/harness.md): prompt assembly with immutable kernel header, model call loop, parallel tool dispatch, bound enforcement (`max_steps`, `max_wall_clock`, `max_cost`).
+- Implement the model abstraction interface and the Claude implementation (`runtime/model/anthropic/`).
+- Implement the v0 skill pack format ([`subsystems/skills.md`](architecture/subsystems/skills.md), [ADR-0006](architecture/adrs/0006-skill-pack-format.md)) and ship the reconciliation skill pack as a local directory.
+- Wire up the external tool backends required by the recon skill: SQL ledger, Textract extract, keyword policy, OpenFX external. Each follows the conformance template in [`architecture/tools/README.md`](architecture/tools/README.md).
+- Implement `provenant run`, `provenant replay`, `provenant cases`, `provenant audit show`, `provenant audit verify`, `provenant audit pack`, `provenant skill list/show/install`, `provenant tools list/show`.
+- Implement cost and latency tracking; update `runs.cost_usd`, `runs.tokens_in`, `runs.tokens_out`.
+
+**Done when.**
+
+- `provenant run recon --input ./fixtures/may-2026-recon.json --model claude-opus-4-7 --tenant acme` completes end-to-end with a passing `submit_answer` for a known-good fixture.
+- `provenant audit verify <run_id>` returns OK; `provenant audit pack <run_id>` produces a bundle containing the audit chain, the token graph, the guard outcomes, and every prompt+response.
+- `provenant replay <run_id>` reconstructs the deterministic portion (tool calls, validator outcomes, audit chain) byte-identically across two consecutive replays.
+
+**Deferred from this phase.** Other model classes (OpenAI, Azure, local). Other skill packs. The runtime layer's MCP and HTTP surfacing (Phase 4). Streaming model responses.
+
+## Phase 4 — Runtime layer: MCP server, HTTP API, and CLI parity
+
+**Goal.** The same case from Phase 3 runs identically via MCP and via HTTP. The runtime layer is a thin shell around kernel calls.
+
+**Tasks.**
+
+- Implement the MCP server ([`adapters/mcp.md`](architecture/adapters/mcp.md)) using the official Go MCP SDK. Expose every Provenant tool as an MCP tool; every skill prompt as an MCP prompt; audit and case data as MCP resources. Bearer-token auth, tenant scoping, skill scoping.
+- Implement the HTTP API ([`adapters/http.md`](architecture/adapters/http.md)) covering the same surface as the MCP server: tool invocation, prompt retrieval, run inspection, audit retrieval. RESTful; same auth shape as MCP.
+- Wire up the runtime process: configuration loading, signal handling, graceful shutdown, observability (Prometheus metrics, OTel traces, JSON logs per [`cross-cutting/observability.md`](architecture/cross-cutting/observability.md)).
+- Ship the `provenant-server` binary (the runtime daemon) alongside the existing `provenant` CLI.
+- Add the `provenant-mcp-client` stdio-to-HTTP wrapper used by Claude Code et al.
+
+**Done when.**
+
+- A Claude Code instance configured against the Provenant MCP server completes the same recon fixture from Phase 3. The audit chain's deterministic portion is byte-identical to the Phase 3 CLI run on the same input. (LLM-portion variance is allowed and measured.)
+- The same fixture run via HTTP API directly produces the same byte-identical deterministic-portion audit chain.
+- Cross-tenant access attempts are rejected. Invalid bearer tokens are rejected. MCP latency overhead is below the 50ms p95 budget on top of tool execution.
+
+**Deferred from this phase.** LangChain and OpenAI Agents adapters (v0.5). Per-tenant Grafana dashboards. Per-tenant rate limits beyond the global cap. Web HITL UI.
+
+## Phase 5 — Code-level embedding path (non-Go binding)
+
+**Goal.** Demonstrate the code-level pluggability promise. A host application written in a language other than Go embeds Provenant — either through FFI or through a strict-latency sidecar protocol — and produces an audit chain byte-identical to a pure-Go run of the same case.
+
+**Tasks.**
+
+- Decide between FFI-binding and sidecar-only embedding. The decision rests on Phase 0-4 ergonomics learnings, the Go-as-kernel-language open question ([`architecture.md`](architecture.md) §2.1.1) resolution, and prototype-driven latency measurements. Document the decision in an ADR before implementation.
+- If FFI: design and freeze a C-ABI subset of the kernel's public API. Implement a Python binding (`provenant-py`) that wraps it. Marshal tokens, decimal values, and audit entries across the boundary.
+- If sidecar: harden the HTTP API (or a minimal MCP profile) for sub-50ms-overhead loopback use. Implement a Python client (`provenant-py`) that speaks it. The client must inject the same `tenant_id`, `run_id`, and tool-call sequence as a Go host would.
+- Build a Python test driver that:
+  - Loads the same recon fixture used in Phase 3 and Phase 4.
+  - Drives an agent loop using the embedded/sidecar Provenant.
+  - Captures the resulting audit chain.
+- Compare the captured chain against the Phase 3 pure-Go run on the deterministic portion.
+
+**Done when.**
+
+- The Python test driver completes the recon fixture end-to-end.
+- The deterministic portion of the resulting audit chain (tool call sequence, tokens minted, validator outcomes, hash chain) is byte-identical to the pure-Go Phase 3 run on the same input.
+- The latency overhead vs. pure-Go embedding is documented; if sidecar, the overhead is below the budget set in §7.3 of [`architecture.md`](architecture.md).
+- The binding choice has an ADR.
+
+**Deferred from this phase.** TypeScript binding. Rust binding. A second non-Go binding to validate that the chosen approach generalizes. (One binding establishes the pattern; the second proves it.)
+
+## Phase 6 — Eval harness and case bank
+
+**Goal.** The case bank captures runs, the eval harness reports the four DFAH-style metrics, and the metric set is the evidence finance buyers and model risk reviewers need.
+
+**Tasks.**
+
+- Implement the case bank capture path: every completed run optionally captured to the `cases` table with full input, full audit chain reference, and labels (correctness, HITL decision, etc.). See [`subsystems/eval.md`](architecture/subsystems/eval.md).
+- Implement the four metrics:
+  - **Trajectory determinism** — fraction of tool-call sequences identical across N replays of the same case.
+  - **Decision determinism** — fraction of final-answer numeric values identical across N replays.
+  - **Faithfulness** — fraction of numeric claims in released answers that map to real tokens with verified lineage. (At enforcement time this is 100% by construction; the metric measures the agent's tendency to attempt ungrounded claims and be rejected.)
+  - **Accuracy** — fraction of released answers that match the labeled correct answer for cases with ground truth.
+- Implement `provenant eval --skill recon --against ./fixtures/case-bank.jsonl`: runs every case, produces the four-metric report, exits non-zero if any metric drops below the skill's configured threshold.
+- Document the recommended CI integration pattern.
+
+**Done when.**
+
+- A four-metric report is produced from the recon case bank.
+- The report is reproducible: two consecutive `provenant eval` invocations against the same case bank produce identical metric values on the deterministic portions.
+- The exit-code behavior gates a sample CI pipeline correctly.
+
+**Deferred from this phase.** Additional skill packs in the case bank. Vendor-provided benchmarks beyond the four core metrics. Hosted dashboards.
+
+## Deferred (v0.5+)
+
+Explicit scope-out for v0. These have established slots (docs or schema columns) but no implementation in v0.
+
+- **LangChain adapter.** Slot established in [`adapters/langchain.md`](architecture/adapters/langchain.md). Implementation v0.5.
+- **OpenAI Agents SDK adapter.** Slot established in [`adapters/openai.md`](architecture/adapters/openai.md). Implementation v0.5.
+- **BoN-MAV mode.** Validator pipeline supports the configuration; the harness re-prompt and selection logic ships v0.5+.
+- **Web HITL UI.** HITL routing and state machine ship in v0 (REST + database); the UI is v0.5.
+- **Multi-tenant SaaS.** Schema and isolation modes ship in v0; the SaaS operational story (tenant onboarding, per-tenant dashboards, billing) is v0.5.
+- **Hosted skill registry with signing.** Skill packs ship as local files in v0; the registry with signed-pack verification is v0.5+.
+- **Additional skill packs.** Recon ships in v0. AP coding, expense review, sanctions disposition, SAR drafting are v0.5+.
+- **Additional tool backends.** SQL ledger, Textract, keyword policy, OpenFX, OFAC (partial) ship in v0. pgvector policy retrieval, AzureDI extract, Plaid ledger backends, additional external feeds are v0.5+.
+- **Additional model classes.** Claude verified in v0. OpenAI, Azure, local (vLLM/TGI/llama.cpp) ship as runtime support in v0.5+; v0 leaves the abstraction in place.
+- **Second non-Go binding.** Phase 5 ships one binding to validate the embedding pattern. A second binding (TypeScript or Rust) is v0.5+.
+- **Kubernetes operator.** v0 ships Helm charts; the declarative operator is v0.5+ per [`cross-cutting/deployment.md`](architecture/cross-cutting/deployment.md).
+- **Streaming model responses.** Open question in [`subsystems/harness.md`](architecture/subsystems/harness.md); v0 batches.
+- **Cross-skill token sharing within a tenant.** Open question in [`subsystems/kernel.md`](architecture/subsystems/kernel.md); v0 rejects cross-run references entirely.
+
+## Dependencies and parallelism
+
+- Phase 0 must precede every other phase.
+- Phase 1 and Phase 2 can overlap once Phase 0's interfaces are stable (Phase 2 uses the in-memory `Store` until Phase 1's Postgres `Store` is ready).
+- Phase 3 requires Phase 1 and Phase 2.
+- Phase 4 requires Phase 3.
+- Phase 5 requires Phase 4 (the runtime API surface) and benefits from the open-question resolutions in [`architecture.md`](architecture.md) §2.1.
+- Phase 6 can begin in parallel with Phase 4 once Phase 3 is complete (the four metrics need the harness, not the runtime adapters).
+
+## What this plan does not contain
+
+- Specific calendar dates. Phase ordering is the commitment; pacing is set elsewhere.
+- Hiring or staffing plans.
+- A go-to-market plan. This is engineering, not commercial.
+- Speculative phases beyond Phase 6. Anything past v0 lives in the Deferred section and gets a real phase when its turn comes.
