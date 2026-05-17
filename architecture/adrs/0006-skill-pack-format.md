@@ -52,6 +52,10 @@ See [`subsystems/skills.md`](../subsystems/skills.md) for the format details.
 
 **LangChain-style chains.** Considered. Rejected because they couple workflow to framework — the same workflow can run on different frameworks (CLI, MCP, etc.) only if the workflow is declarative.
 
+## Amendment — cycle 5: `normalizers/` slot
+
+The original pack format enumerated `manifest.yaml`, `tools.yaml`, `guards.yaml`, `prompts/`, `eval/`, `policy/`, `ui/`, and `README.md`. Cycle 5 added an optional `normalizers/` slot so per-backend pre-canonicalization needs (locale-specific numeric forms, currency-symbol stripping) have a declared, hashed, audit-visible location in the pack rather than living implicitly in `tools/.../<backend>.go`. v0 restricts `normalizers/manifest.yaml` to `kind: builtin` entries that reference kernel-registered built-in normalizer IDs; arbitrary code loading is explicitly out of scope for v0 (the open question of pack-shipped custom validators / WASM-sandboxed extensions is tracked in [`subsystems/skills.md`](../subsystems/skills.md) Open questions and in KNOWN_TRADE_OFFS.md cycle 5). Full spec in [`subsystems/skills.md`](../subsystems/skills.md#pack-level-normalizers-normalizers). This amendment does not break existing packs (the slot is optional).
+
 ## References
 
 - [Moody's modular AI](../references.md#moodys-modular) — agent-as-microservice composability

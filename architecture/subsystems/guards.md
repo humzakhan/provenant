@@ -281,8 +281,8 @@ Every guard execution writes a row. The audit log references guard run IDs.
 
 The pipeline is fail-closed at every join point:
 
-- A guard implementation that panics is treated as a failure (action = block).
-- A validator that takes longer than its declared timeout is treated as a failure.
+- A guard implementation that panics is treated as a failure. The audit entry records `action = crashed` (not `action = block`); the pipeline-decision layer treats `crashed` as block. The deterministic `findings_canonical` for a crashed guard is the empty array `[]`; the panic message text lives in the non-deterministic `error_message_raw` only. See [`subsystems/audit.md`](audit.md#guard-failure-mode-determinism-crashed--timeout) for the full rule.
+- A validator that takes longer than its declared timeout is treated as a failure. The audit entry records `action = timeout` (not `action = block`); the pipeline-decision layer treats `timeout` as block. Deterministic `findings_canonical` is the empty array; wall-clock duration is non-deterministic.
 - A token grounding mismatch is a failure that cannot be overridden by configuration.
 - A skill pack with no declared validators is rejected at load time — there is no "validators optional" mode.
 

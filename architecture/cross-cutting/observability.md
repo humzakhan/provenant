@@ -19,6 +19,8 @@ The four overlap in places. The rule of thumb: if a finance team needs to read i
 
 Exposed via `/metrics` (Prometheus format). Default labels: `tenant_id`, `skill_id`, `skill_version`, `model`.
 
+**Cardinality rule.** `run_id`, `sibling_group_id`, `tool_call_id`, `token_id`, `review_id`, and any other per-execution ULID-shaped identifier are **forbidden as Prometheus labels**. Prometheus is a low-cardinality time-series store; per-run labels cause unbounded series growth and OOM the scraper at any production volume. Per-run state belongs in OpenTelemetry traces, structured logs, or the SQL-queryable `run inspect` surface — never in metric labels. A `/metrics` endpoint that emits a per-run label is rejected by the Prometheus-format conformance test in Phase 4. This rule is load-bearing and cycle-5-enforced.
+
 ### Run metrics
 
 ```
@@ -121,6 +123,16 @@ Every span has:
 - For model spans: `model`, `tokens_in`, `tokens_out`
 
 Trace export to any OTLP-compatible backend (Jaeger, Honeycomb, Datadog, Grafana Tempo).
+
+### Live progress observability for buffered parallel blocks (OTLP span events)
+
+The audit chain's parallel-sibling buffer-and-flush rule (see [`subsystems/audit.md`](../subsystems/audit.md#parallel-sibling-deterministic-order)) means per-sibling progress inside an in-flight parallel batch does not appear in `audit_entries` until the batch flushes. For operator-facing live visibility into a stuck sibling, the runtime emits a `parallel_block` OTLP span per batch with **span events** for each sibling state transition:
+
+- One `parallel_block` span per `sibling_group_id`, opened when the batch is dispatched and closed at flush.
+- A span event per transition: `sibling.started{sibling_index}`, `sibling.completed{sibling_index}`, `sibling.failed{sibling_index, error_class}`.
+- Span attributes carry `tenant_id`, `run_id`, `sibling_group_id`, and `sibling_count`. These are OTLP attributes (the trace backend can handle the cardinality), **not** Prometheus labels.
+
+Operators alert on long-in-flight siblings via the trace backend (Tempo / Jaeger query) or via the `provenant run inspect <run_id>` SQL view over an in-memory ephemeral table the runtime maintains for live sibling state. The trace surface is explicitly labeled "not part of the replay-deterministic chain; emitted live; not buffered" and is independent of `audit_entries`. The Phase 4 done-when requires that the span+events surface at least the sibling count and per-sibling started/completed/failed transitions during a parallel block.
 
 ## Structured logs
 

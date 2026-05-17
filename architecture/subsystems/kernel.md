@@ -210,6 +210,72 @@ var Subtract = Formula{
 
 The registry blocks unit-incompatible derivations: you cannot subtract a USD token from an EUR token without going through a currency conversion formula that has FX rate tokens as input.
 
+## TransactionalScope (joint-transaction primitive)
+
+The parallel-block atomicity invariant in [`audit.md`](audit.md#parallel-sibling-deterministic-order) ("tokens and `audit_entries` are written in a single transaction at flush time") cannot be honored when `Store` and `AuditSink` are arbitrary separately-injected backends. The kernel public surface therefore declares a third I/O interface — `TransactionalScope` — that hosts MUST inject alongside `Store` and `AuditSink`. The interface is enumerated here as the source of truth; [`../../architecture.md`](../../architecture.md) §3.1 references this definition.
+
+```go
+package kernelio
+
+import "context"
+
+// Tx is an opaque per-transaction handle. Concrete tx types (e.g. pgx.Tx) live
+// in the runtime layer. Store and AuditSink implementations down-cast as needed
+// inside their own packages; the kernel never inspects the concrete type.
+type Tx interface{}
+
+// TransactionalScope is the joint-transaction primitive. Store ops and AuditSink
+// ops invoked inside the same WithTx callback MUST share the underlying database
+// transaction. A host that backs Store with one substrate and AuditSink with
+// another is rejected at kernel boot via the TransactionalSubstrate() check below.
+type TransactionalScope interface {
+    // WithTx runs fn inside a single transaction. The kernel calls Store and
+    // AuditSink methods with the provided tx; both halves commit or roll back
+    // atomically. If fn returns a non-nil error, the tx is rolled back.
+    //
+    // Implementations MUST NOT internally split the work across multiple
+    // database transactions. The kernel enforces this at runtime via a
+    // tx-local canary write (see "boot-time and runtime enforcement" below).
+    WithTx(ctx context.Context, fn func(ctx context.Context, tx Tx) error) error
+
+    // TransactionalSubstrate returns an opaque marker identifying the
+    // database / connection-pool / engine backing this scope. The marker is
+    // a versioned, vendor-qualified string in the form
+    //   "provenant.substrate/<vendor>/<engine>/v<n>"
+    // for example:
+    //   "provenant.substrate/postgres/pgxpool/v1"
+    //   "provenant.substrate/memstore/sharedmap/v1"
+    // String equality (byte-for-byte) is the comparison semantics: the kernel
+    // does not parse the marker. The `/v<n>` suffix is a hard version: any
+    // breaking change to the substrate's transactional semantics requires a
+    // bump to v<n+1> so existing chains do not silently mix incompatible
+    // backends across deployments.
+    TransactionalSubstrate() string
+}
+
+// Store and AuditSink each carry a matching marker so the kernel can verify
+// the three injected I/O interfaces share one substrate.
+type Store interface {
+    TransactionalSubstrate() string
+    // ... domain methods ...
+}
+
+type AuditSink interface {
+    TransactionalSubstrate() string
+    // ... domain methods ...
+}
+```
+
+**Marker contract.** `TransactionalSubstrate()` MUST return the exact byte-identical string from every method invocation for the lifetime of the process. The kernel reads the marker once at boot from `Store`, `AuditSink`, and `TransactionalScope`; if any two disagree, the kernel refuses to start with a typed `kernel_integrity` error (`error_code = transactional_substrate_mismatch`). This is the static half of the check.
+
+**Boot-time and runtime enforcement.**
+
+1. *Boot.* On kernel construction the kernel asserts `Store.TransactionalSubstrate() == AuditSink.TransactionalSubstrate() == TransactionalScope.TransactionalSubstrate()`. Disagreement → `kernel_integrity`, refuse to boot.
+2. *Runtime.* At every `TransactionalScope.WithTx` callback boundary, the kernel writes a tx-local canary row to a kernel-internal table (`kernel_tx_canary`, schema-defined in [`storage.md`](storage.md)) using the Store half of the injected pair, and immediately reads it back using the AuditSink half. If the read returns no row, the two halves are not sharing a transaction; the kernel fails closed with `kernel_integrity` (`error_code = transactional_scope_split`) before any audit-entry or token row is written. This catches a TransactionalScope implementation whose `WithTx` opens two separate transactions per call despite returning matched markers.
+3. *Test substrate.* `kernel/internal/memstore/` provides a `NullTransactionalScope` whose marker is `"provenant.substrate/memstore/sharedmap/v1"` and that backs Store and AuditSink with the same in-memory map. This is the only acceptable shared-substrate test scope; two separately-constructed memstores are not.
+
+Phase 0's done-when (see [`../../implementation-plan.md`](../../implementation-plan.md#phase-0--establish-the-kernel-module-boundary)) ratifies the boot-time and tx-local-canary tests against this contract.
+
 ## Concurrency model
 
 - Mint operations are independently safe and can run concurrently. Postgres handles ID uniqueness.

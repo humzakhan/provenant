@@ -74,7 +74,24 @@ Credential rotation (operator-triggered or scheduled) may complete while a long-
 - A tool backend that encounters an authentication failure caused by a rotated credential MUST return a typed `credential.rotated` error (an `error_class = backend_error` with `error_code = credential.rotated`) rather than a generic `tool_unavailable`. This is distinct from `credential.expired` (rotation completed before run start) and from `credential.invalid` (configuration error).
 - The harness, on receipt of `credential.rotated` from any tool call, fails the run closed with `failure_class = aborted`, `failure_subcode = credential_rotated`. The run is not silently retried with the new credential — partial-run continuation under a different credential identity would silently change the audit pack's "*which* credential was used (by identifier)" answer mid-run and break the per-run principal invariant.
 - A `credential.rotated` failure emits a Prometheus counter `provenant_credential_rotated_run_failures_total{tenant_id,credential_id}` so operators can correlate rotation events with run failures. The audit chain records the rotation event via the existing `tool_call_failed` entry with the typed error class; no new EntryKind is required.
-- Operators rotating credentials with active runs in flight are documented to either drain (wait for `runs.status = completed | failed`) or accept the aborted-run blast radius. The kernel does not provide a "live credential swap" path in v0; that surface would require per-run credential-identity capture and re-validation, which is out of scope.
+- Operators rotating credentials with active runs in flight are documented to either drain (wait for `runs.status = completed | failed`) or accept the aborted-run blast radius. The kernel does not provide a "live credential swap" path in v0; partial-run continuation under a different credential identity is forbidden.
+
+### Silent credential rotation detection (per-run identity baseline)
+
+The `credential.rotated` failure path above covers the case where a rotated credential causes an authentication failure that the backend surfaces. It does **not** cover the case where rotation completes without producing any auth failure — the secret store rotates a key, the new key's identity differs from the old one, and the next tool call succeeds under the new identity with the run none the wiser. Without an explicit identity check, the audit pack's "*which* credential authenticated this call?" answer is silently inconsistent across the run: pre-rotation tool calls were authenticated under identity `A`, post-rotation under identity `B`, and nothing on the chain records the transition.
+
+The kernel closes this by capturing a per-run **credential identity baseline** at run start and re-validating it at every tool call:
+
+- **At `EntryKindRunStarted`.** The harness resolves the tenant's tool-backend credentials, hashes each credential's stable identifier (typically the secret-store's revision / version ID, never the secret value) into a deterministic field `credential_identity_baseline` — a sorted map of `credential_id → credential_identifier_hash` covering every credential the skill's `tools.yaml` declares it will use. The map is emitted as part of `run_started.deterministic`. The hash function is SHA-256 over the canonical-JSON encoding of the stable identifier; the secret value is never read or hashed.
+- **At every `tool_call_started`.** Before dispatching to the backend, the harness re-reads the stable identifier for the credential the tool requires and compares its hash against the baseline. If the hashes match, no entry is emitted. If they disagree, the harness emits a new `EntryKindCredentialIdentityChanged` entry (defined below) and fails the run closed with `failure_class = aborted`, `failure_subcode = credential_identity_changed`. The mid-run-rotated tool call is **not** dispatched under the new identity.
+
+**`EntryKindCredentialIdentityChanged`.** Added to the EntryKind enumeration in [`subsystems/audit.md`](../subsystems/audit.md#entry-kinds). Payload schema:
+
+| EntryKind | Deterministic fields | Non-deterministic fields |
+|---|---|---|
+| `credential_identity_changed` | `credential_id` (the logical identifier from `tools.yaml`, e.g., `"ledger.sap_eu"`), `credential_identifier_hash_baseline` (sha256 hex from `run_started.credential_identity_baseline`), `credential_identifier_hash_observed` (sha256 hex observed at this tool call), `at_step_index_be8` (deterministic step index where the change was first observed) | `detected_at_wall`, `credential_id_provider` (the secret-store backend name, e.g., `"vault"`) |
+
+This entry is purely audit-visible — the kernel still aborts the run as documented in the `credential.rotated` failure path above. Adding the entry preserves the "one identity per run, recorded on the chain" invariant without permitting partial-run continuation. Combined with the `credential.rotated` typed error class, the kernel now catches both the noisy-rotation case (backend returns an auth failure) and the silent-rotation case (backend succeeds under the new identity).
 
 ## API security
 

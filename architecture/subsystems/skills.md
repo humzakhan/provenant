@@ -34,6 +34,8 @@ recon/
 │   └── thresholds.yaml          # per-metric minimum thresholds
 ├── policy/                      # policy snippets retrievable via policy.lookup
 │   └── tolerance.md
+├── normalizers/                 # OPTIONAL per-backend numeric / string normalization shims
+│   └── (see "Pack-level normalizers" below)
 ├── ui/                          # optional HITL review templates
 │   └── review-template.html
 └── README.md                    # human-readable pack documentation
@@ -142,6 +144,40 @@ replay_n: 20
 release_blocks_on_regression: true
 ```
 
+### Pack-level normalizers (`normalizers/`)
+
+The kernel's numeric canonicalization grammar in [`audit.md`](audit.md#numeric-canonicalization-cross-language-replay) is locale-independent and rejects non-US/POSIX numeric forms with a typed `numeric.parse_error`. Backends that genuinely return locale-specific numeric strings (European `1,5`, NBSP-thousands `1 234 567,89`, etc.) — and other per-backend pre-canonicalization needs (currency-symbol stripping, whitespace trimming for legacy ERP feeds) — are normalized **before** the value reaches `mintable_paths`. The kernel does not ship a built-in locale layer; instead, the **skill pack** declares per-backend normalizers in the `normalizers/` slot.
+
+Pack layout:
+
+```
+normalizers/
+├── manifest.yaml           # declares which normalizer applies to which backend + tool path
+├── eu-locale-decimal.go    # OR a registered built-in name; v0 ships pure-Go normalizers only
+└── (...)
+```
+
+`normalizers/manifest.yaml`:
+
+```yaml
+normalizers:
+  - id: eu-locale-decimal
+    applies_to:
+      - tool: ledger.get_transactions
+        backend: sap_eu
+        mintable_path: "$.transactions[*].amount"
+    kind: builtin       # v0: only built-in normalizer IDs from the kernel's registered set
+    builtin_id: numeric.locale.eu_comma_decimal
+```
+
+**v0 scope.** v0 ships only built-in normalizer IDs (`kind: builtin`) from a kernel-registered set; v0 does **not** load arbitrary Go or WASM code from skill packs. The kernel-registered built-in set in v0 is empty (no v0 backend needs locale normalization — SQL ledger, Textract, OpenFX all emit US/POSIX decimals); the slot exists so that the first European-locale backend (e.g., SAP-EU, planned v0.5) can ship a normalizer without a kernel-version bump.
+
+**Hashing.** The `normalizers/` directory is included in the skill-pack content digest under the same rules as `prompts/` and `guards.yaml` (see [`audit.md`](audit.md#skill-pack-content-digest-procedure)): two packs with different normalizer configurations produce different `skill_pack_hash` values, so a skill that silently changes its normalization is caught on replay.
+
+**Audit visibility.** When a normalizer fires, the kernel records the normalizer ID and the (raw, normalized) string pair in `EntryKindTokenMint.deterministic` under a new optional field `normalizer_applied = { id: "eu-locale-decimal", builtin_id: "numeric.locale.eu_comma_decimal", input_raw: "<verbatim>", output_canonical: "<canonical>" }`. Absence of the field means the value reached `mintable_paths` already in canonical form.
+
+This closes the cycle-5 critic #5 gap: the locale-numeric trade-off's mitigation ("per-backend normalization shim in skill-pack") now has a concrete slot in the pack format and an audit-visible record when it fires. ADR-0006 is amended accordingly.
+
 ## Loading lifecycle
 
 ```
@@ -224,6 +260,7 @@ A pack must:
 1. **Pack composition.** Can a skill pack inherit from another (e.g., `recon-strict` extends `recon` with tighter thresholds)? Proposal: yes, single inheritance, but the inheritance chain is part of the pack hash.
 2. **Multi-language prompts.** Packs may need to support multiple natural languages. Proposal: defer; v0 is English-only.
 3. **Prompt A/B testing.** Should packs ship multiple prompt variants for online experimentation? Defer to commercial offering.
+4. **Skill-specific custom validators / normalizers (code loading from packs).** v0 packs reference only kernel-registered built-in guards, validators, and normalizers (`normalizers/manifest.yaml` `kind: builtin` only). Loading arbitrary Go / WASM-sandboxed code from a skill pack — so a pack author can ship a skill-specific custom validator without a kernel-version bump — is **out of scope for v0** and tracked in KNOWN_TRADE_OFFS.md ("skill-pack extensibility deferred"). The v0 disclaimer is "the unit of workflow is a pack of built-in-only components"; v0.5+ will revisit a sandboxed extension surface (likely `pack/validators/<lang.wasm>` declared in `tools.yaml` under a new `custom_validators:` key, signed alongside the rest of the pack).
 
 ## References
 
