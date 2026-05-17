@@ -1,6 +1,6 @@
 # Provenant Architecture
 
-This is the architecture documentation for Provenant — an open-source enforcement substrate that turns any LLM agent into a financial analyst with full provenance over everything it produces. Start with [`thesis.md`](../thesis.md) and [`product.md`](../product.md) before this if you have not read them.
+This is the architecture documentation for Provenant — an open-source enforcement substrate that turns any LLM agent into a financial analyst with full provenance over everything it produces. Start with [`docs/thesis.md`](../docs/thesis.md) and [`product.md`](../product.md) before this if you have not read them.
 
 ## What lives where
 
@@ -20,9 +20,9 @@ A new contributor should read this README, then [ADR-0001](adrs/0001-go-as-kerne
 
 ## Reading paths
 
-**Joining the project:** `thesis.md` → `product.md` → this README → ADRs 0001–0005 → the subsystem you're touching.
+**Joining the project:** [`docs/thesis.md`](../docs/thesis.md) → `product.md` → this README → ADRs 0001–0005 → the subsystem you're touching.
 
-**Integrating Provenant:** `thesis.md` → `product.md` → [`adapters/mcp.md`](adapters/mcp.md) (or your adapter) → the [`tools/<category>/README.md`](tools/README.md) for the tools you'll use.
+**Integrating Provenant:** [`docs/thesis.md`](../docs/thesis.md) → `product.md` → [`adapters/mcp.md`](adapters/mcp.md) (or your adapter) → the [`tools/<category>/README.md`](tools/README.md) for the tools you'll use.
 
 **Adding a new tool:** [`tools/README.md`](tools/README.md) (the conformance checklist) → the closest existing tool spec → relevant ADR if your tool challenges a design assumption.
 

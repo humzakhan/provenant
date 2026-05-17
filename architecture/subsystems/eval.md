@@ -248,7 +248,7 @@ Without retraining, here is how a skill pack improves over time:
 8. Behavior change is fully auditable: every contributing case is listed.
 ```
 
-This is the "case-based improvement" referenced in [`thesis.md`](../../thesis.md). It is the answer to the regulatory question "how does your AI learn?" — *by adding regression tests, not by retraining*.
+This is the "case-based improvement" referenced in [`thesis.md`](../../docs/thesis.md). It is the answer to the regulatory question "how does your AI learn?" — *by adding regression tests, not by retraining*.
 
 ## Tests
 

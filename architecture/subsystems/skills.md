@@ -190,7 +190,7 @@ Implications, pinned here so two implementations cannot diverge:
 - **A pack referencing an unregistered `builtin_id` is rejected at pack-load time** with a typed `skill.normalizer_id_unknown` error. Loading is strict; there is no "soft missing normalizer" mode.
 - **The v0 registry is empty.** A Phase 0 unit test asserts `len(normalizers.Registry()) == 0`; the first non-empty entry is a v0.5+ kernel-version event with its own ADR.
 
-Phase 2 task list does not load any normalizer (the registry is empty), but the registry plumbing — `kernel/internal/normalizers/registry.go`, the `Normalizer` interface, the `Lookup` accessor, and the pack-load-time `skill.normalizer_id_unknown` rejection path — ships in Phase 2 as part of the pack-loader code path so the format is enforceable from day one. See [`implementation-plan.md`](../../implementation-plan.md#phase-2--tool-registry-and-guard-pipeline-pre--post).
+Phase 2 task list does not load any normalizer (the registry is empty), but the registry plumbing — `kernel/internal/normalizers/registry.go`, the `Normalizer` interface, the `Lookup` accessor, and the pack-load-time `skill.normalizer_id_unknown` rejection path — ships in Phase 2 as part of the pack-loader code path so the format is enforceable from day one. See [`implementation-plan.md`](../../plans/implementation-plan.md#phase-2--tool-registry-and-guard-pipeline-pre--post).
 
 **Hashing.** The `normalizers/` directory is included in the skill-pack content digest under the same rules as `prompts/` and `guards.yaml` (see [`audit.md`](audit.md#skill-pack-content-digest-procedure)): two packs with different normalizer configurations produce different `skill_pack_hash` values, so a skill that silently changes its normalization is caught on replay.
 

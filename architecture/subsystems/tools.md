@@ -24,7 +24,7 @@ Status: **v0 / load-bearing**
 
 ## Tool interface
 
-The kernel-public type name for this interface is `ToolBackend` (matches [`architecture.md`](../../architecture.md) §3.1 and [`implementation-plan.md`](../../implementation-plan.md) Phase 0 public-surface list); the heading uses the prose term "tool" but the Go type is `ToolBackend`.
+The kernel-public type name for this interface is `ToolBackend` (matches [`architecture.md`](../OVERVIEW.md) §3.1 and [`implementation-plan.md`](../../plans/implementation-plan.md) Phase 0 public-surface list); the heading uses the prose term "tool" but the Go type is `ToolBackend`.
 
 ```go
 package tools
