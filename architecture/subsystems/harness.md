@@ -194,7 +194,7 @@ A run ends when:
 | `max_steps` exceeded | `failed: exhausted` |
 | `max_wall_clock` exceeded | `failed: timeout` |
 | `max_cost` exceeded | `failed: cost_cap` |
-| Kernel integrity violation | `failed: integrity` |
+| Kernel integrity violation | `failed: kernel_integrity` |
 | Model API error after retries | `failed: model_error` |
 | Orphan-run sweep at startup (last entry older than per-skill threshold) | `failed: orphaned` (with `EntryKindRunOrphanRecovered` preceding the `EntryKindRunFailed`) |
 | DR restore-verify finds missing blob refs for this run | `restore_pending` (transient; not a terminal state) |

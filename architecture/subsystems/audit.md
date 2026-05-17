@@ -117,13 +117,31 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 | `hitl_dispatched` | `review_id`, `routing_reason`, `confidence_bucket` | `dispatched_at_wall`, `routing_principal` |
 | `hitl_decision` | `review_id`, `decision` (`approved` \| `edited` \| `rejected` \| `escalated` \| `expired`), `edits_canonical` (canonical-JSON sorted array of `{field, before, after, kind, reason}` records; required when `decision = edited`, otherwise null), `decision_rationale_hash` | `decided_at_wall`, `reviewer_principal` (non-null on every row; for `decision = expired` the value is the reserved sentinel literal `"system:escalation-sweep"` per [`hitl.md`](hitl.md#rest-api-v0); the `"system:"` prefix is reserved IAM-wide for kernel-emitted actors per [`../cross-cutting/security.md`](../cross-cutting/security.md#principal-namespace-system-reserved-prefix-iam-wide) — canonical sentinels: `system:escalation-sweep`, `system:orphan-sweep`, `system:dr-restore`, `system:audit-verify`) |
 | `run_completed` | `final_status` (`completed` \| `awaiting_review`), `exit_kind` (`submit_answer` \| `host_text_only`), `final_payload_hash` (set only when `exit_kind == submit_answer`; null otherwise) | `ended_at_wall`, `total_duration_ms`, `total_cost_usd` |
-| `run_failed` | `failure_class` (`exhausted` \| `timeout` \| `cost_cap` \| `integrity` \| `model_error` \| `aborted` \| `orphaned`), `failure_subcode` | `ended_at_wall`, `error_message_raw` |
+| `run_failed` | `failure_class` (`exhausted` \| `timeout` \| `cost_cap` \| `kernel_integrity` \| `model_error` \| `aborted` \| `orphaned`), `failure_subcode` (enumerated under §"`run_failed.failure_subcode` enum" below) | `ended_at_wall`, `error_message_raw` |
 | `run_orphan_recovered` | `prior_status` (`pending` \| `running`), `last_entry_seq_before_recovery`, `threshold_seconds_used` (the per-skill `max_wall_clock_seconds × orphan_multiplier` actually applied; `orphan_multiplier` is pinned in the **skill manifest** (`bounds.orphan_multiplier`, default 2) and is **not** deployment-overridable — see [`harness.md`](harness.md#orphan-run-threshold-per-skill) and [`skills.md`](skills.md); two deployments running the same `(skill_id, skill_version)` therefore compute the same `threshold_seconds_used` and the field remains in the deterministic sub-object), `recovery_reason` | `swept_at_wall` |
 | `restore_pending` | `missing_blob_refs_canonical` (sorted list) | `verified_at_wall` |
 | `restore_pending_ack` | `acknowledged_blob_refs_canonical`, `operator_principal_hash` | `acknowledged_at_wall`, `operator_principal_raw` |
 | `credential_identity_changed` | `credential_id`, `credential_identifier_hash_baseline`, `credential_identifier_hash_observed`, `at_step_index_be8` | `detected_at_wall`, `credential_id_provider` |
 
 `exit_kind == host_text_only` is the only legal value for runs whose final answer left the substrate without going through `submit_answer` (Mode B specifics in [`harness.md`](harness.md)). When `exit_kind == host_text_only`, `final_payload_hash` is the JSON null value (not absent, not the empty string) and `signature_marker` is **not** emitted on the chain — its absence is the audit-pack-visible signal that the run produced no Provenant-attested output.
+
+### `run_failed.failure_subcode` enum
+
+`failure_subcode` is a deterministic field on `EntryKindRunFailed` and is hashed into the chain. To prevent independent implementations (Phase 5 bindings) from choosing divergent spellings — which would break the byte-identity invariants enforced in Phase 4 and Phase 5 — the set of legal values is **enumerated here as the single source of truth**. The kernel rejects an `EntryKindRunFailed` entry whose `failure_subcode` is not in this table at write time.
+
+Naming rule: all subcodes are `snake_case` ASCII (lowercase `[a-z0-9_]+`, no leading digit, no double underscore, no trailing underscore). The kebab-case form is reserved for skill-pack identifiers (`tools.yaml`) and is **not** used in chain-deterministic enums. Independent implementations MUST emit the byte-identical snake_case spelling listed in this table.
+
+| `failure_subcode` | Paired `failure_class` | Emitted when |
+|---|---|---|
+| `credential_rotated` | `aborted` | A `tool_call_failed.error_code = credential.rotated` surfaces on a non-parallel dispatch and the harness fails the run closed per [`cross-cutting/security.md`](../cross-cutting/security.md#credential-rotation-mid-run-failure-path-contract) |
+| `credential_identity_changed` | `aborted` | A serial (non-batch) `tool_call_started` pre-dispatch identity check observes a hash divergence from `credential_identity_baseline` and the harness aborts the run |
+| `credential_rotation_mid_batch` | `aborted` | A parallel-batch pre-check phase (per §"Parallel-batch credential rotation rule") observes any divergence from the baseline; the whole batch is aborted |
+| `transactional_scope_split` | `kernel_integrity` | The `TransactionalScope` tx-local canary check (see [`kernel.md`](kernel.md)) detects that `Store` and `AuditSink` are not sharing a transaction |
+| `pack_digest_mismatch` | `kernel_integrity` | `provenant replay` observes a `skill_pack_hash` mismatch between the replay artifact and the loaded pack (see §"Skill-pack content digest (procedure)") |
+| `kernel_header_mismatch` | `kernel_integrity` | The kernel-immutable header bytes hashed at boot do not match the `kernel_header_hash` recorded on `run_started` (Phase 0 boot test asserts this; see [`harness.md`](harness.md#kernel-immutable-header-text-definition)) |
+| `orphan_recovered` | `orphaned` | The Phase-1 orphan-run sweep finalizes a run that had no terminal entry within its computed `threshold_seconds_used`; paired with the preceding `EntryKindRunOrphanRecovered` entry |
+
+Extension rule: adding a new `failure_subcode` is an audit-chain-format change. It requires (a) a `kernel_version` bump, (b) a new row appended to this table in the same canonical (added-at-version) order, and (c) the kernel boot-time enum validator updated in lock-step. Independent bindings consume the enum from this table — bindings that hard-code a different set (or different spellings) fail the Phase 5 cross-binding byte-identity test by construction.
 
 ### Tool-call ID and seq determinism
 

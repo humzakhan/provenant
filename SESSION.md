@@ -186,3 +186,21 @@
 - The `system:` sentinel vocabulary table in security.md is closed (kernel rejects any non-table sentinel), but the table itself is not enumerated as a kernel-public constant. A cross-language Phase 5 binding rejecting principals client-side would need this list. Minor; consider exporting as a kernel-public slice and snapshot-testing it.
 - Phase 0's new public-surface snapshot test depends on a maintained list in `kernel/public/`; a future cycle may want this list to be **generated** from kernel.md's "Kernel public types" section (e.g., a markdown-table parser) rather than hand-maintained, so the published list and the snapshot list cannot drift.
 - The export-format projection pinned in audit.md "Export-format projection" does not say how the PDF cover sheet renders the `host_conformance_attestation.mode = mode_b_untested` (already specified) **plus** the cycle-7-new `credential_identity_baseline` map. A reviewer of a regulator-facing audit pack may want a one-line "credentialed tools used on this run" summary on the cover sheet derived from the baseline. Cosmetic but flagged.
+
+## Critique Cycle 8 — 2026-05-17
+
+**Issues raised:** 3
+**VALID:** 3 —
+- #1 Tool interface name drift: tools.md declared `type Tool interface` while architecture.md §3.1/§5.1, implementation-plan.md Phase 0 public-surface snapshot test, and Phase 0/2 prose all referenced `ToolBackend`. Phase 0 snapshot test would have failed day one. Renamed `Tool` → `ToolBackend` in tools.md (Go type and a clarifying note on the heading); no other site needed updating because cycle 7 had already converged on `ToolBackend` everywhere else.
+- #2 `EntryKindRunFailed.failure_subcode` was a deterministic hashed field with no enumerated set. Subcodes had been introduced ad-hoc across cycles (`credential_rotated`, `credential_identity_changed`, `credential_rotation_mid_batch`) and Phase 4/5 byte-identity tests would have failed the first time two implementations disagreed on a spelling. Added a pinned `failure_subcode` enum table in audit.md (`credential_rotated`, `credential_identity_changed`, `credential_rotation_mid_batch`, `transactional_scope_split`, `pack_digest_mismatch`, `kernel_header_mismatch`, `orphan_recovered`); pinned the snake_case naming rule (kebab-case reserved for skill-pack identifiers); declared the extension rule (new subcode = kernel_version bump + single-source-of-truth table append + boot-time enum-validator update).
+- #3 `failure_class` name mismatch: audit.md row listed `integrity`; every other site (tool_call_failed.error_class, TransactionalScope check, skills.md, security.md, Phase 0 boot test, kernel.md) used `kernel_integrity`. Renamed audit.md run_failed.failure_class `integrity` → `kernel_integrity`. Found and fixed one additional bare-`integrity` reference in harness.md run-status table (`failed: integrity` → `failed: kernel_integrity`).
+
+**INVALID:** 0
+**TRADE-OFF:** 0
+
+**Documents changed:** architecture/subsystems/tools.md, architecture/subsystems/audit.md, architecture/subsystems/harness.md, SESSION.md
+
+**Outstanding (for cycle 9):**
+- Cycle 7 outstanding items remain open (provider-on-`run_started`, `tools.yaml.credential_id` pack-loader rejection, `system:` sentinel as kernel-public constant, Phase 0 snapshot-list generation from kernel.md, PDF cover-sheet rendering of `credential_identity_baseline`).
+- The `failure_subcode` enum table is now the source of truth, but no Phase 0/Phase 4 done-when explicitly asserts "kernel rejects an EntryKindRunFailed with a non-table `failure_subcode` at write time." A future cycle should bind this to a Phase 0 test (similar to the EntryKind write-rejection test) so the enum is enforced at build time, not just documented.
+
