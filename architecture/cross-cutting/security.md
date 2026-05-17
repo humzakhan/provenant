@@ -67,7 +67,54 @@ Why pre-LLM is insufficient alone: novel injections will pass naive pattern matc
 - Credentials are never logged. The audit log records *which* credential was used (by identifier) but never the credential value.
 - Credentials are never inserted into model context. Tool calls that need credentials use them internally; the credential is not part of the tool's input visible to the agent.
 
+### Credential rotation mid-run (failure-path contract)
+
+Credential rotation (operator-triggered or scheduled) may complete while a long-running agent run is mid-flight. The kernel defines a typed failure path:
+
+- A tool backend that encounters an authentication failure caused by a rotated credential MUST return a typed `credential.rotated` error (an `error_class = backend_error` with `error_code = credential.rotated`) rather than a generic `tool_unavailable`. This is distinct from `credential.expired` (rotation completed before run start) and from `credential.invalid` (configuration error).
+- The harness, on receipt of `credential.rotated` from any tool call, fails the run closed with `failure_class = aborted`, `failure_subcode = credential_rotated`. The run is not silently retried with the new credential — partial-run continuation under a different credential identity would silently change the audit pack's "*which* credential was used (by identifier)" answer mid-run and break the per-run principal invariant.
+- A `credential.rotated` failure emits a Prometheus counter `provenant_credential_rotated_run_failures_total{tenant_id,credential_id}` so operators can correlate rotation events with run failures. The audit chain records the rotation event via the existing `tool_call_failed` entry with the typed error class; no new EntryKind is required.
+- Operators rotating credentials with active runs in flight are documented to either drain (wait for `runs.status = completed | failed`) or accept the aborted-run blast radius. The kernel does not provide a "live credential swap" path in v0; partial-run continuation under a different credential identity is forbidden.
+
+### Silent credential rotation detection (per-run identity baseline)
+
+The `credential.rotated` failure path above covers the case where a rotated credential causes an authentication failure that the backend surfaces. It does **not** cover the case where rotation completes without producing any auth failure — the secret store rotates a key, the new key's identity differs from the old one, and the next tool call succeeds under the new identity with the run none the wiser. Without an explicit identity check, the audit pack's "*which* credential authenticated this call?" answer is silently inconsistent across the run: pre-rotation tool calls were authenticated under identity `A`, post-rotation under identity `B`, and nothing on the chain records the transition.
+
+The kernel closes this by capturing a per-run **credential identity baseline** at run start and re-validating it at every tool call:
+
+- **At `EntryKindRunStarted`.** The harness resolves the tenant's tool-backend credentials, hashes each credential's stable identifier (typically the secret-store's revision / version ID, never the secret value) into a deterministic field `credential_identity_baseline` — a sorted map of `credential_id → credential_identifier_hash` covering every credential the skill's `tools.yaml` declares it will use. The map is emitted as part of `run_started.deterministic`. The hash function is SHA-256 over the canonical-JSON encoding of the stable identifier; the secret value is never read or hashed.
+- **At every `tool_call_started`.** Before dispatching to the backend, the harness re-reads the stable identifier for the credential the tool requires and compares its hash against the baseline. If the hashes match, no entry is emitted. If they disagree, the harness emits a new `EntryKindCredentialIdentityChanged` entry (defined below) and fails the run closed with `failure_class = aborted`, `failure_subcode = credential_identity_changed`. The mid-run-rotated tool call is **not** dispatched under the new identity.
+
+**`EntryKindCredentialIdentityChanged`.** Added to the EntryKind enumeration in [`subsystems/audit.md`](../subsystems/audit.md#entry-kinds). Payload schema:
+
+| EntryKind | Deterministic fields | Non-deterministic fields |
+|---|---|---|
+| `credential_identity_changed` | `credential_id` (the logical identifier from `tools.yaml`, e.g., `"ledger.sap_eu"`), `credential_identifier_hash_baseline` (sha256 hex from `run_started.credential_identity_baseline`), `credential_identifier_hash_observed` (sha256 hex observed at this tool call), `at_step_index_be8` (deterministic step index where the change was first observed) | `detected_at_wall`, `credential_id_provider` (the secret-store backend name, e.g., `"vault"`) |
+
+This entry is purely audit-visible — the kernel still aborts the run as documented in the `credential.rotated` failure path above. Adding the entry preserves the "one identity per run, recorded on the chain" invariant without permitting partial-run continuation. Combined with the `credential.rotated` typed error class, the kernel now catches both the noisy-rotation case (backend returns an auth failure) and the silent-rotation case (backend succeeds under the new identity).
+
 ## API security
+
+### Principal namespace (`system:` reserved prefix, IAM-wide)
+
+The audit chain emits several `*_principal` fields naming actors on the non-deterministic side of audit entries: `EntryKindHITLDecision.reviewer_principal`, `EntryKindHITLDispatched.routing_principal`, `EntryKindRestorePendingAck.operator_principal_raw` (and the deterministic-hash form `operator_principal_hash`), `EntryKindRunStarted.initiator_principal`, and `runs.initiator` (the per-run initiator string). The `"system:"` prefix is reserved **IAM-wide** as the kernel-acting actor namespace. The rule:
+
+- The **`"system:"` prefix is reserved for kernel-emitted actors on ALL `*_principal` fields and on `runs.initiator`.** No human-registered IAM principal may use it on any of these surfaces.
+- The IAM directory / reviewer-pool / operator-pool provisioning surface rejects any registered principal whose identifier starts with `system:` at registration time.
+- A `system:`-prefixed identifier appearing on **any** `*_principal` field or on `runs.initiator` from a non-kernel code path is a typed integrity error (`kernel_integrity`) and is rejected at audit-sink / `runs` write time.
+
+**Canonical sentinel vocabulary (pinned).** The kernel emits exactly the following `"system:"` sentinels, enumerated here as the source of truth (also referenced from [`../subsystems/audit.md`](../subsystems/audit.md) and [`../subsystems/hitl.md`](../subsystems/hitl.md)):
+
+| Sentinel | Emitted on | Code path |
+|---|---|---|
+| `system:escalation-sweep` | `EntryKindHITLDecision.reviewer_principal` (with `decision = expired`); `EntryKindHITLDispatched.routing_principal` when a sweep re-dispatches an expired review | escalation-timeout sweep |
+| `system:orphan-sweep` | `EntryKindRunStarted.initiator_principal` and `runs.initiator` when the orphan-recovery sweep re-initiates a follow-on run (rare; today the sweep does not re-initiate, but the namespace is reserved); also stamped on `EntryKindRunOrphanRecovered`-adjacent fields where an initiator is required | orphan-run sweep |
+| `system:dr-restore` | `EntryKindRestorePendingAck.operator_principal_raw` (with `operator_principal_hash` computed normally) when the DR-restore path emits the ack without a human operator; also `EntryKindRunStarted.operator_principal_*` for runs the DR-restore path replays as part of a restore-verify pass | DR-restore path |
+| `system:audit-verify` | `routing_principal` and any `*_principal` field stamped by the scheduled chain-verifier task when it appends a `chain_verified` adjacency event | scheduled verifier |
+
+No other `"system:"` identifier is legal. The kernel rejects an attempt to emit a `"system:"` value not in this table from any code path; adding a new sentinel requires extending the table and bumping `kernel_version`.
+
+This rule makes "human vs kernel-emitted actor" a string-prefix test on the chain without requiring a separate boolean field, and prevents an operator from accidentally provisioning an IAM principal whose identifier collides with one of the sentinels.
 
 - Bearer tokens scoped to tenant, skills, and tools.
 - Token rotation: tokens expire on a configurable schedule (default 90 days); rotation is a `POST /v1/admin/tokens/rotate` operation that issues a new token and revokes the old after a grace period.

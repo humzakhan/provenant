@@ -19,6 +19,8 @@ The four overlap in places. The rule of thumb: if a finance team needs to read i
 
 Exposed via `/metrics` (Prometheus format). Default labels: `tenant_id`, `skill_id`, `skill_version`, `model`.
 
+**Cardinality rule.** `run_id`, `sibling_group_id`, `tool_call_id`, `token_id`, `review_id`, and any other per-execution ULID-shaped identifier are **forbidden as Prometheus labels**. Prometheus is a low-cardinality time-series store; per-run labels cause unbounded series growth and OOM the scraper at any production volume. Per-run state belongs in OpenTelemetry traces, structured logs, or the SQL-queryable `run inspect` surface — never in metric labels. A `/metrics` endpoint that emits a per-run label is rejected by the Prometheus-format conformance test in Phase 4. This rule is load-bearing and cycle-5-enforced.
+
 ### Run metrics
 
 ```
@@ -121,6 +123,52 @@ Every span has:
 - For model spans: `model`, `tokens_in`, `tokens_out`
 
 Trace export to any OTLP-compatible backend (Jaeger, Honeycomb, Datadog, Grafana Tempo).
+
+### Live progress observability for buffered parallel blocks (OTLP span events)
+
+The audit chain's parallel-sibling buffer-and-flush rule (see [`subsystems/audit.md`](../subsystems/audit.md#parallel-sibling-deterministic-order)) means per-sibling progress inside an in-flight parallel batch does not appear in `audit_entries` until the batch flushes. For operator-facing live visibility into a stuck sibling, the runtime emits a `parallel_block` OTLP span per batch with **span events** for each sibling state transition:
+
+- One `parallel_block` span per `sibling_group_id`, opened when the batch is dispatched and closed at flush.
+- A span event per transition: `sibling.started{sibling_index}`, `sibling.completed{sibling_index}`, `sibling.failed{sibling_index, error_class}`.
+- Span attributes carry `tenant_id`, `run_id`, `sibling_group_id`, and `sibling_count`. These are OTLP attributes (the trace backend can handle the cardinality), **not** Prometheus labels.
+
+Operators alert on long-in-flight siblings via the trace backend (Tempo / Jaeger query) or via the `provenant run inspect <run_id>` SQL view (specified below) over an in-memory ephemeral table the runtime maintains for live sibling state. The trace surface is explicitly labeled "not part of the replay-deterministic chain; emitted live; not buffered" and is independent of `audit_entries`. The Phase 4 done-when requires that the span+events surface at least the sibling count and per-sibling started/completed/failed transitions during a parallel block.
+
+#### `provenant run inspect` live-state table specification
+
+The `run inspect <run_id>` SQL view is backed by a per-process in-memory map exposed to SQL clients via a sidecar `/internal/inspect` endpoint on the `provenant-server` runtime (the chosen mechanism; Postgres FDW is not used — it would require operator-level FDW configuration that the runtime cannot self-install). The CLI subcommand `provenant run inspect <run_id>` is a thin wrapper that calls `/internal/inspect` and prints the response in tabular form.
+
+**Table shape (one row per dispatched sibling).**
+
+| Column | Type | Source |
+|---|---|---|
+| `run_id` | TEXT | dispatch context |
+| `sibling_group_id` | TEXT | parallel-batch ID per [`subsystems/audit.md`](../subsystems/audit.md#parallel-sibling-deterministic-order) |
+| `sibling_index` | INT | canonical 0-based index within the group |
+| `tool_call_id` | TEXT | deterministic kernel-assigned ID |
+| `state` | TEXT | `started` \| `completed` \| `failed` |
+| `started_at` | TIMESTAMPTZ | wall clock at dispatch |
+| `completed_at` | TIMESTAMPTZ | wall clock at completion (null while `state = started`) |
+
+**Primary key.** `(run_id, sibling_group_id, sibling_index)`. The same `(run_id, sibling_group_id, sibling_index)` triple is never inserted twice within a process lifetime.
+
+**Lifecycle.**
+
+- **Insert** on dispatch (the same point that opens the `parallel_block` span event `sibling.started`).
+- **Update** on completion or failure (the same point that emits `sibling.completed` / `sibling.failed`).
+- **Garbage collection.** Rows for a `(run_id, sibling_group_id)` are removed from the map at parallel-block flush — the same point the buffered audit entries are appended. The retention rationale: once the deterministic audit chain holds the canonical record, the live-state row's only purpose (in-flight visibility) is gone. Orphan-recovered runs (the orphan sweep moves a run to `failed: orphaned`) sweep their rows out of the map as part of the same recovery procedure that emits `EntryKindRunOrphanRecovered`.
+
+**Concurrency model.** A single `sync.Map`-shaped structure scoped per process; insert/update are O(1) under a per-`(run_id, sibling_group_id)` mutex. Read traffic from `/internal/inspect` is read-locked; the structure is bounded by the count of in-flight parallel siblings across all live runs, which `max_steps × concurrency-per-step` bounds at thousands of rows per process worst-case — well inside in-memory capacity.
+
+**Restart behavior.** The table is in-memory and process-local; **on `provenant-server` restart it is empty by design**. `run inspect <run_id>` for a `run_id` not currently held by the running process returns the literal sentinel response `{"live_state": "none", "advice": "no live state; see audit chain for run history"}` rather than a stale or fabricated row. Operators needing post-restart visibility into what was in flight at crash time consult the audit chain plus the orphan-sweep entries (which name the in-flight runs that were recovered).
+
+**Concurrency with the orphan sweep.** When the orphan sweep moves a run to `failed: orphaned`, it acquires the per-`run_id` mutex briefly to delete all rows for that run from the live-state map (after emitting `EntryKindRunOrphanRecovered`). The map is the canonical "what is the runtime currently working on" surface; the audit chain is the canonical historical surface.
+
+**Auth model.** `/internal/inspect` is bound **localhost-only** by default (`127.0.0.1` and `::1`; the runtime refuses to bind it to a non-loopback interface unless a config flag `inspect.allow_remote = true` is explicitly set, which is documented as a debugging-only escape hatch). Authentication is bearer-token: the runtime issues a per-process **admin-inspect token** at startup, written to a 0600-mode file under the runtime's state directory; operators read the token out-of-band and pass it as `Authorization: Bearer <token>` on every request. The token is **tenant-scoped**: each token is issued for exactly one `tenant_id`, and `/internal/inspect?run_id=<r>` rejects requests whose token tenant does not match the run's tenant with HTTP 404 (not 403 — the existence of the run is not disclosed cross-tenant). A separate **platform-admin token** (issued only when the runtime is started with `inspect.platform_admin = true`, and only loaded from an operator-supplied file path) bypasses the tenant check and is reserved for cross-tenant operator inspection during incidents; the platform-admin token's use is itself audit-logged to a process-local `inspect_access.log` with the requester's bearer-token fingerprint and the queried `(tenant_id, run_id)`. Without the platform-admin token, no token can read another tenant's live state; the tenant token + tenant-scoped query is the **only** path to cross-tenant disclosure being closed.
+
+**Cross-process scope.** The live-state map is **not** shared across `provenant-server` replicas in a multi-replica deployment. Each replica holds the rows for the runs it is currently executing. A multi-replica operator querying live state across replicas does so via the trace backend (where spans aggregate naturally), not via `run inspect`. The CLI's `--all-replicas` flag is deferred to v0.5+.
+
+This specification is load-bearing: without pinning columns, key, lifecycle, restart behavior, and concurrency model, two implementations of `provenant-server` would disagree about whether a row exists after flush or after restart, breaking operator debugging.
 
 ## Structured logs
 

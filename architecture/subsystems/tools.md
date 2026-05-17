@@ -24,6 +24,8 @@ Status: **v0 / load-bearing**
 
 ## Tool interface
 
+The kernel-public type name for this interface is `ToolBackend` (matches [`architecture.md`](../../architecture.md) §3.1 and [`implementation-plan.md`](../../implementation-plan.md) Phase 0 public-surface list); the heading uses the prose term "tool" but the Go type is `ToolBackend`.
+
 ```go
 package tools
 
@@ -34,7 +36,7 @@ import (
     "github.com/provenant/provenant/internal/provenance"
 )
 
-type Tool interface {
+type ToolBackend interface {
     // Name is the canonical, dotted identifier (e.g., "ledger.get_balance").
     Name() string
 
@@ -56,8 +58,29 @@ type Tool interface {
     // reads to replay (captured-deterministic).
     DeterminismClass() DeterminismClass
 
+    // Credentials returns the logical CredentialRef(s) this backend will use
+    // when dispatched. Pure-Go tools (calc.*, reconcile.*) return an empty
+    // slice. The returned credential_id values MUST match the static
+    // declaration in the skill's tools.yaml entry; a mismatch is a kernel-
+    // integrity error (error_code = credential.id_manifest_mismatch — see
+    // the canonical error_code table in subsystems/audit.md) at
+    // dispatch time. See subsystems/skills.md "credential_id field" and
+    // cross-cutting/security.md "Silent credential rotation detection".
+    Credentials() []CredentialRef
+
     // Call executes the tool.
     Call(ctx context.Context, input json.RawMessage) (Result, error)
+}
+
+// CredentialRef is a typed accessor that names a logical credential the
+// backend will use. The kernel uses CredentialRef.ID to reconcile a runtime
+// dispatch with the skill's static tools.yaml manifest; the kernel does NOT
+// read CredentialRef.Provider for chain-determinism decisions (provider is
+// non-deterministic and lives only on the audit entry's non-deterministic
+// sub-object).
+type CredentialRef struct {
+    ID       string  // logical identifier from tools.yaml (e.g., "ledger.sap_eu")
+    Provider string  // secret-store backend, e.g., "vault" or "pg_pgcrypto"; non-deterministic
 }
 
 type MintablePath struct {
@@ -242,6 +265,7 @@ CREATE TABLE captured_reads (
 | Output schema violation | Fail-closed; `tool_invalid_output` to agent; the tool is also flagged for triage (broken contract) |
 | Tool panic | Caught; treated as failure; tool marked unhealthy; subsequent calls in same run rejected |
 | Network/auth error in backend | Returned as `tool_unavailable`; agent may retry per skill policy |
+| Backend authentication failure caused by mid-run credential rotation | Returned as typed `credential.rotated` (`error_class = backend_error`, `error_code = credential.rotated`); the harness fails the run closed with `failure_subcode = credential_rotated` rather than retrying with the post-rotation credential — see [`cross-cutting/security.md`](../cross-cutting/security.md#credential-rotation-mid-run-failure-path-contract) |
 | `MintablePath` references a non-existent path | Mint is skipped for that path; warning logged; not fail-closed (tool may legitimately return partial data) |
 
 ## Tests

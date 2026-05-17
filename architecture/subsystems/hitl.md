@@ -136,17 +136,37 @@ Bulk approve/reject with spot-check sampling. Audit captures bulk operations as 
 
 ## REST API (v0)
 
+**Canonical surface: `/v1/hitl/...`.** Cycle 5 aligned three previously inconsistent REST surfaces (`/v1/reviews/...`, `/v1/hitl/...`, `/v1/runs/{run_id}/hitl/...`) onto a single `/v1/hitl/...` prefix referenced by implementation-plan.md Phase 4. The `/v1/reviews/...` and `/v1/runs/{run_id}/hitl/...` forms are no longer part of the v0 surface.
+
 ```
-GET    /v1/reviews?tier=<tier>&status=<status>      list pending reviews
-GET    /v1/reviews/<review_id>                       fetch a single review
-POST   /v1/reviews/<review_id>/decision              submit a decision
-       { "kind": "approved" | "edited" | "rejected" | "escalated",
+GET    /v1/hitl/pending?tier=<tier>&status=<status>  list pending reviews (across runs)
+GET    /v1/hitl/reviews/{review_id}                   fetch a single review
+POST   /v1/hitl/reviews/{review_id}/decision          submit a decision (review_id-scoped)
+       { "kind": "approved" | "edited" | "rejected" | "escalated" | "expired",
          "edits": [...],
          "notes": "..." }
-POST   /v1/reviews/<review_id>/claim                 claim for current reviewer (locking)
-POST   /v1/reviews/bulk/approve                      bulk approval with sampling
-GET    /v1/reviews/<review_id>/audit                 audit trail for this review
+POST   /v1/runs/{run_id}/hitl/decision                submit a decision (run_id-scoped convenience)
+       — equivalent to POST /v1/hitl/reviews/{review_id}/decision where review_id is
+         resolved from run_id; provided as a convenience for adapters that hold run_id
+         but not review_id. The kernel-side state-transition logic is identical.
+POST   /v1/hitl/reviews/{review_id}/claim             claim for current reviewer (locking)
+POST   /v1/hitl/bulk/approve                          bulk approval with sampling
+GET    /v1/hitl/reviews/{review_id}/audit             audit trail for this review
 ```
+
+**Decision enum (cycle-5 alignment).** The decision-`kind` enum is the **union** of the values previously declared in hitl.md and in the `EntryKindHITLDecision` payload schema in [`audit.md`](audit.md):
+
+```
+approved | edited | rejected | escalated | expired
+```
+
+- `approved`: reviewer confirms the agent's draft.
+- `edited`: reviewer changes a value or text; `edits` array required.
+- `rejected`: reviewer rejects the whole output; the run fails.
+- `escalated`: reviewer routes to a higher tier.
+- `expired`: no human action within the configured deadline; emitted by the escalation-timeout sweep, not by a reviewer call. Treated as `failed` at the run level (see harness state machine) unless the skill manifest configures `on_expiry: escalate`. For `expired` decisions, the `EntryKindHITLDecision` entry's non-deterministic `reviewer_principal` field carries the reserved sentinel string **`"system:escalation-sweep"`** (a literal; not a hash; not interpolated). The `"system:"` prefix is reserved for kernel-emitted decisions; **reviewer principals from the human-reviewer IAM directory are forbidden from using the `"system:"` prefix** — the IAM provisioning step (see [`cross-cutting/security.md`](../cross-cutting/security.md#api-security)) rejects any reviewer principal whose identifier starts with `system:`. This rule preserves "every decision has a non-null `reviewer_principal`" without polluting the human-reviewer namespace, and makes "was this decision human or system-emitted?" a string-prefix test on the chain.
+
+[`audit.md`](audit.md)'s `EntryKindHITLDecision` enum is amended below to match.
 
 Auth: bearer tokens scoped to reviewer pool membership. Multi-tenant deployments add tenant scoping.
 

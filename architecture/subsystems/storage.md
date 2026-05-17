@@ -40,6 +40,22 @@ All tables live in a single schema by default (`provenant`). Multi-tenant deploy
 
 All tables include `tenant_id TEXT NOT NULL` (except `tools_registry` and `tenants`). Foreign keys to `runs(id)` cascade on tenant lifecycle operations.
 
+### Schema deltas required by cycles 3–5 (load-bearing columns)
+
+The audit-chain payload-schema fixes adopted in cycles 3, 4, and 5 (see [`audit.md`](audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration) and [`cross-cutting/security.md`](../cross-cutting/security.md#silent-credential-rotation-detection-per-run-identity-baseline)) require the following column-level additions. These are part of the v0 schema; Phase 1's atlas migrations ship them in the initial migration set, not as a later patch. Without them the deterministic-payload schema in [`audit.md`](audit.md) cannot be persisted and replay byte-identity cannot be achieved.
+
+- **`tokens.source_value_raw TEXT NOT NULL`** — the verbatim upstream string after the `source_value_raw` canonical-form rule in [`audit.md`](audit.md#source_value_raw-canonical-form). Hashed into the chain via `EntryKindTokenMint.deterministic.source_value_raw`.
+- **`tokens.normalizer_applied JSONB`** — nullable; when non-null, records `{id, builtin_id, input_raw, output_canonical}` per the skill-pack `normalizers/` slot ([`skills.md`](skills.md#pack-level-normalizers-normalizers)). `null` is the canonical "no normalizer fired" value and is part of the deterministic payload — adding a future builtin normalizer does not invalidate older chains whose tokens carry `normalizer_applied = null`.
+- **`runs.credential_identity_baseline JSONB NOT NULL`** — sorted map `credential_id → credential_identifier_hash` captured at run start (see [`cross-cutting/security.md`](../cross-cutting/security.md#silent-credential-rotation-detection-per-run-identity-baseline)). Mirrored into `EntryKindRunStarted.deterministic`.
+- **`runs.kernel_header_hash TEXT NOT NULL`** — sha256 hex of the kernel-immutable header text loaded from `kernel/internal/promptkernel/header_v<N>.go` at run start (see [`audit.md`](audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration)). Mirrored into `EntryKindRunStarted.deterministic.kernel_header_hash`. Kept on `runs` so a run-by-run query can compare header hashes without parsing the chain.
+- **`audit_entries` payload split.** The single `payload JSONB` column declared in [`audit.md`](audit.md#entry-schema) is materialized as **two columns**:
+  - `payload_deterministic JSONB NOT NULL` — the deterministic sub-object the canonicalizer feeds into the chain hash.
+  - `payload_non_deterministic JSONB NOT NULL DEFAULT '{}'::jsonb` — the non-deterministic sub-object (wall-clock fields, retry counts, panic messages, etc.); stored on the row but excluded from the hash input.
+  - `hash_input_canonical TEXT NOT NULL` — the exact canonical-JSON bytes of `payload_deterministic` that were fed into the SHA-256 hash, retained for replay-debug (a verifier mismatch surfaces both the stored hash and the bytes that produced it). This column is **not** itself hashed; it is operational debug surface.
+  - The two-column split is the source-of-truth surface; `audit.md` continues to describe the payload as a single object with `deterministic` / `non_deterministic` sub-objects for readability, and the storage layer projects between the two shapes.
+
+Phase 1's atlas migrations include all five additions in the initial migration. The Phase 1 done-when in [`implementation-plan.md`](../../implementation-plan.md#phase-1--storage-and-hash-chained-audit-log) is amended to assert that the synthetic-run integration test exercises every new column and that chain verification re-canonicalizes from `payload_deterministic` (not from `payload_deterministic || payload_non_deterministic`).
+
 ### Common columns
 
 Every table includes:
