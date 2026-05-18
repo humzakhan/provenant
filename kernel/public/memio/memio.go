@@ -16,6 +16,7 @@ const substrate = "provenant.substrate/kernel.public.memio/v1"
 var (
 	ErrUnknownSourcePath       = errors.New("memio: unknown source path")
 	ErrUnexpectedTx            = errors.New("memio: unexpected transaction type")
+	ErrDuplicateCapturedReadID = errors.New("memio: duplicate captured read id")
 	ErrDuplicateTokenID        = errors.New("memio: duplicate token id")
 	ErrDuplicateAuditSeq       = errors.New("memio: duplicate audit seq")
 	ErrInvalidAuditChain       = errors.New("memio: invalid audit chain")
@@ -25,19 +26,21 @@ var (
 
 // Binding is the Phase 1 in-memory substrate for sources, tokens, and audit entries.
 type Binding struct {
-	mu       sync.Mutex
-	sources  map[string]kernel.SourceBytes
-	tokens   map[string][]kernel.Token
-	audits   map[string][]kernel.AuditEntry
-	revision uint64
+	mu            sync.Mutex
+	sources       map[string]kernel.SourceBytes
+	capturedReads map[string][]kernel.CapturedRead
+	tokens        map[string][]kernel.Token
+	audits        map[string][]kernel.AuditEntry
+	revision      uint64
 }
 
 // NewBinding builds an in-memory binding seeded with the provided sources.
 func NewBinding(sources ...kernel.SourceBytes) *Binding {
 	b := &Binding{
-		sources: make(map[string]kernel.SourceBytes, len(sources)),
-		tokens:  make(map[string][]kernel.Token),
-		audits:  make(map[string][]kernel.AuditEntry),
+		sources:       make(map[string]kernel.SourceBytes, len(sources)),
+		capturedReads: make(map[string][]kernel.CapturedRead),
+		tokens:        make(map[string][]kernel.Token),
+		audits:        make(map[string][]kernel.AuditEntry),
 	}
 	for _, source := range sources {
 		b.sources[source.Source.Path] = cloneSource(source)
@@ -52,9 +55,10 @@ func (b *Binding) TransactionalSubstrate() string {
 func (b *Binding) WithTx(ctx context.Context, fn func(ctx context.Context, tx kernel.Tx) error) error {
 	b.mu.Lock()
 	tx := &transaction{
-		baseRevision: b.revision,
-		tokens:       cloneTokenMap(b.tokens),
-		audits:       cloneAuditMap(b.audits),
+		baseRevision:  b.revision,
+		capturedReads: cloneCapturedReadMap(b.capturedReads),
+		tokens:        cloneTokenMap(b.tokens),
+		audits:        cloneAuditMap(b.audits),
 	}
 	b.mu.Unlock()
 
@@ -70,6 +74,7 @@ func (b *Binding) WithTx(ctx context.Context, fn func(ctx context.Context, tx ke
 	if b.revision != tx.baseRevision {
 		return ErrConcurrentWriteConflict
 	}
+	b.capturedReads = tx.capturedReads
 	b.tokens = tx.tokens
 	b.audits = tx.audits
 	b.revision++
@@ -103,6 +108,32 @@ func (b *Binding) PutToken(_ context.Context, tx kernel.Tx, token kernel.Token) 
 	memTx.tokens[token.RunID] = append(runTokens, cloneToken(token))
 	memTx.dirty = true
 	return nil
+}
+
+func (b *Binding) PutCapturedRead(_ context.Context, tx kernel.Tx, capturedRead kernel.CapturedRead) error {
+	memTx, ok := tx.(*transaction)
+	if !ok {
+		return ErrUnexpectedTx
+	}
+
+	runReads := memTx.capturedReads[capturedRead.RunID]
+	for _, existing := range runReads {
+		if existing.ID == capturedRead.ID {
+			return fmt.Errorf("%w: %s", ErrDuplicateCapturedReadID, capturedRead.ID)
+		}
+	}
+
+	memTx.capturedReads[capturedRead.RunID] = append(runReads, cloneCapturedRead(capturedRead))
+	memTx.dirty = true
+	return nil
+}
+
+func (b *Binding) CapturedReads(_ context.Context, tx kernel.Tx, runID string) ([]kernel.CapturedRead, error) {
+	memTx, ok := tx.(*transaction)
+	if !ok {
+		return nil, ErrUnexpectedTx
+	}
+	return cloneCapturedReads(memTx.capturedReads[runID]), nil
 }
 
 func (b *Binding) Tokens(_ context.Context, tx kernel.Tx, runID string) ([]kernel.Token, error) {
@@ -153,10 +184,11 @@ func (b *Binding) AuditEntries(_ context.Context, tx kernel.Tx, tenantID string,
 }
 
 type transaction struct {
-	baseRevision uint64
-	dirty        bool
-	tokens       map[string][]kernel.Token
-	audits       map[string][]kernel.AuditEntry
+	baseRevision  uint64
+	dirty         bool
+	capturedReads map[string][]kernel.CapturedRead
+	tokens        map[string][]kernel.Token
+	audits        map[string][]kernel.AuditEntry
 }
 
 func auditKey(tenantID, runID string) string {
@@ -176,6 +208,34 @@ func cloneTokenMap(in map[string][]kernel.Token) map[string][]kernel.Token {
 		out[runID] = cloneTokens(tokens)
 	}
 	return out
+}
+
+func cloneCapturedReadMap(in map[string][]kernel.CapturedRead) map[string][]kernel.CapturedRead {
+	out := make(map[string][]kernel.CapturedRead, len(in))
+	for runID, reads := range in {
+		out[runID] = cloneCapturedReads(reads)
+	}
+	return out
+}
+
+func cloneCapturedReads(reads []kernel.CapturedRead) []kernel.CapturedRead {
+	if reads == nil {
+		return nil
+	}
+
+	out := make([]kernel.CapturedRead, len(reads))
+	for i, read := range reads {
+		out[i] = cloneCapturedRead(read)
+	}
+	return out
+}
+
+func cloneCapturedRead(read kernel.CapturedRead) kernel.CapturedRead {
+	cloned := read
+	cloned.ReaderOptions = append([]byte(nil), read.ReaderOptions...)
+	cloned.Locator = append([]byte(nil), read.Locator...)
+	cloned.Output = append([]byte(nil), read.Output...)
+	return cloned
 }
 
 func cloneTokens(tokens []kernel.Token) []kernel.Token {

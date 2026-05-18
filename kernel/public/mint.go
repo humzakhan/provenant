@@ -9,13 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gowebpki/jcs"
-	"github.com/shopspring/decimal"
+	"github.com/provenant/provenant/kernel/public/internal/phaseone"
 )
 
 var (
@@ -25,6 +22,7 @@ var (
 	ErrNilStore                       = errors.New("kernel: store is required")
 	ErrNilAuditSink                   = errors.New("kernel: audit sink is required")
 	ErrNilClock                       = errors.New("kernel: clock is required")
+	ErrStoreMissingCapturedReadStore  = errors.New("kernel: store does not persist captured reads")
 	ErrMissingRunID                   = errors.New("kernel: run id is required")
 	ErrMissingTenantID                = errors.New("kernel: tenant id is required")
 	ErrMissingSourcePath              = errors.New("kernel: source path is required")
@@ -40,8 +38,6 @@ var (
 	ErrCapturedReadOutputHashMismatch = errors.New("kernel: captured read output hash mismatch")
 	ErrCapturedReadOutputMismatch     = errors.New("kernel: captured read output mismatch")
 )
-
-var canonicalDecimalPattern = regexp.MustCompile(`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`)
 
 // ReadAndMintRequest identifies one source read plus the mintable output path.
 type ReadAndMintRequest struct {
@@ -103,6 +99,10 @@ func ReadAndMint(
 	if scope.TransactionalSubstrate() != store.TransactionalSubstrate() || scope.TransactionalSubstrate() != auditSink.TransactionalSubstrate() {
 		return ReadAndMintResult{}, ErrTransactionalScopeMismatch
 	}
+	capturedReadStore, ok := store.(CapturedReadStore)
+	if !ok {
+		return ReadAndMintResult{}, ErrStoreMissingCapturedReadStore
+	}
 
 	var result ReadAndMintResult
 	if err := scope.WithTx(ctx, func(ctx context.Context, tx Tx) error {
@@ -116,6 +116,9 @@ func ReadAndMint(
 			return err
 		}
 		if err := validateCapturedRead(source, read, run, request); err != nil {
+			return err
+		}
+		if err := capturedReadStore.PutCapturedRead(ctx, tx, read.CapturedRead); err != nil {
 			return err
 		}
 
@@ -241,31 +244,8 @@ type tokenMintPayload struct {
 }
 
 func extractMintValue(output []byte, outputPath string) (string, error) {
-	if outputPath != "$.value" {
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedOutputPath, outputPath)
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(output))
-	dec.UseNumber()
-
-	var payload struct {
-		Value any `json:"value"`
-	}
-	if err := dec.Decode(&payload); err != nil {
-		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
-	}
-	if err := dec.Decode(&struct{}{}); err != io.EOF {
-		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
-	}
-
-	switch value := payload.Value.(type) {
-	case string:
-		return value, nil
-	case json.Number:
-		return value.String(), nil
-	default:
-		return "", fmt.Errorf("%w: %s", ErrMintValueNotNumeric, outputPath)
-	}
+	value, err := phaseone.ExtractMintValue(output, outputPath)
+	return value, mapPhaseOneMintError(err)
 }
 
 func validateCapturedRead(source SourceBytes, read ReadResult, run Run, request ReadAndMintRequest) error {
@@ -297,34 +277,13 @@ func validateCapturedRead(source SourceBytes, read ReadResult, run Run, request 
 }
 
 func normalizeSourceValueRaw(raw string) (string, error) {
-	components, err := parseDecimalString(raw)
-	if err != nil {
-		return "", err
-	}
-	return components.serialize(true), nil
+	value, err := phaseone.NormalizeSourceValueRaw(raw)
+	return value, mapPhaseOneMintError(err)
 }
 
 func canonicalizeNumeric(raw string) (string, error) {
-	_, err := parseDecimalString(raw)
-	if err != nil {
-		return "", err
-	}
-
-	value, err := decimal.NewFromString(raw)
-	if err != nil {
-		return "", fmt.Errorf("%w: %s", ErrMintValueNotNumeric, raw)
-	}
-
-	rounded := value.RoundBank(9)
-	if rounded.IsZero() {
-		return "0.000000000", nil
-	}
-
-	text := rounded.StringFixedBank(9)
-	if strings.HasPrefix(text, "-0.") {
-		return "0.000000000", nil
-	}
-	return text, nil
+	value, err := phaseone.CanonicalizeNumeric(raw)
+	return value, mapPhaseOneMintError(err)
 }
 
 func canonicalizeDeterministicPayload(payload tokenMintPayload) ([]byte, error) {
@@ -336,15 +295,31 @@ func canonicalizeDeterministicPayload(payload tokenMintPayload) ([]byte, error) 
 }
 
 func tokenID(runID, capturedReadID, outputPath, unit, rawValue, valueCanonical string) string {
-	sum := sha256.Sum256([]byte(strings.Join([]string{
-		runID,
-		capturedReadID,
-		outputPath,
-		unit,
-		rawValue,
-		valueCanonical,
-	}, "\n")))
-	return "tok_" + hex.EncodeToString(sum[:16])
+	return phaseone.TokenID(runID, capturedReadID, outputPath, unit, rawValue, valueCanonical)
+}
+
+func mapPhaseOneMintError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, phaseone.ErrUnsupportedOutputPath):
+		return fmt.Errorf("%w: %s", ErrUnsupportedOutputPath, errorSuffix(err))
+	case errors.Is(err, phaseone.ErrOutputPathNotFound):
+		return fmt.Errorf("%w: %s", ErrOutputPathNotFound, errorSuffix(err))
+	case errors.Is(err, phaseone.ErrMintValueNotNumeric):
+		return fmt.Errorf("%w: %s", ErrMintValueNotNumeric, errorSuffix(err))
+	default:
+		return err
+	}
+}
+
+func errorSuffix(err error) string {
+	message := err.Error()
+	index := strings.LastIndex(message, ": ")
+	if index < 0 {
+		return message
+	}
+	return message[index+2:]
 }
 
 func genesisHash(tenantID string) []byte {
@@ -369,104 +344,4 @@ func auditHash(prevHash []byte, seq uint64, runID, tenantID string, kind EntryKi
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
-}
-
-type decimalParts struct {
-	negative bool
-	digits   string
-	scale    int
-	zero     bool
-}
-
-func parseDecimalString(raw string) (decimalParts, error) {
-	if !canonicalDecimalPattern.MatchString(raw) {
-		return decimalParts{}, fmt.Errorf("%w: %s", ErrMintValueNotNumeric, raw)
-	}
-
-	negative := strings.HasPrefix(raw, "-")
-	unsigned := strings.TrimPrefix(raw, "-")
-
-	mantissa := unsigned
-	exponent := 0
-	if index := strings.IndexAny(unsigned, "eE"); index >= 0 {
-		mantissa = unsigned[:index]
-		parsedExponent, err := strconv.Atoi(unsigned[index+1:])
-		if err != nil {
-			return decimalParts{}, fmt.Errorf("%w: %s", ErrMintValueNotNumeric, raw)
-		}
-		exponent = parsedExponent
-	}
-
-	integerPart := mantissa
-	fractionalPart := ""
-	if dot := strings.IndexByte(mantissa, '.'); dot >= 0 {
-		integerPart = mantissa[:dot]
-		fractionalPart = mantissa[dot+1:]
-	}
-
-	digits := integerPart + fractionalPart
-	scale := len(fractionalPart) - exponent
-
-	zero := true
-	for _, ch := range digits {
-		if ch != '0' {
-			zero = false
-			break
-		}
-	}
-
-	return decimalParts{
-		negative: negative,
-		digits:   digits,
-		scale:    scale,
-		zero:     zero,
-	}, nil
-}
-
-func (parts decimalParts) serialize(preserveTrailingZeros bool) string {
-	if parts.zero {
-		if parts.scale <= 0 {
-			return "0"
-		}
-		return "0." + strings.Repeat("0", parts.scale)
-	}
-
-	sign := ""
-	if parts.negative {
-		sign = "-"
-	}
-
-	if parts.scale <= 0 {
-		integer := trimLeadingZeros(parts.digits + strings.Repeat("0", -parts.scale))
-		return sign + integer
-	}
-
-	point := len(parts.digits) - parts.scale
-	var integerPart string
-	var fractionalPart string
-	switch {
-	case point <= 0:
-		integerPart = "0"
-		fractionalPart = strings.Repeat("0", -point) + parts.digits
-	default:
-		integerPart = trimLeadingZeros(parts.digits[:point])
-		fractionalPart = parts.digits[point:]
-	}
-
-	if !preserveTrailingZeros {
-		fractionalPart = strings.TrimRight(fractionalPart, "0")
-		if fractionalPart == "" {
-			return sign + integerPart
-		}
-	}
-
-	return sign + integerPart + "." + fractionalPart
-}
-
-func trimLeadingZeros(value string) string {
-	value = strings.TrimLeft(value, "0")
-	if value == "" {
-		return "0"
-	}
-	return value
 }
