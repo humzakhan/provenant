@@ -6,6 +6,8 @@ LLM agents writing finance work product — reconciliations, AP coding, variance
 
 Existing agent frameworks (LangChain, OpenAI Agents SDK, raw MCP clients) treat provenance as a logging concern: capture what happened. That is insufficient under [FINRA 2026](../architecture/references.md#finra-2026) and [SR 11-7](../architecture/references.md#sr-11-7), which require that every consequential decision be reconstructable, that the chain be tamper-evident, and that an independent reviewer be able to replay the reasoning. Logging-after-the-fact does not provide non-bypassability, fail-closed semantics, or the per-number grounding finance teams need to certify model outputs.
 
+Compounding the lineage problem, real financial inputs are messy: the same vendor appears under five name variants across AP, the GL, and the bank feed; locale-specific numeric forms (`1.234,56`) collide with US-locale parsers; ledger snapshots and source-of-record systems disagree on duplicates. The LLM gets handed dirty data, and provenance over hallucination does not help if the upstream cleaning step is itself unprovenanced — the chain begins with an undocumented normalization decision and the regulator's question "where did this number come from?" cannot be answered for the cleaning step, only for what the agent did with the already-cleaned result.
+
 A finance team that adopts an agent today either accepts unreviewable output (and the regulatory risk), wraps it in a brittle layer of hand-written validators that the agent can route around, or refuses to deploy at all. None of these is acceptable.
 
 ## The Core Thesis
@@ -16,7 +18,7 @@ The enforcement boundary is the `submit_answer` exit. In Mode A (CLI / embedded 
 
 ## The Solution
 
-Provenant is an open-source enforcement substrate for LLM agents in finance. It is not an agent, not a model, and not a workflow — it is the layer that turns whatever agent loop you already have into one whose every numeric claim is grounded, every step audited in a hash-chained log, and every run replay-deterministic on the portions that should be deterministic.
+Provenant is an open-source enforcement substrate for LLM agents in finance. It is not an agent, not a model, and not a workflow — it is the layer that turns whatever agent loop you already have into one whose every numeric claim is grounded, every step audited in a hash-chained log, and every run replay-deterministic on the portions that should be deterministic. Provenant ships normalizers and a match/dedupe tool surface so the *cleaning* step is also provenanced; cluster confidences become tokens; cluster membership is captured on the chain like any other tool output.
 
 Four kernel invariants are load-bearing and non-configurable (see [`architecture/README.md`](../architecture/README.md#core-invariants)): non-bypassable (the only exit is `submit_answer`), fail-closed (errors default to denial), schema-first (every tool, input, and output is typed against a published schema), replay-deterministic (the deterministic portion of every run is bit-identical on replay).
 
@@ -39,6 +41,7 @@ The detailed architecture, including subsystem decomposition, ADRs, and the dual
 - **Not a hosted SaaS in v0.** Multi-tenant SaaS is deferred to v0.5; v0 ships single-tenant and air-gapped.
 - **Not a guardrail vendor for chat assistants.** The provenance and audit story is overkill for general-purpose chat; it is calibrated for regulated finance work product.
 - **Not framework-coupled.** Provenant does not require LangChain, OpenAI Agents, or any specific framework. Integrations are adapter shims; the kernel is independent.
+- **Not an embedding-model or entity-resolution-policy vendor.** Provenant ships the `match` and `dedupe` tool surface and the kernel-registered built-in normalizer set, but does not bundle an embedding model and does not encode entity-resolution policy. Skill packs declare their normalizers and operators pick the backend (pgvector + an operator-configured embedding provider, future sqlite-vss, in-process-onnx, etc.) — the same shape as the `policy` and `extract` categories.
 
 ## Who This Is For
 
@@ -64,4 +67,5 @@ The common failure mode: the enforcement is in the prompt or in optional middlew
 - A platform engineer building a new finance-agent product imports the Provenant Go kernel as a library, wires it into their existing agent loop, and ships with full enforcement in days rather than building it themselves over months. The same engineer with a Python codebase points their agent at a Provenant sidecar over MCP and gets the same enforcement without rewriting their stack.
 - An MCP host vendor adds Provenant as a connector in their marketplace and immediately ships a regulated-finance-capable surface to their customers, without writing enforcement code.
 - The same reconciliation case, run on the same skill pack and inputs, produces byte-identical deterministic-portion audit chains across embedded-library mode, MCP-server mode, and CLI mode. This is the dual-mode pluggability promise made concrete.
+- Dedup decisions on messy ledgers are auditable to the same standard as the reconciliation outputs they feed: every cluster decision references its underlying `match` proposals, every cluster's `min_pairwise_confidence` is a kernel-minted token, every below-threshold cluster routes through HITL and its reviewer decision lands on the same hash chain.
 - A model risk reviewer signs off on a Provenant-backed deployment under SR 11-7 by reviewing the four DFAH-style metrics (trajectory determinism, decision determinism, faithfulness, accuracy) from the case bank, the threat-model documentation, and a sampled audit pack. The substrate carries the evidentiary burden; the reviewer focuses on the skill, not the plumbing.

@@ -28,6 +28,8 @@ Categories are *what* the tool does (`ledger`, `extract`, `reconcile`). Backends
 | Calc | Decimal-safe arithmetic + derived tokens | No (pure Go) | [calc/README.md](calc/README.md) |
 | Policy | Cited passage retrieval | Yes | [policy/README.md](policy/README.md) |
 | External | Market / FX / sanctions data, versioned | Yes | [external/README.md](external/README.md) |
+| Match | Typed fuzzy comparison with confidence (provenanced) | Yes | [match/README.md](match/README.md) |
+| Dedupe | Cluster records into equivalence classes (built on match; HITL-routed below threshold) | No (pure Go; invokes match) | [dedupe/README.md](dedupe/README.md) |
 
 ## The category-spec template
 
