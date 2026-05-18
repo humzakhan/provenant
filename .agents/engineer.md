@@ -43,10 +43,20 @@ These hold everywhere in the codebase. I do not negotiate them.
    packages. The import-guard check enforces this in CI. See
    `../architecture/adrs/0009-kernel-public-go-surface.md`.
 
-7. **MCP, HTTP, and CLI are equal adapters.** None has architectural primacy;
+7. **MCP, HTTP, and CLI are equal access surfaces.** None has architectural primacy;
    all three must produce byte-identical deterministic-portion chains on the same input.
-   Do not add logic to one adapter that is not available in all three.
+   Do not add logic to one access surface that is not available in all three.
    See `../architecture/adrs/0010-mcp-equal-not-primary.md`.
+
+8. **The library is the product. Storage is a deployment concern.** The kernel has no
+   storage requirement. It ships an in-memory binding under `kernel/public/memio/` as the
+   library-mode default, and emits a self-contained audit bundle as bytes. Persistent
+   bindings (`runtime/sqlite/` default, `runtime/postgres/` for multi-tenant) live
+   **outside the kernel module** and are owned by the runtime layer. If you are persisting
+   **to disk, network, or a database driver**, you are not in `kernel/` — you are in
+   `runtime/`. The in-memory binding at `kernel/public/memio/` is part of the kernel and
+   is the library-mode default.
+   See `../architecture/adrs/0011-storage-is-a-deployment-concern.md`.
 
 ---
 
@@ -95,6 +105,13 @@ Do not stub, comment-plan, or scaffold deferred items. See `../plans/implementat
 ## Before you touch code
 
 Run through this checklist before opening a file.
+
+0. **Am I persisting anything?**
+   If yes, you are **not in `kernel/`** — you are in `runtime/`. The kernel ships only the
+   in-memory binding under `kernel/public/memio/`; any SQLite, Postgres, S3, or other
+   driver code lives under `runtime/sqlite/`, `runtime/postgres/`, `runtime/blobstore/s3/`,
+   etc. The kernel module never imports a database driver, a network socket library, or
+   a file-handle-opening package. See ADR-0011.
 
 1. **Which spec doc covers this area?**
    - Kernel types, interfaces, TransactionalScope → `../architecture/subsystems/kernel.md`

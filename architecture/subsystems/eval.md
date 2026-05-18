@@ -7,7 +7,7 @@ Status: **v0 / load-bearing**
 ## Depends on
 - [`subsystems/audit.md`](audit.md) — replay reads from the audit chain
 - [`subsystems/kernel.md`](kernel.md) — token verification on replay
-- [`subsystems/storage.md`](storage.md) — case persistence
+- [`subsystems/storage.md`](storage.md) — case bank is host-supplied bytes in library mode; the runtime layer's persistent bindings (Phase 4) own case-bank persistence in MCP/CLI mode.
 - [`subsystems/skills.md`](skills.md) — per-skill thresholds
 
 ## Depended on by

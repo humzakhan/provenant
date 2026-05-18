@@ -342,8 +342,105 @@ type AuditSink interface {
 **Boot-time and runtime enforcement.**
 
 1. *Boot.* On kernel construction the kernel asserts `Store.TransactionalSubstrate() == AuditSink.TransactionalSubstrate() == TransactionalScope.TransactionalSubstrate()`. Disagreement → `kernel_integrity`, refuse to boot.
-2. *Runtime.* At every `TransactionalScope.WithTx` callback boundary, the kernel writes a tx-local canary row to a kernel-internal table (`kernel_tx_canary`, schema-defined in [`storage.md`](storage.md)) using the Store half of the injected pair, and immediately reads it back using the AuditSink half. If the read returns no row, the two halves are not sharing a transaction; the kernel fails closed with `kernel_integrity` (`error_code = kernel.transactional_scope_split`, per the canonical `error_code` table in [`audit.md`](audit.md#canonical-error_code-table)) before any audit-entry or token row is written. This catches a TransactionalScope implementation whose `WithTx` opens two separate transactions per call despite returning matched markers.
-3. *Test substrate.* `kernel/internal/memstore/` provides a `NullTransactionalScope` whose marker is `"provenant.substrate/memstore/sharedmap/v1"` and that backs Store and AuditSink with the same in-memory map. This is the only acceptable shared-substrate test scope; two separately-constructed memstores are not.
+2. *Runtime.* At every `TransactionalScope.WithTx` callback boundary, the kernel writes a tx-local canary row to a kernel-internal table (`kernel_tx_canary`, schema defined below in §"Canary schema") using the Store half of the injected pair, and immediately reads it back using the AuditSink half. If the read returns no row, the two halves are not sharing a transaction; the kernel fails closed with `kernel_integrity` (`error_code = kernel.transactional_scope_split`, per the canonical `error_code` table in [`audit.md`](audit.md#canonical-error_code-table)) before any audit-entry or token row is written. This catches a TransactionalScope implementation whose `WithTx` opens two separate transactions per call despite returning matched markers.
+3. *Test substrate / in-memory binding substrate.* `kernel/public/memio/` provides a `NullTransactionalScope` whose marker is `"provenant.substrate/memstore/sharedmap/v1"` and that backs Store and AuditSink with the same in-memory map. This is the only acceptable shared-substrate test scope; two separately-constructed memstores are not.
+
+### Canary schema
+
+`kernel_tx_canary` is a kernel-internal mechanism, not a storage projection — it is owned by the kernel and is implemented by every binding (in-memory, SQLite, Postgres) that hosts wire under `TransactionalScope`. The contract:
+
+- **Structure.** A single-row table (or its in-memory equivalent) with two columns: `run_id TEXT NOT NULL` and `tx_uuid TEXT NOT NULL`. The kernel generates a fresh `tx_uuid` per `WithTx` callback via the injected `RandSource`; the row is local to the open transaction.
+- **Write semantics.** Inside `WithTx`, before any first audit append or token write, the kernel calls the Store half to insert `(run_id, tx_uuid)`. The write is part of the open transaction.
+- **Read semantics.** Immediately after the write, the kernel calls the AuditSink half to read back `(run_id, tx_uuid)`. The read must observe the row exactly; observing no row, or a row with a different `tx_uuid`, proves the AuditSink half is not in the same transaction as the Store half.
+- **Substrate-marker check.** The canary write/read is performed only after the boot-time `TransactionalSubstrate()` marker-equality check has passed. The marker is the static guarantee; the canary is the dynamic proof.
+- **Disposition.** The canary row is rolled back along with the transaction at commit or abort time; no canary row outlives the `WithTx` callback. A persistent binding may keep the underlying physical table or implement it as a per-tx ephemeral structure; the kernel does not care which.
+
+**In-memory binding (`provenant.substrate/memstore/sharedmap/v1`).** For the in-memory substrate, the canary check is **structurally satisfied without a write**: because `Store` and `AuditSink` back the same in-process map by construction, a transaction split is impossible — there is no second substrate that could hold a divergent transactional view. The substrate marker `"provenant.substrate/memstore/sharedmap/v1"` is itself the proof; no canary row is written, and no canary row is read. This is a substrate-specific implementation of the canary contract (the contract says "prove Store and AuditSink share a transaction"; the in-memory binding proves it via construction rather than via runtime observation), **not a bypass**. The contract is honored; the proof is moved from runtime to type-system.
+
+### `RunState` (HITL pause/resume in library mode)
+
+[ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md), [`OVERVIEW.md`](../OVERVIEW.md) §3.1, and [`docs/KNOWN_TRADE_OFFS.md`](../../docs/KNOWN_TRADE_OFFS.md) #9 all reference a kernel-public `RunState` type that hosts serialize on pause and hand back on resume. This section is the source of truth for its shape and semantics.
+
+```go
+package kernelpublic
+
+import (
+    "encoding/json"
+    "time"
+)
+
+// RunState is the kernel-public snapshot a library-mode host serializes at a
+// HITL pause boundary and hands back on resume. The host is responsible for
+// where the bytes live; the kernel does not persist anything.
+type RunState struct {
+    Version           uint32           // RunState wire format version; bumped on schema-incompatible changes
+    KernelVersion     uint32           // running kernel version that produced this snapshot
+    RunID             string
+    TenantID          string
+    SkillID           string
+    SkillVersion      string
+    SkillPackHash     []byte           // sha256 of the loaded skill pack at run start
+    KernelHeaderHash  []byte           // sha256 of the kernel-immutable header text bytes
+    ResumePoint       ResumePointKind  // where the kernel will pick up on Resume
+    PendingHITL       *HITLPause       // populated iff ResumePoint == ResumePointHITL
+    ChainHead         AuditEntry       // the last AuditEntry written to the in-memory chain (used as prev_hash anchor on resume)
+    ChainHeadSeq      uint64           // seq of ChainHead
+    TokenGraph        []Token          // every token minted so far in this run
+    ModelTranscript   []ModelTurn      // the model-turn history needed to reconstruct the agent loop context
+    CredentialIdentityBaseline map[string]string // credential_id -> credential_identifier_hash captured at run start
+    CapturedReads     []CapturedRead   // every external read captured for replay determinism
+    StepIndex         uint64           // 0-based ordinal of the next model-response step
+    PausedAt          time.Time        // wall clock at pause; non-deterministic, stored for operator surfacing only
+}
+
+// ResumePointKind enumerates the kernel's valid pause boundaries.
+type ResumePointKind string
+
+const (
+    ResumePointHITL          ResumePointKind = "hitl"
+    ResumePointParallelBatch ResumePointKind = "parallel_batch_buffered"
+)
+
+// HITLPause carries the information a host needs to surface the pending review
+// and round-trip the decision back to Resume.
+type HITLPause struct {
+    ReviewID         string
+    RoutingReason    string
+    ConfidenceBucket string
+    Payload          json.RawMessage // canonical-JSON payload presented to the reviewer
+}
+
+// MarshalCanonicalJSON encodes the RunState as JCS-canonical JSON (RFC 8785).
+// The output is byte-stable across kernel patch versions for the same RunState
+// values; semantic-incompatible changes bump RunState.Version.
+func (rs *RunState) MarshalCanonicalJSON() ([]byte, error)
+```
+
+**Kernel pause/resume signatures.**
+
+```go
+// Pause halts a run at a kernel-recognized boundary (currently: a HITL
+// dispatch) and returns a typed RunState snapshot the host may serialize.
+// The kernel does not persist the snapshot; the host owns the bytes.
+func (k *Kernel) Pause(ctx context.Context, runID string) (*RunState, error)
+
+// Resume reconstructs a kernel run from previously-serialized RunState bytes
+// and a HITL decision (when applicable). The host is responsible only for
+// loading the bytes; the kernel does not care where they came from.
+//
+// runState is a JCS-canonical-JSON-encoded RunState produced by a prior
+// Pause call. The kernel validates RunState.Version against its accepted
+// minimum (set per kernel_version) before unmarshaling further; mismatch
+// returns a typed kernel.runstate_version_mismatch error and no run is
+// resumed. The kernel additionally validates KernelHeaderHash and
+// SkillPackHash against the current loaded kernel and skill pack; mismatch
+// fails closed with the appropriate typed kernel_integrity error.
+func (k *Kernel) Resume(ctx context.Context, runState []byte, decision *HITLDecision) (*RunResult, error)
+```
+
+**Version-mismatch rule.** Every kernel build declares a `RunStateMinAcceptedVersion` (alongside `kernel_version`). If a `RunState` whose `Version` field is below that minimum is passed to `Resume`, the call returns the typed error `kernel.runstate_version_mismatch` (added to the canonical `error_code` table in [`audit.md`](audit.md#canonical-error_code-table) under the `kernel.*` namespace) and writes no audit entries. The host can then take a kernel-specific migration path or refuse to resume. This protects against silent semantic drift when a host serializes a `RunState` under one kernel patch version and loads it under another.
+
+**Host responsibility (serialization is bytes, nothing else).** The kernel emits the snapshot as a typed Go value with `MarshalCanonicalJSON`. The host serializes those bytes to whatever substrate it operates (a database column, a Kafka topic, an object-store key, a Lambda event payload, a base64 string in a job-queue record). The kernel **does not persist** and has no opinion on where the bytes lived. On resume, the host loads the bytes and hands them to `Resume`. See [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md) and [`docs/KNOWN_TRADE_OFFS.md`](../../docs/KNOWN_TRADE_OFFS.md) #9 ("Library mode does not ship cross-process HITL persistence").
 
 Phase 0's done-when (see [`../../implementation-plan.md`](../../plans/implementation-plan.md#phase-0--establish-the-kernel-module-boundary)) ratifies the boot-time and tx-local-canary tests against this contract.
 

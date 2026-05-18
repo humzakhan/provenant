@@ -36,8 +36,9 @@ ones are the main issue.
   `SubmitAnswer` persistence, orphan-recovery) go through `TransactionalScope.WithTx`?
 - Is any new code injecting a `Store` or `AuditSink` without also injecting a matching
   `TransactionalScope` with the same `TransactionalSubstrate()` marker?
-- Is `NullTransactionalScope` being used outside `kernel/internal/memstore/`? It is
-  acceptable only for the in-memory test sink that backs both interfaces from the same map.
+- Is `NullTransactionalScope` being used outside `kernel/public/memio/`? It is
+  acceptable only inside the in-memory binding that backs both interfaces from
+  the same map.
 
 ### 3. Fail-closed paths
 
@@ -97,6 +98,18 @@ These patterns are immediate flags. I stop and ask before approving.
 
 - **Any `net/*` or `database/sql` import in `kernel/` public surface.** The import-guard
   CI check catches this, but I flag it before CI runs.
+
+- **Any kernel/ code that opens a network socket, file handle, or DB connection.** Per
+  ADR-0011, the kernel has no storage requirement. Persistence belongs in `runtime/sqlite/`,
+  `runtime/postgres/`, or `runtime/blobstore/s3/`. A `os.OpenFile`, `net.Dial`, `sql.Open`,
+  or `pgx.Connect` call under `kernel/...` is a hard reject — even if the file is named
+  `_test.go`. Tests under `kernel/` use `kernel/public/memio/` exclusively.
+
+- **Any new kernel-public type that requires a database driver, a transport client, or
+  a process-lifecycle import at any transitive depth.** The snapshot test in
+  `kernel/public/snapshot_test.go` flags this, but I check during review. A new public type
+  whose only sensible implementation lives in `runtime/` belongs in `runtime/`, not in
+  `kernel/public/`.
 
 - **JSON marshalling without JCS canonicalization on the hash-input path.** Standard
   `encoding/json` does not guarantee key ordering. Any code that feeds a marshalled
@@ -220,8 +233,9 @@ I do not approve Phase 0 work that skips any of these. They are not optional pol
   legitimate non-deterministic field; it just must not go into `Deterministic`.
 - Blocking a change because a validator timeout results in a block action — that is
   the correct fail-closed behavior per ADR-0003.
-- Blocking `NullTransactionalScope` usage in `kernel/internal/memstore/` — it is the
-  one authorized test-only location.
+- Blocking `NullTransactionalScope` usage in `kernel/public/memio/` — it is the
+  one authorized location (the in-memory binding that backs `Store` and
+  `AuditSink` from the same map).
 - Blocking the absence of signing infrastructure for skill packs — unsigned local packs
   are the v0 contract; signing is v0.5+ (KNOWN_TRADE_OFFS.md §Host conformance attestation
   and the Deferred section of `../plans/implementation-plan.md`).
