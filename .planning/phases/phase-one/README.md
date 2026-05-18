@@ -3,6 +3,9 @@
 ## Goal
 Prove the in-process core loop with less code, not more: fixture/source bytes -> one structured reader -> captured read -> kernel-minted token -> minimal bundle -> verify/replay -> mutation fails closed.
 
+## Packet sequence
+Use `.planning/phases/phase-one/sequential-work-packets.md` for the PR-by-PR packet order, same-worktree sequencing, and commit boundaries. Parallel work is only for read-only planning/review, or isolated worktrees.
+
 ## Recommended single reader
 Use the smallest JSON fixture reader: `extract.json`.
 If the implementation base already exposes the same narrow backend as `extract.json_value`, keep that name, but do not widen the reader surface.
