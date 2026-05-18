@@ -3,6 +3,7 @@ package kernel
 import (
 	"context"
 	"testing"
+	"time"
 )
 
 func TestContractSpineCompiles(t *testing.T) {
@@ -59,6 +60,7 @@ func TestContractSpineCompiles(t *testing.T) {
 	var _ TransactionalScope = transactionalScopeFunc{}
 	var _ SourceResolver = sourceResolverFunc{}
 	var _ SourceReader = sourceReaderFunc{}
+	var _ Clock = clockFunc{}
 
 	if token.Source.CapturedReadID != read.CapturedRead.ID {
 		t.Fatalf("token source does not reference captured read")
@@ -103,4 +105,10 @@ type sourceReaderFunc struct{}
 
 func (sourceReaderFunc) Read(context.Context, Run, SourceBytes, SourceSelector) (ReadResult, error) {
 	return ReadResult{}, nil
+}
+
+type clockFunc struct{}
+
+func (clockFunc) Now() time.Time {
+	return time.Time{}
 }

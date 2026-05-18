@@ -1,6 +1,9 @@
 package kernel
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // Tx is an opaque transaction handle owned by an injected substrate.
 type Tx interface{}
@@ -33,4 +36,9 @@ type AuditSink interface {
 	TransactionalSubstrate() string
 	AppendAuditEntry(ctx context.Context, tx Tx, entry AuditEntry) (AuditEntry, error)
 	AuditEntries(ctx context.Context, tx Tx, tenantID string, runID string) ([]AuditEntry, error)
+}
+
+// Clock supplies non-deterministic wall-clock timestamps to kernel code.
+type Clock interface {
+	Now() time.Time
 }
