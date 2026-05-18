@@ -1,46 +1,39 @@
 # Implementation sequence
 
-Keep the build/test loop tight: land the smallest runnable slice first, prove it in isolation, then expand.
+Keep the loop tight: each phase should be independently buildable, testable, and reviewable.
 
-## Track 1 — Core loop: kernel + source readers + provenance proof
+## Phase 1 — Prove the core loop in-process
 
-Goal: a minimal buildable/testable slice that proves the kernel/tool/provenance loop end to end.
+### Track 1 — Kernel + one reader + provenance
+- **Implementation boundaries:** kernel boundary, in-memory harness, one structured reader (`extract.json` or `extract.csv_rows`), audit-chain/proof emission, in-process verification. Do **not** add CLI/HTTP/MCP, persistence, export polish, or broad reader coverage.
+- **Functionality boundaries:** a declared source path can mint a token; one reader call runs end to end; reads are captured; the emitted bundle can be replayed and verified; a targeted mutation fails closed.
+- **Pass criteria:** unit/integration coverage uses source bytes/fixtures only; emitted bundle verifies; replay reproduces captured reads; mutation test fails as expected; any required fixture/doc note is updated.
 
-Start with:
-- the kernel boundary and in-memory harness
-- one or two structured source-reader tools first (`extract.json`, `extract.csv_rows` or `extract.jsonl`)
-- captured reads + audit-chain emission
-- proof/audit verification over bundle bytes
+### Track 2 — Fixtures + failure harness
+- **Implementation boundaries:** fixture wiring, captured-read assertions, negative/mutation tests, minimal test helpers. Do **not** add new surfaces or storage.
+- **Functionality boundaries:** Phase 1 remains in-memory and deterministic; no user-facing access surface beyond direct test invocation.
+- **Pass criteria:** tests can be run repeatedly from fixtures; failure mode is asserted in the test; no runtime adapter code is touched.
 
-Done-when for this track:
-- a source-reader call runs end to end
-- a token is minted from a declared source path
-- provenance is captured and replayable
-- proof/audit verification passes on the emitted artifact
-- a targeted mutation fails closed
+## Phase 2 — Expand reader coverage and add thin access surfaces
 
-Keep this slice testable before the full ecosystem exists:
-- use source bytes/fixtures directly
-- verify captured reads and audit bundles in-process
-- avoid runtime adapters, persistent storage, and export polish until the core loop is green
+### Track 1 — Remaining readers + selector/window edges
+- **Implementation boundaries:** additional source-reader coverage, selector/window edge cases, replay compatibility. Do **not** change proof/audit semantics or add export/runtime layers.
+- **Functionality boundaries:** more source shapes are readable through the same proven kernel; edge cases resolve the same way under replay.
+- **Pass criteria:** focused tests exist for each new reader/edge case; replay/proof still passes unchanged; negative cases remain fail-closed.
 
-Ship this as small commits/PRs, each with one verifiable behavior.
+### Track 2 — CLI/HTTP/MCP shells + derived export
+- **Implementation boundaries:** thin wrappers over the proven core, export artifacts, convenience views. Do **not** add an alternate provenance store or divergent read path.
+- **Functionality boundaries:** the same verified core behavior is reachable from each access surface; exported artifacts are derived from captured provenance.
+- **Pass criteria:** each shell has at least one end-to-end smoke test; export validates against the same bundle bytes/proof; no surface introduces a second source of truth.
 
-## Track 2 — Expand surfaces: runtime, export, hardening
+## Phase 3 — Harden and broaden confidence
 
-Goal: once the core loop is stable, widen the system without changing the proven kernel/provenance contract.
+### Track 1 — Negative, recovery, and perf coverage
+- **Implementation boundaries:** broader fixtures, replay failures, mutation cases, recovery checks, lightweight perf checks. Do **not** widen the kernel contract.
+- **Functionality boundaries:** known bad inputs fail closed; recoverable paths return to the verified state; core behavior stays stable under load checks.
+- **Pass criteria:** negative/recovery tests pass; perf smoke stays within agreed bounds; captured-read assertions remain green.
 
-Add in this order:
-- remaining source-reader coverage and selector/window edge cases
-- runtime/access surfaces (CLI, HTTP, MCP) as thin shells over the proven core
-- export artifacts and convenience views
-- hardening: broader fixtures, negative cases, perf checks, and recovery tests
-
-Done-when for this track:
-- the same verified core behavior is reachable through each access surface
-- export remains derived from the captured provenance, not a second source of truth
-- failure cases stay fail-closed under replay, export, and runtime paths
-
-## Working rule
-
-Do not wait for the whole ecosystem to build before testing. If a slice can prove one invariant, land it, validate it, and move on.
+### Track 2 — Regression docs and release-ready checks
+- **Implementation boundaries:** phase-summary docs, test matrix updates, final integration validation. No new features.
+- **Functionality boundaries:** the documented path from source bytes to verified artifact is complete and repeatable.
+- **Pass criteria:** the doc checklist matches implemented behavior; end-to-end validation from each surface passes; no open gaps remain in the phase handoff.
