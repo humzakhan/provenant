@@ -76,6 +76,17 @@ func TestReadAndMintSuccess(t *testing.T) {
 	}
 
 	if err := binding.WithTx(context.Background(), func(ctx context.Context, tx kernel.Tx) error {
+		reads, err := binding.CapturedReads(ctx, tx, run.ID)
+		if err != nil {
+			return err
+		}
+		if len(reads) != 1 {
+			t.Fatalf("stored captured reads = %d, want 1", len(reads))
+		}
+		if reads[0].ID != result.ReadResult.CapturedRead.ID {
+			t.Fatalf("stored captured read id = %s, want %s", reads[0].ID, result.ReadResult.CapturedRead.ID)
+		}
+
 		tokens, err := binding.Tokens(ctx, tx, run.ID)
 		if err != nil {
 			return err
@@ -512,6 +523,14 @@ func assertNoStoredState(t *testing.T, binding *memio.Binding, run kernel.Run) {
 	t.Helper()
 
 	if err := binding.WithTx(context.Background(), func(ctx context.Context, tx kernel.Tx) error {
+		reads, err := binding.CapturedReads(ctx, tx, run.ID)
+		if err != nil {
+			return err
+		}
+		if len(reads) != 0 {
+			t.Fatalf("stored captured reads = %d, want 0", len(reads))
+		}
+
 		tokens, err := binding.Tokens(ctx, tx, run.ID)
 		if err != nil {
 			return err

@@ -31,6 +31,12 @@ type Store interface {
 	Tokens(ctx context.Context, tx Tx, runID string) ([]Token, error)
 }
 
+// CapturedReadStore records and reads captured source-read evidence for a run.
+type CapturedReadStore interface {
+	PutCapturedRead(ctx context.Context, tx Tx, capturedRead CapturedRead) error
+	CapturedReads(ctx context.Context, tx Tx, runID string) ([]CapturedRead, error)
+}
+
 // AuditSink appends and reads the tenant-scoped audit chain for a run.
 type AuditSink interface {
 	TransactionalSubstrate() string

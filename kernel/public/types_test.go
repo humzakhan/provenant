@@ -56,6 +56,7 @@ func TestContractSpineCompiles(t *testing.T) {
 	}
 
 	var _ Store = storeFunc{}
+	var _ CapturedReadStore = storeFunc{}
 	var _ AuditSink = auditSinkFunc{}
 	var _ TransactionalScope = transactionalScopeFunc{}
 	var _ SourceResolver = sourceResolverFunc{}
@@ -72,8 +73,14 @@ func TestContractSpineCompiles(t *testing.T) {
 
 type storeFunc struct{}
 
-func (storeFunc) TransactionalSubstrate() string                      { return "provenant.substrate/test/memory/v1" }
-func (storeFunc) PutToken(context.Context, Tx, Token) error           { return nil }
+func (storeFunc) TransactionalSubstrate() string            { return "provenant.substrate/test/memory/v1" }
+func (storeFunc) PutToken(context.Context, Tx, Token) error { return nil }
+func (storeFunc) PutCapturedRead(context.Context, Tx, CapturedRead) error {
+	return nil
+}
+func (storeFunc) CapturedReads(context.Context, Tx, string) ([]CapturedRead, error) {
+	return nil, nil
+}
 func (storeFunc) Tokens(context.Context, Tx, string) ([]Token, error) { return nil, nil }
 
 type auditSinkFunc struct{}
