@@ -2,18 +2,58 @@
 
 Status: **v0**
 
-> Provenant supports four deployment shapes: local dev, single-tenant production, multi-tenant SaaS, and air-gapped. Each shape has a clear configuration story and operational runbook. The kernel binary and Postgres schema are identical across all four; what differs is topology, isolation, and operations.
+> Provenant ships in three modes per [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md): **library mode** (the kernel as a Go library embedded by the host; no required substrate), **MCP server access surface** (the optional `provenant-server` daemon; SQLite-by-default for HITL state, Postgres for multi-tenant), and **CLI access surface** (the optional `provenant` binary; SQLite-by-default for HITL state, or no storage at all in batch / bundle-emitting mode). The library is the product; the access surfaces are thin runtime-layer shells over the same kernel. Storage is a deployment-shape choice, not a kernel requirement.
 
 ## Deployment shapes
 
-| Shape | Tenants | Postgres | Object store | Operator | Status |
-|---|---|---|---|---|---|
-| Local dev | 1 (self) | docker-compose | MinIO via docker-compose | developer | v0 |
-| Single-tenant production | 1 | dedicated instance | S3-compatible | customer ops | v0 |
-| Multi-tenant SaaS | many | shared with RLS, or schema-per | shared bucket prefix | Provenant (us) | v0.5 |
-| Air-gapped on-prem | 1+ | on-prem Postgres | on-prem MinIO / Ceph | customer ops | v0 |
+The deployment-shape table below covers the **optional MCP and CLI access surfaces**. Library-mode embedders inherit the host application's deployment shape — provenant is a Go dependency the host imports, and the host decides everything about topology, persistence, isolation, and operations. The "library mode" row is included as a reminder that it has no required substrate.
 
-## Local dev
+| Mode | Persistent storage | Object store | Operator | Status |
+|---|---|---|---|---|
+| Library mode (Mode A) | **None required.** Library emits audit bundle as bytes; host decides what to do with them. SQLite or any host-chosen substrate optional if the host wants HITL pause/resume across processes. | None required (blobs in-bundle) or host-chosen | host application | v0 |
+| Local dev (access surface) | SQLite via single file, or Postgres via docker-compose | MinIO via docker-compose (optional) | developer | v0 |
+| Single-tenant production (access surface) | SQLite (single-machine) or dedicated Postgres instance | S3-compatible (optional; for large-blob park-out) | customer ops | v0 |
+| Multi-tenant SaaS (access surface) | Postgres shared with RLS, or schema-per | shared bucket prefix | Provenant (us) | v0.5 |
+| Air-gapped on-prem (access surface) | SQLite or on-prem Postgres | on-prem MinIO / Ceph (optional) | customer ops | v0 |
+
+## Library mode (Mode A)
+
+The host application imports `kernel/public/...` as a Go module dependency, optionally binds `kernel/public/memio/` (the first-class in-memory binding) as the I/O substrate, and calls `kernel.Run(ctx, input)`. The kernel emits a self-contained audit bundle (`audit.jsonl` + `audit.csv` + `audit.pdf` + `token-graph.json`) as bytes that the host stores, signs, forwards, or discards as it sees fit.
+
+```go
+// Minimal library-mode invocation
+import (
+    "github.com/provenant/provenant/kernel/public"
+    "github.com/provenant/provenant/kernel/public/memio"
+)
+
+io := memio.New()  // ships an in-process Store + AuditSink + BlobStore + TransactionalScope
+result, bundle, err := kernel.Run(ctx, input, kernel.WithIO(io))
+if err != nil { return err }
+host.Persist(bundle)  // bundle is a self-contained audit pack
+```
+
+There is no required substrate. There is no `provenant-server` running. No port is open. No file is created unless the host writes the bundle bytes somewhere. **The kernel module imports nothing under `runtime/`.** This is the recommended deployment shape for: hosts that already operate their own job queue / database / state store, CI gates, batch jobs, notebooks, embedded use inside a larger Go service.
+
+If the host needs HITL pause/resume across process boundaries, the host serializes the kernel's `RunState` snapshot on pause and hands it back on resume; see [`docs/KNOWN_TRADE_OFFS.md`](../../docs/KNOWN_TRADE_OFFS.md) §"Library mode does not ship cross-process HITL persistence; host serializes RunState itself" and [`subsystems/storage.md`](../subsystems/storage.md#hitl-pauseresume-in-library-mode-is-the-hosts-responsibility).
+
+## Library-mode local dev (recommended)
+
+If you are embedding the kernel as a Go library, local dev is a four-line example. No daemons, no containers, no ports.
+
+```go
+import "github.com/provenant/provenant/kernel/public"
+
+result, _ := kernel.Run(ctx, input)
+bundle := result.Bundle
+// host.Persist(bundle) — write the bundle bytes wherever; or read them in-process.
+```
+
+That is the entire local-dev setup for library-mode embedders. No `docker compose up`. No Postgres. No MinIO. The bundle bytes are the artifact; the host decides what to do with them.
+
+## Local dev for the optional MCP/CLI access surfaces
+
+> **If you are only embedding the library, you do not need any of this.** This section is for hosts that consume the optional MCP server or CLI access surfaces over a wire.
 
 Single command:
 

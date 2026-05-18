@@ -20,9 +20,9 @@ A new contributor should read this README, then [ADR-0001](adrs/0001-go-as-kerne
 
 ## Reading paths
 
-**Joining the project:** [`docs/thesis.md`](../docs/thesis.md) → `product.md` → this README → ADRs 0001–0005 → the subsystem you're touching.
+**Joining the project:** [`docs/thesis.md`](../docs/thesis.md) → [`OVERVIEW.md`](OVERVIEW.md) → [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md) → [ADR-0009](adrs/0009-kernel-public-go-surface.md) → [ADR-0010](adrs/0010-mcp-equal-not-primary.md) → this README → the subsystem you're touching.
 
-**Integrating Provenant:** [`docs/thesis.md`](../docs/thesis.md) → `product.md` → [`adapters/mcp.md`](adapters/mcp.md) (or your adapter) → the [`tools/<category>/README.md`](tools/README.md) for the tools you'll use.
+**Integrating Provenant:** [`docs/thesis.md`](../docs/thesis.md) → [`OVERVIEW.md`](OVERVIEW.md) §7 (deployment modes: library, MCP, CLI) → if embedding the library, [`subsystems/kernel.md`](subsystems/kernel.md) and [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md); if using the MCP access surface, [`adapters/mcp.md`](adapters/mcp.md); if using the CLI, [`adapters/cli.md`](adapters/cli.md) → the [`tools/<category>/README.md`](tools/README.md) for the tools you'll use.
 
 **Adding a new tool:** [`tools/README.md`](tools/README.md) (the conformance checklist) → the closest existing tool spec → relevant ADR if your tool challenges a design assumption.
 
@@ -55,12 +55,14 @@ A new contributor should read this README, then [ADR-0001](adrs/0001-go-as-kerne
                   └────────────────┬────────────────┘
                                    │
                   ┌────────────────▼────────────────┐
-                  │           Storage               │
-                  │  Postgres  +  Object Store (S3) │
+                  │   Storage (deployment concern)  │
+                  │  in-memory (library default)    │
+                  │  SQLite (runtime default)       │
+                  │  Postgres + S3 (runtime opt.)   │
                   └─────────────────────────────────┘
 ```
 
-The kernel exposes a single internal API surface. Every adapter is a translation between that surface and the host framework's idioms.
+The kernel exposes a single public Go API surface. The MCP server and CLI are **access surfaces on the side**, thin runtime-layer shells over that same kernel — not the product itself. The kernel has no storage requirement; the bottom box is a deployment-shape choice, not a kernel dependency. See [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md) and [OVERVIEW.md](OVERVIEW.md) §1.
 
 ## Core invariants
 
@@ -82,7 +84,7 @@ These invariants are the value proposition. Everything else is in service of the
 | Guard pipeline | Pre-LLM input guards, post-LLM output validators | [guards.md](subsystems/guards.md) |
 | Tool registry | Tool registration contract, audit middleware | [tools.md](subsystems/tools.md) |
 | Skill loader | Skill pack format and lifecycle | [skills.md](subsystems/skills.md) |
-| Storage | Postgres schema, object store, retention | [storage.md](subsystems/storage.md) |
+| Storage (runtime-layer reference bindings; not a kernel concern) | Primary reference: [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md). Binding details: reference SQLite + Postgres bindings for the optional access surfaces; kernel itself has no storage requirement. | [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md); [storage.md](subsystems/storage.md) |
 | Audit logger | Hash-chained log, replay, export | [subsystems/audit.md](subsystems/audit.md) |
 | Eval harness | Case bank, DFAH-style metrics, benchmarks | [eval.md](subsystems/eval.md) |
 | HITL router | Routing, approvals, diff/redline | [hitl.md](subsystems/hitl.md) |
@@ -123,7 +125,10 @@ Architecture Decision Records capture the *why* with paper citations. Read these
 | [0005](adrs/0005-determinism-faithfulness-independent.md) | Determinism and faithfulness as independent metrics | [DFAH](references.md#dfah) |
 | [0006](adrs/0006-skill-pack-format.md) | Skill pack as the unit of workflow | [Moody's modular AI](references.md#moodys-modular) |
 | [0007](adrs/0007-mcp-as-primary-adapter.md) | MCP as the primary adapter | — |
-| [0008](adrs/0008-postgres-as-canonical-store.md) | Postgres as the canonical transactional store | — |
+| [0008](adrs/0008-postgres-as-canonical-store.md) | Postgres as the canonical transactional store (**superseded by 0011**) | — |
+| [0009](adrs/0009-kernel-public-go-surface.md) | Kernel public Go surface as v0 first-class | — |
+| [0010](adrs/0010-mcp-equal-not-primary.md) | MCP, HTTP, and CLI are equal first-class adapters | — |
+| [0011](adrs/0011-storage-is-a-deployment-concern.md) | Storage is a deployment concern, not a kernel concern | — |
 
 ## Cross-cutting concerns
 

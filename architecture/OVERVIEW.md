@@ -6,70 +6,43 @@ Start with [`docs/thesis.md`](../docs/thesis.md) for the product claim. Read [`a
 
 ## 1. System overview
 
-Provenant is a kernel plus adapters plus tools plus skills, with storage as a separate substrate. The novelty is not the box diagram — it is the boundary lines.
+**The core product is the enforcement layer as a library.** It is plugged into anything that already drives an agent loop — a LangChain pipeline, a Go service, a notebook, Claude Code over MCP, a CI step. The library receives input, enforces invariants while computing, and emits a complete provenance bundle as bytes. **What the caller does with those bytes is the caller's concern.** The MCP server and the CLI are *access surfaces* that exist on the side, for hosts that don't want to (or can't) embed the library directly.
 
 ```
-                       ┌────────────────────────────────────────────────┐
-                       │              HOST APPLICATIONS                  │
-                       │  (Claude Code, Claude.ai, Cursor, custom        │
-                       │   Python/TS/Go agents, batch jobs, CI)          │
-                       └────────────────────────────────────────────────┘
-                                          │
-   ─── wire-protocol edge ────────────────┼───── library edge ──────────────
-                                          │
-   ┌──────────────────────────────────────┴──────────────────────────────┐
-   │                      ADAPTER SHIMS (thin)                            │
-   │  ┌────────┐  ┌────────┐  ┌────────┐  ┌──────────┐  ┌──────────┐    │
-   │  │  MCP   │  │  HTTP  │  │  CLI   │  │ LangChain│  │  OpenAI  │    │
-   │  │ server │  │  API   │  │harness │  │ adapter  │  │ adapter  │    │
-   │  └────┬───┘  └────┬───┘  └────┬───┘  └────┬─────┘  └────┬─────┘    │
-   │       │           │           │           │ (v0.5)      │ (v0.5)   │
-   │       └───────────┴───────────┴───────────┴─────────────┘          │
-   │                                │                                    │
-   └────────────────────────────────┼────────────────────────────────────┘
-                                    │
-                                    ▼
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │                       RUNTIME LAYER (Go)                              │
-   │  Process lifecycle, transport plumbing, auth, rate limits, daemon-   │
-   │  ization, MCP/HTTP/CLI surfacing of kernel APIs. Does NOT contain    │
-   │  enforcement logic — it delegates every decision to the kernel.      │
-   └──────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │                  PROVENANT KERNEL (pure library)                      │
-   │   ┌──────────────────────────────────────────────────────────────┐   │
-   │   │  Provenance engine (tokens, mint, derive, verify)            │   │
-   │   │  Guard pipeline (pre-LLM input guards, post-LLM validators)  │   │
-   │   │  Tool registry (schema-validated dispatch + audit middleware)│   │
-   │   │  Harness (Mode A embedded agent loop; pure orchestration)    │   │
-   │   │  Skill loader (pack format, lifecycle, signature verify)     │   │
-   │   │  Audit logger (hash-chain construction; pure)                │   │
-   │   │  Case bank / eval harness (replay, four DFAH-style metrics)  │   │
-   │   │  HITL router (decision-only; transport injected)             │   │
-   │   └──────────────────────────────────────────────────────────────┘   │
-   │   Public API: function calls only. No net/*, database/sql, os, or    │
-   │   process-lifecycle imports leak through the kernel's public surface. │
-   │   I/O is injected via interfaces (Store, BlobStore, ModelClient,     │
-   │   Clock, RandSource, AuditSink).                                     │
-   └──────────────────────────────────────────────────────────────────────┘
-                                    │
-                                    ▼
-   ┌──────────────────────────────────────────────────────────────────────┐
-   │                          STORAGE                                      │
-   │   Postgres 15+ (transactional canonical store)                        │
-   │   S3-compatible object store (blobs: docs, OCR, full prompts/resp.)   │
-   └──────────────────────────────────────────────────────────────────────┘
+                      ┌─────────────────────────────┐
+                      │     Provenant kernel        │
+                      │   (Go library, no I/O,      │
+                      │   no storage assumption)    │
+                      │                             │
+                      │   - Guard pipeline          │
+                      │   - Tool registry           │
+                      │   - Token graph             │
+                      │   - Hash-chained audit      │
+                      │   - submit_answer           │
+                      │   - HITL pause/resume API   │
+                      └──────────────┬──────────────┘
+                                     │ pure-Go public API
+       ┌─────────────────────────────┼─────────────────────────────┐
+       │                             │                             │
+   ┌───▼────────┐               ┌────▼─────────┐             ┌─────▼──────┐
+   │ Embedded   │               │  MCP server  │             │    CLI     │
+   │  (Mode A)  │               │  (Mode B)    │             │   binary   │
+   │            │               │              │             │            │
+   │ Your host  │               │ Optional     │             │ Optional   │
+   │ owns the   │               │ access       │             │ access     │
+   │ lifecycle  │               │ surface for  │             │ surface    │
+   │ and the    │               │ hosts that   │             │ for batch  │
+   │ bytes      │               │ talk MCP     │             │ + scripts  │
+   └────────────┘               └──────────────┘             └────────────┘
 ```
 
-Compared to [`architecture/README.md`](README.md)'s diagram, this view makes explicit a three-way split that the current docs blur:
+The library is the product. MCP and CLI are **thin shells that wrap the library** and trade convenience for transparency (e.g. you can't see internal events the library exposes naturally as Go return values). **Storage is a concern of (a) the host that calls the library and (b) the optional MCP/CLI surfaces *when they choose to persist*, not of provenant itself.** See [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md).
 
-- **Adapter shims** are thin translation layers between a host's idioms and runtime APIs.
-- **Runtime layer** owns process and transport concerns. Enforcement does not live here.
-- **Kernel** is pure: no I/O at the public surface, no `net/*` or `database/sql` import in the public API. Every I/O dependency is an injected interface.
+The novelty is not the box diagram — it is the boundary lines:
 
-This separation is the mechanical foundation of the dual-mode pluggability promise in [`docs/thesis.md`](../docs/thesis.md). A host that wants to embed Provenant links the kernel directly and injects its own I/O implementations; a host that wants a sidecar talks to the runtime layer, which in turn calls the kernel.
+- **Kernel** is pure: no I/O at the public surface, no `net/*` or `database/sql` import anywhere transitively reachable from `kernel/`. Every I/O dependency is an injected interface. The kernel ships a **first-class in-memory binding** of those interfaces under `kernel/public/memio/` as the library-mode default; it ships nothing else as a storage binding.
+- **Access surfaces** (MCP server, CLI, future HTTP) are thin runtime-layer shells over the kernel public Go surface. None has architectural primacy ([ADR-0010](adrs/0010-mcp-equal-not-primary.md)). All three must produce byte-identical deterministic-portion audit chains on the same input ([implementation-plan.md](../plans/implementation-plan.md) Phase 4 done-when).
+- **Persistent storage bindings** (`runtime/sqlite/` default, `runtime/postgres/` for multi-tenant) live **outside the kernel module** and are owned by the runtime layer. A host that embeds the library is free to ignore them entirely.
 
 For the canonical invariants (non-bypassable, fail-closed, schema-first, replay-deterministic), see [`architecture/README.md`](README.md#core-invariants). Every component below preserves them.
 
@@ -77,17 +50,18 @@ For the canonical invariants (non-bypassable, fail-closed, schema-first, replay-
 
 | Layer | Choice | Rationale | Reference |
 |---|---|---|---|
-| Kernel language | Go | Single static binary, mature Postgres/MCP ecosystem, contributor pool in fintech ops, strong-enough type system for tool contracts | [ADR-0001](adrs/0001-go-as-kernel-language.md) |
-| Canonical transactional store | Postgres 15+ | JSONB for variable payloads, row-level security for multi-tenant, hash-chain-friendly append semantics, single-binary-friendly | [ADR-0008](adrs/0008-postgres-as-canonical-store.md), [`subsystems/storage.md`](subsystems/storage.md) |
-| Blob store | S3-compatible (S3, MinIO, GCS, R2) | Source PDFs, OCR outputs, full prompts/responses are kilobyte-to-megabyte payloads ill-suited to Postgres; S3 API is universal | [`subsystems/storage.md`](subsystems/storage.md) |
+| Kernel language | Go | Single static binary, mature MCP ecosystem, contributor pool in fintech ops, strong-enough type system for tool contracts | [ADR-0001](adrs/0001-go-as-kernel-language.md), [ADR-0009](adrs/0009-kernel-public-go-surface.md) |
+| Library-mode persistence | **None required.** In-memory binding under `kernel/public/memio/` ships as the first-class default; emits a self-contained audit bundle as bytes | The kernel has no storage requirement; the bundle is the canonical output | [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md), [`subsystems/storage.md`](subsystems/storage.md) |
+| Runtime-mode persistence (optional access surfaces) | SQLite by default (`runtime/sqlite/`); Postgres 15+ for multi-tenant (`runtime/postgres/`) | Zero-ops single-file (SQLite) covers the dev / single-tenant deployments; Postgres covers multi-process and multi-tenant | [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md), [`subsystems/storage.md`](subsystems/storage.md) |
+| Blob store (optional, runtime-mode) | S3-compatible (S3, MinIO, GCS, R2) via `runtime/blobstore/s3/` | Source PDFs, OCR outputs, full prompts/responses are kilobyte-to-megabyte payloads that the runtime layer may park out of the database; library-mode bundles include them in-line | [`subsystems/storage.md`](subsystems/storage.md) |
 | Wire protocols (adapters) | MCP, HTTP, CLI (equal first-class) | Universal agent tool protocol (MCP), REST surface for non-MCP hosts (HTTP), full Mode A in-process driver (CLI); no adapter has architectural primacy | [ADR-0010](adrs/0010-mcp-equal-not-primary.md) (supersedes [ADR-0007](adrs/0007-mcp-as-primary-adapter.md)), [`adapters/mcp.md`](adapters/mcp.md) |
 | Numeric type | `shopspring/decimal` | Float arithmetic on monetary values is a defect, not a tradeoff; banker's rounding at canonical 9-decimal precision | [`subsystems/kernel.md`](subsystems/kernel.md) |
 | Audit chain hash | SHA-256 over canonicalized JSON | Industry-standard; tamper-evident; cheap to verify | [`subsystems/audit.md`](subsystems/audit.md) |
 | Output enforcement pattern | Pre-LLM input guards + post-LLM validator pipeline + token grounding at single `submit_answer` exit | [Arthur AI](references.md#arthur-guardrails) pre/post split; [DCCD](references.md#dccd) draft-then-enforce; [Faramesh](references.md#faramesh) non-bypassable enforcement | [ADR-0002](adrs/0002-submit-answer-as-single-exit.md), [ADR-0003](adrs/0003-fail-closed-default.md), [ADR-0004](adrs/0004-token-level-grounding.md), [`subsystems/guards.md`](subsystems/guards.md) |
 | Determinism stance | Decision determinism and faithfulness as independent metrics; temperature 0 on compliance paths | [DFAH](references.md#dfah) | [ADR-0005](adrs/0005-determinism-faithfulness-independent.md) |
 | Workflow unit | Signed skill pack (prompts, tools required, guards config, eval thresholds) | [Moody's modular AI](references.md#moodys-modular) pattern; supply-chain story via signing | [ADR-0006](adrs/0006-skill-pack-format.md), [`subsystems/skills.md`](subsystems/skills.md) |
-| Migrations | atlas; forward-only | Audit chain consistency over time requires no backwards mutations | [`subsystems/storage.md`](subsystems/storage.md) |
-| Postgres binding | `pgx` + `sqlc` | Type-safe, mature, no ORM overhead | [ADR-0001](adrs/0001-go-as-kernel-language.md) |
+| Migrations (Postgres binding only) | atlas; forward-only | Audit chain consistency over time requires no backwards mutations; lives under `runtime/postgres/migrations/` | [`subsystems/storage.md`](subsystems/storage.md) |
+| Postgres binding (runtime layer) | `pgx` + `sqlc` | Type-safe, mature, no ORM overhead; lives in `runtime/postgres/`, not `kernel/` | [ADR-0001](adrs/0001-go-as-kernel-language.md), [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md) |
 | HTTP | `chi` | Idiomatic Go, stdlib-aligned | [ADR-0001](adrs/0001-go-as-kernel-language.md) |
 | Observability | Prometheus metrics + OpenTelemetry traces + JSON logs | Standard cloud-native stack | [`cross-cutting/observability.md`](cross-cutting/observability.md) |
 
@@ -118,7 +92,9 @@ These are deliberately unresolved here. The hone critic/defender loop will adjud
 
 ## 3. Module boundary contract
 
-The dual-mode promise from [`docs/thesis.md`](../docs/thesis.md) requires a strict separation between what is "pure kernel" and what is "runtime / adapter". This section is the contract.
+The library-as-core framing in [`docs/thesis.md`](../docs/thesis.md) requires a strict separation between what is "pure kernel" and what is "runtime / access-surface". This section is the contract.
+
+**The kernel ships an in-memory binding of every I/O interface as a first-class public API**, not a test artifact, under `kernel/public/memio/`. This is the library-mode default — a host that does `kernel.Run(ctx, input)` against the in-memory binding gets a complete run and a self-contained audit bundle as bytes, with no I/O dependency beyond the kernel module itself. **The kernel module imports nothing from `runtime/` or any database driver.** The kernel's public-API snapshot test (`kernel/public/snapshot_test.go`) rejects any new public type that would require a network or DB dependency at any transitive import.
 
 ### 3.1 Kernel public surface (pure library)
 
@@ -126,7 +102,7 @@ The dual-mode promise from [`docs/thesis.md`](../docs/thesis.md) requires a stri
 
 - Function and method signatures whose parameters and return types are: Go primitives, kernel-defined value types (`Token`, `Claim`, `ValidationError`, `AuditEntry`, etc.), `context.Context`, `decimal.Decimal`, `time.Time`, and interfaces defined in the kernel.
 - Interfaces for every I/O dependency: `Store` (token + run + audit row persistence), `BlobStore` (large payload persistence), `ModelClient` (LLM invocation), `Clock`, `RandSource`, `AuditSink` (sequence + hash-chain append target), `ToolBackend` (per-tool I/O — SQL ledger, Textract, etc.), and `TransactionalScope` (joint-transaction primitive across `Store` and `AuditSink` — see below).
-- **`TransactionalScope` (joint-transaction primitive).** The Go interface block — `WithTx(ctx, fn)` signature, `TransactionalSubstrate()` marker contract, and the versioned `provenant.substrate/<vendor>/<engine>/v<n>` marker grammar — is enumerated in [`subsystems/kernel.md`](subsystems/kernel.md#transactionalscope-joint-transaction-primitive) as the source of truth. The parallel-block atomicity invariant in [`subsystems/audit.md`](subsystems/audit.md#parallel-sibling-deterministic-order) ("tokens and `audit_entries` are written in a single transaction at flush time") cannot be honored when `Store` and `AuditSink` are arbitrary separately-injected backends. The kernel public surface therefore declares `TransactionalScope` as a third interface that a host MUST inject alongside `Store` and `AuditSink` whenever it injects either, and that the host MUST back with a single transactional substrate (typically: the same Postgres connection pool backs all three). The kernel calls `TransactionalScope.WithTx(ctx, func(tx) { storeOp(tx); auditOp(tx) })` at parallel-block flush, at `submit_answer` persistence, and at orphan-recovery; if `WithTx` returns separate transactions per call or commits separately, the kernel detects the violation at runtime via a per-tx canary write (`audit_entries` and `tokens` written in the same tx must share a tx-local sequence the kernel checks before commit) and fails closed with `kernel_integrity`. A `NullTransactionalScope` provided in `kernel/internal/memstore/` is acceptable only for the in-memory test sink that backs both `Store` and `AuditSink` from the same map. Two-backend hosts that inject a Postgres `Store` and an S3 `AuditSink` are rejected at kernel boot: the kernel refuses to start if the host injects `Store` and `AuditSink` whose `TransactionalSubstrate()` markers disagree. This closes the cycle-3 outstanding item: "embedding hosts MUST use a shared transactional substrate" is now a typed contract, not documentation.
+- **`TransactionalScope` (joint-transaction primitive).** The Go interface block — `WithTx(ctx, fn)` signature, `TransactionalSubstrate()` marker contract, and the versioned `provenant.substrate/<vendor>/<engine>/v<n>` marker grammar — is enumerated in [`subsystems/kernel.md`](subsystems/kernel.md#transactionalscope-joint-transaction-primitive) as the source of truth. The parallel-block atomicity invariant in [`subsystems/audit.md`](subsystems/audit.md#parallel-sibling-deterministic-order) ("tokens and `audit_entries` are written in a single transaction at flush time") cannot be honored when `Store` and `AuditSink` are arbitrary separately-injected backends. The kernel public surface therefore declares `TransactionalScope` as a third interface that a host MUST inject alongside `Store` and `AuditSink` whenever it injects either, and that the host MUST back with a single transactional substrate (typically: the same Postgres connection pool backs all three). The kernel calls `TransactionalScope.WithTx(ctx, func(tx) { storeOp(tx); auditOp(tx) })` at parallel-block flush, at `submit_answer` persistence, and at orphan-recovery; if `WithTx` returns separate transactions per call or commits separately, the kernel detects the violation at runtime via a per-tx canary write (`audit_entries` and `tokens` written in the same tx must share a tx-local sequence the kernel checks before commit) and fails closed with `kernel_integrity`. A `NullTransactionalScope` provided in `kernel/public/memio/` is acceptable only inside the in-memory binding that backs both `Store` and `AuditSink` from the same map. Two-backend hosts that inject a Postgres `Store` and an S3 `AuditSink` are rejected at kernel boot: the kernel refuses to start if the host injects `Store` and `AuditSink` whose `TransactionalSubstrate()` markers disagree. This closes the cycle-3 outstanding item: "embedding hosts MUST use a shared transactional substrate" is now a typed contract, not documentation.
 - Pure functions: hash construction, schema validation, token derivation, numeric extraction, validator pipeline composition.
 
 **Forbidden in the kernel's public API surface:**
@@ -138,12 +114,13 @@ The dual-mode promise from [`docs/thesis.md`](../docs/thesis.md) requires a stri
 
 **Phase 0 of the implementation plan** is the explicit carve-out of this surface. A linter or `go vet` check enforces the forbidden-import list against `kernel/...`.
 
-### 3.2 Runtime layer
+### 3.2 Runtime layer (the optional access surfaces)
 
-The runtime layer is the only place where I/O is allowed to be implementation-specific.
+The runtime layer is the only place where I/O is allowed to be implementation-specific. It is **optional**: a host that embeds the library directly never imports anything from `runtime/`.
 
-- Owns: Postgres connection pool (concrete `pgx` implementation of the kernel's `Store` interface), S3 client (concrete `BlobStore`), Anthropic/OpenAI/local-LLM HTTP clients (concrete `ModelClient`), the MCP server (using the official Go MCP SDK), the HTTP API server (`chi`), the CLI entry points (`cobra` or equivalent), process lifecycle, configuration loading, telemetry export.
-- Forbidden: any enforcement logic. The runtime layer must not, for example, decide whether a `submit_answer` payload passes — it must call the kernel's pipeline. The runtime layer is allowed to translate kernel errors into HTTP status codes or MCP error shapes; it is not allowed to suppress, invent, or reinterpret enforcement decisions.
+- Owns: persistent storage bindings (`runtime/sqlite/` default, `runtime/postgres/` for multi-tenant) implementing the kernel's `Store`, `AuditSink`, and `TransactionalScope` interfaces; the S3 client (`runtime/blobstore/s3/`) implementing `BlobStore`; Anthropic/OpenAI/local-LLM HTTP clients (concrete `ModelClient`); the MCP server (`runtime/mcp/`, using the official Go MCP SDK); the CLI entry points (`runtime/cli/`, `cobra` or equivalent); process lifecycle, configuration loading, telemetry export.
+- Forbidden: any enforcement logic. The runtime layer must not, for example, decide whether a `submit_answer` payload passes — it must call the kernel's pipeline. The runtime layer is allowed to translate kernel errors into transport shapes; it is not allowed to suppress, invent, or reinterpret enforcement decisions.
+- Persistence policy (per [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md)): SQLite is the default persistent binding when HITL pause/resume is enabled; Postgres is the multi-tenant / multi-process option. The bundle-emitting batch mode of the CLI requires no persistent binding — it runs the kernel against `kernel/public/memio/` and writes the bundle to disk.
 
 ### 3.3 Adapter shims
 
@@ -163,23 +140,23 @@ Not present in the current `architecture/` tree. Flagged as part of the top-leve
 
 Phase 5 will pick one (the critic loop and prototype work decide).
 
-## 4. Data model summary
+## 4. In-memory data model
 
-The full schema lives in [`subsystems/storage.md`](subsystems/storage.md). The invariant-bearing tables are:
+The kernel holds the following typed structures in memory during a run. These are the **load-bearing shapes**; any persistent binding (`runtime/sqlite/`, `runtime/postgres/`) projects them onto a row schema — see [`subsystems/storage.md`](subsystems/storage.md) for the reference projection. The in-memory binding emits them directly as canonical JSON into the audit bundle.
 
-- **`runs`** — one row per agent execution; status transitions audited.
-- **`tokens`** — provenance tokens. Every numeric value in any released answer corresponds to exactly one token, with `source_tool`, `source_path`, `source_origin`, and (for computed values) a `derivation` of parent token IDs. See [`subsystems/kernel.md`](subsystems/kernel.md). This table is the per-number lineage substrate.
-- **`tool_calls`** — every tool invocation, with input and output payloads (pointers to object store for large blobs). Foreign-keyed from `tokens.source_call_id`. Without this, replay is impossible.
-- **`audit_entries`** — hash-chained, per-tenant-monotonic. Every event in [`subsystems/audit.md`](subsystems/audit.md)'s `EntryKind` list writes a row; `prev_hash` and `hash` form the chain. This is the regulator artifact.
-- **`guard_runs`** — pre-LLM and post-LLM guard executions, with actions and errors. Referenced by the audit chain.
-- **`cases`** and **`case_metrics`** — case bank for replay and the four DFAH-style metrics ([`subsystems/eval.md`](subsystems/eval.md)).
+- **`Run`** — one value per agent execution; status transitions audited.
+- **`Token`** — provenance tokens. Every numeric value in any released answer corresponds to exactly one token, with `source_tool`, `source_path`, `source_origin`, and (for computed values) a `derivation` of parent token IDs. See [`subsystems/kernel.md`](subsystems/kernel.md). The token graph is the per-number lineage substrate.
+- **`ToolCall`** — every tool invocation, with input and output payloads (pointers to `BlobStore` for large blobs; in-memory bytes in library mode). Foreign-keyed from `Token.SourceCallID`. Without this, replay is impossible.
+- **`AuditEntry`** — hash-chained, per-tenant-monotonic. Every event in [`subsystems/audit.md`](subsystems/audit.md)'s `EntryKind` list produces an entry; `prev_hash` and `hash` form the chain. This is the regulator artifact. In library mode the chain is emitted as `audit.jsonl` in the bundle; in runtime mode the runtime binding projects it onto the three-column `audit_entries` row shape.
+- **`GuardRun`** — pre-LLM and post-LLM guard executions, with actions and errors. Referenced by the audit chain.
+- **`Case`** and **`CaseMetric`** — case bank for replay and the four DFAH-style metrics ([`subsystems/eval.md`](subsystems/eval.md)). Library-mode hosts that want a case bank persist these themselves; the runtime layer ships a reference persistence for them.
 
-Cross-cutting invariants in the data model:
+Cross-cutting invariants in the in-memory data model:
 
-- Every consequential row carries `tenant_id`. Cross-tenant references are kernel-rejected at every join point.
-- IDs are ULIDs (lexicographically sortable).
-- Numeric values use `NUMERIC(38, 9)` as the **canonical comparison/derivation precision** with banker's rounding applied at mint time and audit-logged. The original full-precision value as returned by the tool backend (e.g., 10–12-decimal FX rates from OpenFX, 38-decimal raw extraction confidences) is also persisted on the token in a `source_value_raw TEXT` column alongside the canonicalized `value NUMERIC(38,9)`. The audit chain hashes the canonical value; the `source_value_raw` is retained for provenance answers ("what did the upstream actually return?") and is included in audit packs. Derivation arithmetic (sum, subtract, percent-change) operates on the canonical value; raw-vs-canonical drift is reportable per token. The exact parsing grammar, rounding mode (banker's / `roundTiesToEven` at 1e-9), tie-break (always to even, sign-independent), serialization format (decimal-only, no exponent, 9 zero-padded fractional digits, `-0` normalized to `0`), and the cross-language reference fixture vector are enumerated in [`subsystems/audit.md`](subsystems/audit.md#numeric-canonicalization-cross-language-replay) so Phase 5 Python bindings produce byte-identical chains.
-- The schema is forward-only; rollbacks are reversing migrations, never reversions. This is what allows the audit chain to remain consistent across years.
+- Every consequential value carries `tenant_id`. Cross-tenant references are kernel-rejected at every join point.
+- IDs are ULIDs (lexicographically sortable) for fresh-minted entities; deterministic IDs (`tool_call_id`, `parent_step_id`, `sibling_group_id`) are hash-derived per [`subsystems/audit.md`](subsystems/audit.md).
+- Numeric values use canonical 9-decimal precision with banker's rounding applied at mint time and audit-logged. The original full-precision value as returned by the tool backend (e.g., 10–12-decimal FX rates from OpenFX, 38-decimal raw extraction confidences) is also retained on the token as `source_value_raw` alongside the canonicalized `value`. The audit chain hashes the canonical value; the `source_value_raw` is retained for provenance answers ("what did the upstream actually return?") and is included in audit packs. Derivation arithmetic (sum, subtract, percent-change) operates on the canonical value; raw-vs-canonical drift is reportable per token. The exact parsing grammar, rounding mode (banker's / `roundTiesToEven` at 1e-9), tie-break (always to even, sign-independent), serialization format (decimal-only, no exponent, 9 zero-padded fractional digits, `-0` normalized to `0`), and the cross-language reference fixture vector are enumerated in [`subsystems/audit.md`](subsystems/audit.md#numeric-canonicalization-cross-language-replay) so Phase 5 non-Go bindings produce byte-identical chains.
+- (Runtime-mode persistent bindings only.) The Postgres reference binding's schema is forward-only; rollbacks are reversing migrations, never reversions. This is what allows the audit chain to remain consistent across years for runtime-mode deployments. Library-mode hosts inherit the host's own retention posture.
 
 ## 5. Component interactions
 
@@ -198,7 +175,7 @@ The v0 category set is `ledger`, `extract`, `reconcile`, `calc`, `policy`, `exte
 
 ### 5.3 Kernel ↔ storage
 
-The kernel never imports `pgx` or `database/sql`. It depends on a `Store` interface. The runtime layer provides a `pgx`-backed implementation; tests provide an in-memory implementation. This is what allows Phase 0 (kernel builds and tests pass with all I/O mocked) to be the first phase.
+The kernel's `Store`, `AuditSink`, `BlobStore`, and `TransactionalScope` interfaces have a **first-class in-memory implementation at `kernel/public/memio/`** — this is the library-mode default, not a test artifact. A host that calls `kernel.Run(ctx, input)` against `kernel/public/memio/` gets a complete run and a self-contained audit bundle as bytes with no I/O dependency beyond the kernel module itself. Persistent bindings (SQLite for single-process runtime, Postgres for multi-process runtime) live in `runtime/` and are loaded by the optional MCP and CLI access surfaces only when persistence beyond a single call is required (typically HITL pause/resume). **The kernel module itself never imports a database driver.** Phase 0's import-guard CI check enforces this and is what allows the kernel to build and test with no I/O dependency.
 
 ### 5.4 Submit pipeline
 
@@ -210,7 +187,7 @@ The threat model, multi-tenant isolation guarantees, prompt-injection defense st
 
 - **Tenant isolation is kernel-enforced**, not just storage-enforced. `VerifyToken` independently asserts that the returned token's `tenant_id` equals the verifying run's `tenant_id` and that the token's `run_id` is the verifying run (or, for the cross-run case explicitly enabled by skill config, a run within the same tenant). A `Store` implementation that returns rows from any tenant is caught at the kernel boundary: the kernel does not trust `Store` to filter by tenant. This is enforced via a kernel unit test that uses a deliberately permissive in-memory `Store` (returns all tokens regardless of `tenant_id` argument) and verifies that `VerifyToken` still rejects cross-tenant references. Without this check, the claim that tenant isolation survives storage-layer compromise would be false.
 - **Prompt injection defense is architectural**, not promptual. The pre-LLM guard pipeline is a code path the agent cannot route around; see [`subsystems/guards.md`](subsystems/guards.md#pre-llm-input-guards).
-- **Audit tamper-evidence** is the per-tenant hash chain over canonicalized JSON entries; tampering is detectable, not preventable (we do not defend against root on the host).
+- **Audit tamper-evidence** is the per-tenant hash chain over canonicalized JSON entries. The audit chain is constructed **in memory by the kernel** and emitted as bytes in the bundle (`audit.jsonl` is the canonical wire shape; see [`subsystems/audit.md`](subsystems/audit.md#canonical-wire-shape-auditjsonl)). Tamper-evidence is a property of **those bytes**, regardless of where the host stores them — in library mode the bundle bytes go wherever the host writes them; in runtime mode the runtime binding projects the chain onto rows in addition to (not instead of) the bundle. Tampering is detectable, not preventable (we do not defend against root on the host).
 - **Skill-pack supply chain** is signed-pack-with-admin-approval ([ADR-0006](adrs/0006-skill-pack-format.md)); v0 ships unsigned local packs only, v0.5 adds the hosted registry with signing.
 - **Skill-pack content pinning (v0).** Even without signing, every run records the SHA-256 digest of the loaded skill pack's canonical content in the `run_started` audit entry. The digest covers prompts, guards config, manifest, examples, and templates. `provenant replay` recomputes the digest from the on-disk skill pack and refuses to replay if the digest does not match the recorded digest. This catches silent mutation of `prompts/skill.md` between runs — without it, the deterministic-portion hash chain could be identical across two runs whose actual agent input differed. Skill-pack signing in v0.5 is a stronger version of this same pin (signature instead of digest comparison). The full digest procedure — file enumeration rules, the default exclusion list (`.DS_Store`, `Thumbs.db`, `.git/`, `.gitignore`, `.gitattributes`, `*.swp`/`*.swo`/`*~`/`.#*`/`#*#`), the symlink-rejection rule, the POSIX-path normalization, the length-prefixed concatenation, and the verbatim (no trailing-newline normalization, no line-ending conversion) per-file byte rule — is enumerated in [`subsystems/audit.md`](subsystems/audit.md#skill-pack-content-digest-procedure). The procedure is locked; changes require a kernel version bump.
 
@@ -218,40 +195,46 @@ For the full threat list and mitigation table, read the cross-cutting doc.
 
 ## 7. Deployment model
 
-Both pluggability modes ship as deployment shapes from day one. Detail lives in [`cross-cutting/deployment.md`](cross-cutting/deployment.md); the integrated picture:
+Provenant ships in three modes. The library is the product; the MCP server and the CLI are access surfaces on the side. Detail lives in [`cross-cutting/deployment.md`](cross-cutting/deployment.md); the integrated picture:
 
-### 7.1 Embedded library deploys (code-level pluggability)
+### 7.1 Library mode (Mode A)
 
-The host application is responsible for the process. It links the Provenant kernel (Go module import; or, post-Phase 5, a non-Go binding) and provides its own implementations of the kernel's injected interfaces — or uses the kernel's default-provided `pgx` Store and S3 BlobStore via convenience constructors that live in the runtime layer.
+The host application links the Provenant kernel directly (Go module import; or, post-Phase 5, a non-Go binding) and calls `kernel.Run(...)` against the in-memory binding under `kernel/public/memio/`. The kernel emits a self-contained audit bundle (`audit.jsonl` + `audit.csv` + `audit.pdf` + `token-graph.json`) as bytes; the host decides what to do with them.
 
-- Lifecycle: host owns it. Kernel exposes a `Shutdown(ctx)` for graceful teardown.
-- State: still in Postgres + object store. The kernel does not bundle them — embedding does not eliminate the storage layer; it eliminates the wire protocol.
+- **Deployer is responsible for:** invoking the kernel, doing something with the returned bundle bytes (storing, signing, forwarding, throwing away — its choice), and serializing the kernel's `RunState` snapshot if it wants HITL pause/resume across process boundaries.
+- **Kernel handles:** every enforcement decision, the audit chain construction, the bundle emission, the typed `RunState` snapshot at any HITL pause boundary. **No I/O.** No network socket, no file handle, no database connection.
+- Lifecycle: host owns it. Kernel exposes a `Shutdown(ctx)` for graceful teardown only as a convenience for hosts that want to flush in-flight goroutines; the kernel does not own a process.
 - Multi-tenancy: the host passes `tenant_id` per call; the kernel enforces.
-- Audit chain: identical to runtime-mode chains for the same input.
+- Audit chain: byte-identical (on the deterministic portion) to runtime-mode chains for the same input, because the same kernel Go code is doing the work.
 
-### 7.2 Runtime-process deploys (runtime-level pluggability)
+### 7.2 MCP server access surface (optional)
 
-The Provenant binary runs as a separate process. Four shapes, all supported from v0 except multi-tenant SaaS:
+The runtime layer ships `provenant-server`, an MCP server binary that wraps the kernel public Go surface and exposes Provenant tools, prompts, and audit/case resources over MCP. The host (Claude Code, Claude.ai, a custom MCP client) speaks MCP over stdio or loopback.
 
-| Shape | Tenants | Process owner | When to use |
-|---|---|---|---|
-| Local dev | 1 | developer (docker compose) | development |
-| Single-tenant production | 1 | customer ops | most v0 customers |
-| Air-gapped on-prem | 1+ | customer ops | regulated finance with no egress |
-| Multi-tenant SaaS | many | Provenant (us) | v0.5 deferred |
+- **Deployer is responsible for:** running the binary, providing model API credentials, picking a persistent storage binding **only if HITL pause/resume is enabled** (SQLite by default, Postgres for multi-tenant / multi-process — both live in `runtime/`, not `kernel/`).
+- **Kernel handles:** every enforcement decision, identical to library mode.
+- **Stateless option:** an MCP server that does not need HITL pause/resume can run entirely against `kernel/public/memio/` and emit bundles per request. No database needed.
 
-The runtime binary is identical across shapes; what differs is topology, isolation, and operations. See [`cross-cutting/deployment.md`](cross-cutting/deployment.md) for sizing, ops procedures, DR, and the air-gapped configuration patterns.
+### 7.3 CLI access surface (optional)
 
-### 7.3 Sidecar / MCP-server deploys (host-adjacent runtime)
+The runtime layer ships `provenant`, a CLI binary that wraps the kernel public Go surface and the Mode A harness for batch and scripting workflows.
 
-A special case of runtime-process deployment: the Provenant runtime sits next to the host application (same machine or same Kubernetes pod). The host speaks MCP (or HTTP) to it over loopback or unix socket. This is the recommended shape for non-Go hosts until Phase 5 ships a native binding (and may remain the recommendation indefinitely if the binding work is deferred).
+- **Deployer is responsible for:** invoking the binary, providing model API credentials, picking a persistent storage binding **only if HITL pause/resume across CLI invocations is needed**. A single-shot `provenant run` + `provenant audit pack` flow against in-memory state requires no database — the bundle goes to disk.
+- **Kernel handles:** every enforcement decision, identical to library and MCP modes.
+- **Batch / CI mode:** `provenant run --bundle-out ./out.zip` runs the kernel against `kernel/public/memio/` and writes the bundle as a single zip. This is the recommended deployment shape for CI gates, regulatory replay drills, and air-gapped batch jobs.
 
-Latency budget for the sidecar pattern: kernel must complete typical `submit_answer` enforcement in under 50ms of overhead on top of validator costs (matches the MCP latency budget in [`adapters/mcp.md`](adapters/mcp.md)). Higher overhead makes the sidecar pattern unviable for interactive workflows and pushes hosts toward FFI.
+### 7.4 Latency budget for the access-surface shells
+
+The MCP and CLI shells over the kernel public Go surface must add under 50ms p95 of overhead on top of validator costs (matches the MCP latency budget in [`adapters/mcp.md`](adapters/mcp.md)). Higher overhead makes the access surface unviable for interactive workflows and pushes hosts toward the library-mode embed.
 
 ## 8. What this system explicitly does not do
 
 Adapted and tightened from [`architecture/README.md`](architecture/README.md):
 
+- **The kernel does not persist anything.** Persistence is the host's choice (library mode) or the runtime layer's choice (optional MCP/CLI access surfaces). See [ADR-0011](adrs/0011-storage-is-a-deployment-concern.md).
+- **The kernel does not require Postgres, SQLite, or any database.** The kernel ships an in-memory binding under `kernel/public/memio/` as the library-mode default. Persistent bindings live under `runtime/` and are optional.
+- **The kernel does not open a network socket, a file handle, or a database connection.** The import-guard CI check enforces it. The kernel takes typed inputs and produces typed outputs including a self-contained audit bundle.
+- The optional MCP server ships SQLite-by-default *if HITL pause/resume is enabled*, but you can run the MCP server stateless (in-memory only) if you don't need HITL pause/resume across process boundaries.
 - Does not write the agent's prompts. Skill packs do that, and only within the kernel-immutable header that announces `submit_answer`.
 - Does not pick the model. The harness is model-pluggable; v0 verifies one model class (Claude).
 - Does not run the user's GL, ERP, sanctions list, FX feed, or extraction service. It wraps them as tools with declared input/output schemas. See [`architecture/tools/`](tools/).

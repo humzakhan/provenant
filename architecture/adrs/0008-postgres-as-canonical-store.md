@@ -1,7 +1,9 @@
 # ADR-0008: Postgres as the canonical transactional store
 
-Status: **Accepted**
+Status: **Superseded by [ADR-0011](0011-storage-is-a-deployment-concern.md) (2026-05-18)**
 Date: 2026-05-17
+
+> **Supersession note (2026-05-18).** This ADR's core decision — "Postgres 15+ is the canonical transactional store. Every transactional artifact lives in Postgres." — is superseded by [ADR-0011](0011-storage-is-a-deployment-concern.md), which establishes that **the kernel has no storage requirement** and that Postgres is one of several optional persistence bindings owned by the optional MCP/CLI runtime layer or by an embedding host. The detailed Postgres schema and the rationale around ACID, JSONB, multi-tenancy, and air-gapped deployability below remain useful as reference material for anyone writing a Postgres binding under `runtime/postgres/`, but they are no longer a description of what Provenant *requires*. The kernel ships an in-memory binding as the library-mode default. In runtime mode (the optional MCP/CLI access surfaces), persistence is required **only when HITL pause/resume is enabled** — because cross-process HITL state must outlive a single process. When that is required, SQLite is the default and Postgres is the multi-process / multi-tenant option. A stateless runtime-mode deployment that does **not** enable HITL needs no persistent binding and can run entirely against `kernel/public/memio/`. See [ADR-0011](0011-storage-is-a-deployment-concern.md) for the current decision. The historical context below is retained for anyone tracing how the spec evolved through cycles 1–10.
 
 ## Context
 

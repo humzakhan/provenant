@@ -62,23 +62,61 @@ Every entry captures: the kind, the run ID, a structured payload (the event-spec
 
 ## Entry schema
 
-```sql
-CREATE TABLE audit_entries (
-    seq         BIGSERIAL PRIMARY KEY,           -- monotonic per tenant; see below
-    run_id      TEXT NOT NULL REFERENCES runs(id),
-    tenant_id   TEXT NOT NULL,
-    kind        TEXT NOT NULL,
-    payload     JSONB NOT NULL,
-    prev_hash   TEXT NOT NULL,
-    hash        TEXT NOT NULL,
-    at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+The canonical entry shape is the kernel-public `AuditEntry` Go value defined in [`kernel.md`](kernel.md#auditentry-in-memory-shape-and-three-column-persistence-projection). The kernel constructs and hashes `AuditEntry` values in memory; the bundle's `audit.jsonl` is the canonical wire shape; runtime-layer persistent bindings project onto a row schema (see "Reference Postgres projection (runtime binding)" appendix below). **The kernel-public shape is the source of truth; the Postgres DDL is one projection, retained as a reference for runtime-binding implementers.**
 
-CREATE INDEX idx_audit_run ON audit_entries(run_id, seq);
-CREATE INDEX idx_audit_tenant_seq ON audit_entries(tenant_id, seq);
+### `AuditEntry` (canonical, kernel-public)
+
+Per [`kernel.md`](kernel.md#auditentry-in-memory-shape-and-three-column-persistence-projection):
+
+- `Seq uint64` — monotonic per tenant; assigned by the `AuditSink` at flush; never deterministic.
+- `Kind EntryKind` — one of the enumerated kinds (§"Entry kinds" above).
+- `At time.Time` — wall clock; **non-deterministic**, not hashed.
+- `PrevHash []byte` — sha256 of the previous entry's `Hash`; genesis is `sha256("provenant-genesis:" || tenant_id)`.
+- `Hash []byte` — sha256 of the canonical hash-input bytes (§"Hash construction" below).
+- `Payload PayloadEnvelope` — split into `Deterministic` (JCS-canonicalized into the hash) and `NonDeterministic` (stored verbatim, excluded from the hash).
+
+`Seq` is monotonic per tenant; this bounds chain traversal cost per tenant. The kernel does not commit `Seq` to wire bytes until flush.
+
+### Canonical wire shape: `audit.jsonl`
+
+The canonical on-the-wire representation of the chain is `audit.jsonl` — a line-delimited JSON file, one `AuditEntry` per line:
+
+```
+{"seq":42,"kind":"tool_call_started","at":"2026-05-18T...","prev_hash":"...","hash":"...","payload_deterministic":{...},"payload_non_deterministic":{...}}
 ```
 
-`seq` is monotonic per tenant (managed by a per-tenant counter table or a tenant-scoped sequence). This bounds chain traversal cost per tenant.
+Pinned format rules:
+
+- **Line-delimited, LF terminator** (`\n`). No `\r\n`. No trailing space on any line. The final entry is followed by a single LF.
+- **JCS-canonical JSON per line.** Each line is the JCS (RFC 8785) canonical-JSON encoding of the entry's envelope object, with `payload_deterministic` the verbatim canonical bytes that were hashed.
+- **UTF-8.** No BOM. No surrogate escapes.
+- **Envelope fields in JCS-sorted order.** `at`, `hash`, `kind`, `payload_deterministic`, `payload_non_deterministic`, `prev_hash`, `seq` (sorted lexicographically per JCS).
+
+`audit.jsonl` is **the canonical chain bytes**. Two deployments that produce byte-identical chains produce byte-identical `audit.jsonl` files. Verification, replay, and tamper detection all read this file.
+
+### Bundle layout
+
+```
+bundle/
+├── audit.jsonl       canonical chain — verifier reads this
+├── audit.csv         derived view (CSV walkthrough)
+├── audit.pdf         derived view (signed-PDF walkthrough; Phase 4)
+└── token-graph.json  derived view (token derivation graph)
+```
+
+`audit.csv` and `audit.pdf` are derived from `audit.jsonl`. A consumer who only has `audit.jsonl` can recover the chain and reverify; a consumer who only has `audit.csv` or `audit.pdf` cannot — those are operator-readable projections, not the source of truth.
+
+### Truncation and tamper detection from the bundle alone
+
+`kernel/public/bundle.Verify(io.Reader) error` operates only on bundle bytes:
+
+1. **Open `audit.jsonl`** and read entries line-by-line in order.
+2. **Recompute `hash`.** For each entry, compute `sha256(prev_hash || seq_bytes || run_id || tenant_id || kind || JCS(payload_deterministic))` (§"Hash construction" below). Compare to the stored `hash`. Mismatch → typed `bundle.tamper_detected` error, no further verification attempted.
+3. **Check chain linkage.** For each entry after the first, assert `entry.prev_hash == previous_entry.hash`. The first entry's `prev_hash` must equal `sha256("provenant-genesis:" || tenant_id)`. Mismatch → `bundle.tamper_detected`.
+4. **Detect truncation.** A truncated `audit.jsonl` manifests as either: (a) a partial final line that does not parse as JSON — typed `bundle.chain_truncated`; or (b) a chain that ends without a terminal `run_completed` or `run_failed` entry, when the prior `run_started` entry's payload indicates the run should have terminated — typed `bundle.chain_truncated`. **The intermediate-truncation case** (a missing entry between two complete entries) is caught by the chain-linkage check above: the surviving "next" entry's `prev_hash` will not match what should have come before it, producing `bundle.tamper_detected`. A truncation that removes the tail (the chain is internally valid up to its last entry) is reported as `bundle.chain_truncated` if a terminal entry is expected but absent; otherwise the chain is reported as valid-up-to-its-last-entry (the last entry's `hash` verifies; the verifier has no way to know whether more entries existed beyond it without an out-of-band length witness).
+5. **Check artifact presence.** If `audit.jsonl` references a `blob_ref` (via `payload_deterministic.input_blob_ref` / `output_blob_ref` / `prompt_blob_ref` / `response_blob_ref`) that is absent from the bundle, the verifier emits `bundle.missing_artifact`. The chain itself may still verify; this is a "chain valid, evidence incomplete" condition.
+
+The verifier's three typed errors — `bundle.tamper_detected`, `bundle.chain_truncated`, `bundle.missing_artifact` — are enumerated in the canonical `error_code` table above.
 
 ## Hash construction
 
@@ -163,6 +201,7 @@ Extension rule: adding a new `failure_subcode` is an audit-chain-format change. 
 - `normalizer.*` — built-in normalizer errors emitted during pre-canonicalization at mint time (see [`subsystems/skills.md`](skills.md#pack-level-normalizers-normalizers)).
 - `match.*` — fuzzy-comparison validator rejections (see [`tools/match/README.md`](../tools/match/README.md)).
 - `dedupe.*` — clustering validator rejections and HITL-wiring fail-closed (see [`tools/dedupe/README.md`](../tools/dedupe/README.md)).
+- `bundle.*` — audit-bundle verification errors emitted by `kernel/public/bundle.Verify` (Phase 1) and the `provenant audit verify` CLI subcommand (Phase 4).
 
 **Canonical-string mapping rule (pinned).** The canonical string emitted on `tool_call_failed.error_message_canonical` is the **identity image** of `error_code` — that is, `error_message_canonical == error_code` for every code in the table below — *except* for the small set of human-readable parameterized templates explicitly marked "templated" in the "Canonical string" column. A templated entry emits a fixed-format string with deterministic parameter slots filled in from the entry's deterministic payload fields; the template itself (the bytes outside the parameter slots) is pinned here and is part of the audit-chain format. Backend-specific raw text — the verbatim string from `pgx`, the AWS SDK, etc. — is **never** placed in `error_message_canonical`; it goes to the non-deterministic `backend_error_message` field on `tool_call_failed`.
 
@@ -188,6 +227,10 @@ Extension rule: adding a new `failure_subcode` is an audit-chain-format change. 
 | `kernel.transactional_substrate_mismatch` | `kernel_integrity` | identity | `Store`, `AuditSink`, and `TransactionalScope` `TransactionalSubstrate()` markers disagree at boot (see [`kernel.md`](kernel.md)) |
 | `kernel.transactional_scope_split` | `kernel_integrity` | identity | Runtime tx-local canary check detects `Store` and `AuditSink` are not sharing a transaction |
 | `kernel.header_mismatch` | `kernel_integrity` | identity | The kernel-immutable header bytes hashed at boot do not match `kernel_header_hash` recorded on `run_started` |
+| `kernel.runstate_version_mismatch` | `kernel_integrity` | identity | `kernel.Resume` was called with a `RunState` whose `Version` is below the running kernel's `RunStateMinAcceptedVersion` (see [`kernel.md`](kernel.md) §"`RunState` (HITL pause/resume in library mode)") |
+| `bundle.tamper_detected` | `kernel_integrity` | identity | `kernel/public/bundle.Verify` (or its `provenant audit verify` CLI wrapper) observed a hash mismatch on an `audit.jsonl` row: the recomputed `hash` from `payload_deterministic` and `prev_hash` does not equal the stored `hash` |
+| `bundle.chain_truncated` | `kernel_integrity` | identity | `kernel/public/bundle.Verify` observed a truncated `audit.jsonl` (mid-row truncation, or a missing terminal `run_completed` / `run_failed` entry that the chain head asserts must be present) |
+| `bundle.missing_artifact` | `kernel_integrity` | identity | `kernel/public/bundle.Verify` observed that a bundle file referenced by the chain (`audit.jsonl`, `audit.csv`, `token-graph.json`) is absent from the bundle bytes |
 | `extract.confidence_below_threshold` | `backend_error` | identity | Extractor-tool emits confidence below the skill's configured threshold (paired with `confidence.extraction_min` guard) |
 | `policy.lookup_miss` | `backend_error` | identity | `policy.lookup` could not find a snippet for the requested key (deterministic lookup miss, not a transient backend error) |
 | `normalizer.currency_unknown` | `backend_error` | identity | A built-in `currency.iso4217` normalizer received a currency designator that does not resolve to a known ISO 4217 code (see [`subsystems/skills.md`](skills.md#pack-level-normalizers-normalizers)) |
@@ -388,9 +431,9 @@ Appends must be:
 
 - **Monotonic**: per-tenant `seq` strictly increasing without gaps.
 - **Atomic**: an append succeeds completely or not at all; partial appends are impossible.
-- **Durable**: synchronous fsync via Postgres `synchronous_commit=on` for the audit log path.
+- **Durable**: a kernel concern only when a host has wired persistence; the kernel itself appends to the in-memory chain and emits `audit.jsonl` bytes. Durability semantics for runtime-layer bindings are documented in the "Reference Postgres projection (runtime binding)" appendix below.
 
-Implementation: a `BEGIN; SELECT pg_advisory_xact_lock(hashtext(tenant_id)); INSERT INTO audit_entries ... RETURNING hash; COMMIT;` transaction with the advisory lock keyed by tenant. This serializes appends within a tenant without serializing across tenants.
+The monotonic-and-atomic guarantees are properties of `AuditSink` implementations, **not** properties of any specific substrate. The in-memory binding (`kernel/public/memio/`) satisfies them via the shared-map `NullTransactionalScope`; the SQLite binding satisfies them via WAL mode and single-writer discipline; the Postgres binding satisfies them via advisory locks and synchronous commit (see appendix).
 
 ## Tamper detection
 
@@ -512,7 +555,7 @@ Audit entries are retained per tenant policy:
 | 3 years | General |
 | Indefinite | Litigation hold or regulator subpoena |
 
-Hot in Postgres for the first year; archived to cold object storage thereafter with full hash-chain integrity preserved. Cold storage retrieval is transparent in the API.
+Retention applies wherever a host stores the chain bytes. In library mode the host owns retention entirely; in runtime mode the binding's retention strategy (e.g., hot in Postgres for the first year, archived to cold object storage thereafter with full hash-chain integrity preserved) is the runtime layer's concern. See the "Reference Postgres projection (runtime binding)" appendix below.
 
 ## Tests
 
@@ -526,6 +569,44 @@ Hot in Postgres for the first year; archived to cold object storage thereafter w
 1. **Signed PDF generation library.** PDF signing requires either an in-process library or a separate service. Proposal: in-process with `unidoc` or similar for v0; reconsider for high-volume tenants.
 2. **Tamper response policy.** When the verifier detects a mismatch, do we halt all operations for that tenant, or alert and continue? Proposal: halt-and-alert by default; configurable per tenant.
 3. **Chain segmentation.** Should very long chains be segmented (e.g., per quarter) for query performance? Proposal: keep chain monolithic; use the index on `(tenant_id, seq)` for performance; reconsider at scale.
+
+## Appendix: Reference Postgres projection (runtime binding)
+
+> **Scope.** This appendix is a **runtime-binding concern**, not a kernel concern. The kernel does not require Postgres and does not import a database driver (per [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md), [ADR-0009](../adrs/0009-kernel-public-go-surface.md)). The content below is reference material for anyone implementing the `runtime/postgres/` binding; it describes one valid projection of the canonical kernel-public `AuditEntry` and `audit.jsonl` wire shape onto rows. The library-mode default ships only the in-memory binding and the bundle bytes; the Postgres binding is one of several optional runtime-layer bindings.
+
+### Reference row schema
+
+```sql
+CREATE TABLE audit_entries (
+    seq         BIGSERIAL PRIMARY KEY,           -- monotonic per tenant; see below
+    run_id      TEXT NOT NULL REFERENCES runs(id),
+    tenant_id   TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    payload_deterministic     JSONB NOT NULL,
+    payload_non_deterministic JSONB NOT NULL DEFAULT '{}'::jsonb,
+    hash_input_canonical      TEXT NOT NULL,
+    prev_hash   TEXT NOT NULL,
+    hash        TEXT NOT NULL,
+    at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX idx_audit_run ON audit_entries(run_id, seq);
+CREATE INDEX idx_audit_tenant_seq ON audit_entries(tenant_id, seq);
+```
+
+`seq` is monotonic per tenant (managed by a per-tenant counter table or a tenant-scoped sequence).
+
+### Append implementation (Postgres)
+
+`BEGIN; SELECT pg_advisory_xact_lock(hashtext(tenant_id)); INSERT INTO audit_entries ... RETURNING hash; COMMIT;` with the advisory lock keyed by tenant. This serializes appends within a tenant without serializing across tenants. The path runs with `synchronous_commit=on` so durability is fsync-grounded.
+
+### Retention (Postgres binding)
+
+Hot in Postgres for the first year; archived to cold object storage thereafter with full hash-chain integrity preserved. Cold storage retrieval is transparent in the runtime-layer API. **In library mode none of this applies** — the host owns retention entirely.
+
+### When this appendix is operative
+
+This appendix is operative only inside the `runtime/postgres/` binding. Kernel code paths and library-mode hosts ignore it.
 
 ## References
 
