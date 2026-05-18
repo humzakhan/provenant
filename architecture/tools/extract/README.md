@@ -2,12 +2,13 @@
 
 Status: **v0**
 
-> Extract structured data from financial documents (bank statements, invoices, receipts, contracts, board packs) with explicit confidence scores. The kernel uses extraction confidence to route low-confidence cases to HITL and to gate `submit_answer` via the `confidence.extraction_min` validator.
+> Extract structured data from financial documents and structured source files with explicit confidence, provenance, and replay capture.
 
 ## Depends on
 - [`subsystems/tools.md`](../../subsystems/tools.md)
 - [`subsystems/kernel.md`](../../subsystems/kernel.md)
-- An OCR / document-AI backend (Textract, Azure DI, etc.)
+- OCR / document-AI backends for unstructured docs
+- A pure-Go structured-files backend for CSV/XLS/XLSX/JSON/JSONL readers
 
 ## Depended on by
 - `recon` skill pack
@@ -17,22 +18,26 @@ Status: **v0**
 
 ## Purpose
 
-Financial workflows almost always start with a document: a bank statement, a vendor invoice, an expense receipt, a 10-K. The "raw text" of the document is not the unit of value — the *structured fields with confidence* are. An extracted bank statement is a list of transactions with amounts, dates, descriptions, and a per-line confidence score reflecting OCR uncertainty and field-classifier uncertainty.
+Financial workflows often start with a document: a bank statement, a vendor invoice, an expense receipt, a 10-K. The raw text is not the unit of value — the structured fields with confidence are. Provenant keeps that as a category contract so document AI can evolve without changing the kernel surface.
 
-Provenant treats extraction as a tool category — not the kernel's job — because document AI evolves rapidly and the right backend depends on the document type, language, and customer preference. The category contract is stable; backends change.
+The same category also covers structured source readers for spreadsheets, CSV, JSON, and JSONL. Those readers are selector-first, streaming/windowed when needed, and deterministic on replay when the captured bytes and parser/options are pinned. PDFs stay out of this slice.
 
 ## Tools provided
 
 | Tool name | Purpose | Determinism class |
 |---|---|---|
-| `extract.bank_statement` | Statement → list of transactions with confidence | NonDeterministic |
+| `extract.bank_statement` | Statement → transactions with confidence | NonDeterministic |
 | `extract.invoice` | Invoice → header + line items with confidence | NonDeterministic |
 | `extract.receipt` | Receipt → merchant + total + line items with confidence | NonDeterministic |
 | `extract.kv_pairs` | Generic key-value extraction with a schema | NonDeterministic |
+| `extract.spreadsheet` | XLS/XLSX sheet/range/cell reader | CapturedDeterministic |
+| `extract.csv_rows` | CSV / large CSV windowed row reader | CapturedDeterministic |
+| `extract.json` | JSON pointer/path reader for exact object/array slices | CapturedDeterministic |
+| `extract.jsonl` | JSONL / large JSON streaming reader | CapturedDeterministic |
 
-Extraction is `NonDeterministic` because the underlying models (Textract, Azure DI, custom) return slightly different confidence scores across calls. For replay determinism, the kernel **captures the extraction response** and serves it from the capture on replay. This makes the *outcome* deterministic even though the *primitive* is not. See [`subsystems/tools.md`](../../subsystems/tools.md) for the captured-read convention.
+## Document-AI readers
 
-## Schemas
+These tools stay confidence-first and non-deterministic because they rely on OCR / document-AI backends. Replay captures the full response payload and serves it back on replay.
 
 ### `extract.bank_statement`
 
@@ -41,63 +46,17 @@ Input:
 {
   "document_url": "s3://uploads/run_01HXYZ/statement.pdf",
   "expected_account_id": "1010",
-  "expected_period": {
-    "start": "2026-05-01",
-    "end": "2026-05-31"
-  },
+  "expected_period": {"start": "2026-05-01", "end": "2026-05-31"},
   "language": "en"
 }
 ```
 
-Output:
-```json
-{
-  "document_url": "s3://...",
-  "page_count": 4,
-  "account_number_extracted": "****1234",
-  "account_number_confidence": 0.98,
-  "statement_period": {
-    "start": "2026-05-01",
-    "end": "2026-05-31",
-    "confidence": 1.00
-  },
-  "opening_balance": {
-    "value": "1199423.18",
-    "currency": "USD",
-    "confidence": 0.99
-  },
-  "closing_balance": {
-    "value": "1247322.18",
-    "currency": "USD",
-    "confidence": 0.99
-  },
-  "transactions": [
-    {
-      "line": 1,
-      "date": "2026-05-02",
-      "description": "DEPOSIT - ACME CORP",
-      "amount": "1240.00",
-      "currency": "USD",
-      "sign": "credit",
-      "confidence": 0.94,
-      "field_confidences": {
-        "date": 0.99,
-        "amount": 0.98,
-        "description": 0.91
-      },
-      "bbox": [[123, 245], [589, 267]],
-      "page": 1
-    },
-    ...
-  ]
-}
-```
+Output: account number, statement period, opening/closing balance, transactions, per-field confidence, and page/bbox locators.
 
 Mintable paths:
-
-- `$.opening_balance.value` (currency from `$.opening_balance.currency`)
-- `$.closing_balance.value` (currency from `$.closing_balance.currency`)
-- `$.transactions[*].amount` (currency from sibling, as_of from `$.transactions[*].date`)
+- `$.opening_balance.value`
+- `$.closing_balance.value`
+- `$.transactions[*].amount`
 
 ### `extract.invoice`
 
@@ -109,47 +68,101 @@ Input: `{document_url, language, expected_merchant_hint?}`. Output: merchant, da
 
 ### `extract.kv_pairs`
 
-Input: `{document_url, schema: {field_name: type}}`. Output: extracted values keyed by `field_name`, each with confidence. Used for ad-hoc extraction (board packs, contracts, custom forms).
+Input: `{document_url, schema: {field_name: type}}`. Output: extracted values keyed by `field_name`, each with confidence.
+
+## Structured source readers
+
+Common rules:
+- selector-first reads; no scan-everything default
+- windowed / chunked pagination for large inputs
+- deterministic ordering by source order, then byte/cell order
+- fail closed on ambiguity (delimiter, sheet, selector, key, byte span)
+- capture source bytes + parser/version/options + normalized output in the bundle/BlobStore reference, not as an S3 requirement
+- `source.origin` carries the physical locator; `source.path` stays JSONPath into the tool output
+- every selected scalar carries `raw_value`, `normalized_value`, and `source_hash`
+
+### `extract.spreadsheet`
+
+Reads XLS/XLSX sheets, ranges, and windows.
+
+Input selectors: `sheet`, `range`, optional `table_name`, optional `row_window`, optional `column_projection`, optional `formula_policy` (`cached_only` or `fail_closed`).
+
+Origin examples:
+- `file:///book.xlsx#sheet=TrialBalance!R12C7`
+- `s3://tenant/run/book.xlsx#sheet=TrialBalance&range=A1:D500`
+
+Output rows/cells include absolute coordinates (`sheet`, `row`, `column`, `a1`), `raw_value`, `normalized_value`, `source_hash`, and formula/cache metadata when present.
+
+### `extract.csv_rows`
+
+Reads CSV in bounded row windows.
+
+Input selectors: `row_window`, optional `column_projection`, optional `header_row`, declared `dialect` / `encoding`.
+
+Origin examples:
+- `file:///gl.csv#row=1042&col=7&header=amount`
+- `blob://run-01HXYZ/gl.csv#row=1-500`
+
+Output rows include absolute row/column coordinates, header echo, `raw_value`, `normalized_value`, `source_hash`, and `next_cursor` when chunked.
+
+### `extract.json`
+
+Reads exact JSON objects/arrays by selector.
+
+Input selectors: `json_pointer` (canonical), optional `jsonpath` when it resolves uniquely, optional `byte_span`.
+
+Origin examples:
+- `file:///invoice.json#ptr=/invoice/total&byte=123-136`
+- `blob://run-01HXYZ/invoice.json#ptr=/items/41/amount`
+
+Output nodes preserve document order and include `json_pointer`, `jsonpath`, `byte_start`, `byte_end`, `raw_value`, `normalized_value`, and `source_hash`.
+
+### `extract.jsonl`
+
+Reads JSONL and large JSON streams with sparse indexing and line windows.
+
+Input selectors: `line_window`, optional `json_pointer` / `jsonpath`, optional `byte_span`.
+
+Origin examples:
+- `file:///batch.jsonl#line=482&byte=88421-88502`
+- `blob://run-01HXYZ/batch.jsonl#line=1-1000`
+
+Output records include line number, pointer/path, byte span, `raw_value`, `normalized_value`, `source_hash`, and deterministic record order.
 
 ## Token semantics
 
-- Every numeric extracted value mints a token.
-- Token `source.origin` includes the document URL and page: `s3://...statement.pdf#page=1&line=5&bbox=...`.
-- Token `source.path` is the JSONPath into the extraction response.
-- The bbox metadata propagates so audit packs can render annotated PDFs.
+- Numeric selected values mint tokens from the normalized value.
+- `source.path` is the JSONPath into the tool output slice.
+- `source.origin` is the physical locator (`sheet/range`, `row/col`, `json_pointer/byte_span`, `line/byte_span`).
+- `source_value_raw` preserves the exact lexeme after canonical normalization rules.
 
 ## Confidence
 
-Three levels of confidence are emitted:
-
-1. **Field confidence**: per individual field (date, amount, description), reflecting OCR and field-classifier uncertainty.
-2. **Row/line confidence**: minimum of field confidences within a transaction line.
-3. **Document confidence**: minimum of all field confidences, reflecting overall extraction quality.
-
-The `confidence.extraction_min` validator (see [`subsystems/guards.md`](../../subsystems/guards.md)) blocks `submit_answer` when any extracted value used in the answer has confidence below the configured threshold (default 0.85). Such cases route to HITL.
-
-**Calibration.** Confidence scores from raw backends (Textract, Azure DI) are not natively calibrated to mean "this fraction will be correct." The category implementation includes a per-backend calibration map that translates raw scores into calibrated probabilities. Calibration is recomputed quarterly against the case bank.
+- Document-AI tools emit field/row/document confidence.
+- Structured readers default to `confidence = 1.0` for strict parses.
+- Any inferred selector, boundary, or fallback path must either fail closed or emit an explicit lower confidence.
 
 ## Determinism and replay
 
-`NonDeterministic` primitive; deterministic in practice via captured-read replay.
-
-The kernel captures the full extraction response payload to S3. On replay, the captured payload is returned instead of re-running the extraction. This makes case-bank replay reliable even as backend models drift.
-
-Limitations:
-- A new document (not in the capture) cannot be replayed; only previously-extracted documents are replayable.
-- If a customer demands "rerun extraction with the new model" semantics, that is a separate skill operation, not a replay.
+- Document-AI tools are `NonDeterministic`; replay captures the full response payload.
+- Structured readers are `CapturedDeterministic`; replay captures source bytes, parser version, options, selector, sparse index metadata, and normalized output.
+- Replay must preserve byte-identical deterministic portions and deterministic ordering.
 
 ## Failure modes
 
 | Code | When | Recommended handling |
 |---|---|---|
-| `extract.document_not_found` | URL unreachable | Skill aborts; surface to user |
-| `extract.unsupported_format` | Not a supported file type | Skill aborts |
-| `extract.empty_page` | Backend returned no content for a page | Pass-through with warning; skill decides |
-| `extract.low_confidence` | All fields below threshold (document essentially unusable) | Route to HITL; skill may attempt fallback backend |
-| `extract.upstream_unavailable` | Backend network error | Harness retries per policy |
-| `extract.unsupported_language` | Document language not configured | Skill aborts |
+| `extract.document_not_found` | URL unreachable | Abort |
+| `extract.unsupported_format` | Not a supported file type | Abort |
+| `extract.malformed_csv` | Bad dialect, quoting, or encoding | Abort |
+| `extract.invalid_json` | Malformed JSON / duplicate keys / invalid UTF-8 | Abort |
+| `extract.invalid_jsonl` | Malformed JSONL line or span | Abort |
+| `extract.ambiguous_selector` | Multiple plausible matches or inferred selector is not unique | Abort |
+| `extract.byte_range_mismatch` | Byte span disagrees with the parsed locator | Abort |
+| `extract.formula_unsupported` | Spreadsheet formula policy is not pinned | Abort or use cached-only mode |
+| `extract.low_confidence` | All fields below threshold | Route to HITL |
+| `extract.upstream_unavailable` | Backend/network error | Retry per policy |
+| `extract.unsupported_language` | Language not configured | Abort |
 
 ## Performance budget
 
@@ -160,25 +173,33 @@ Limitations:
 | `invoice` | 2s | 6s |
 | `receipt` | 1s | 4s |
 | `kv_pairs` | 2s | 8s |
+| `spreadsheet` | 200ms | 1s |
+| `csv_rows` | 100ms | 800ms |
+| `json` | 50ms | 400ms |
+| `jsonl` | 75ms | 600ms |
 
-Per-call timeout: 90 seconds (extraction can be slow).
+Per-call timeout: 90 seconds.
 
 ## Backends
 
 | Backend | Status | Doc |
 |---|---|---|
 | AWS Textract | v0 | [backends/textract.md](backends/textract.md) |
+| Structured files (CSV/XLS/XLSX/JSON/JSONL) | v0 | [backends/structured-files.md](backends/structured-files.md) |
 | Azure Document Intelligence | deferred (v0.5) | [backends/azure-di.md](backends/azure-di.md) |
 
-Single backend at v0; multi-backend with consensus selection is a v0.5 enhancement.
+Unstructured docs use Textract; structured source readers use the pure-Go structured-files backend. Azure DI remains the deferred parity backend.
 
 ## Tests
 
-- Schema conformance per tool.
-- Confidence calibration test: backend's reported confidence correlates with case-bank ground-truth correctness above r=0.7.
-- Replay: captured extraction payloads produce identical tokens.
-- Backend integration: fixture documents (3 statement variants, 5 invoice variants, 5 receipt variants) extracted with known expected outputs.
-- Stress: 100-page board pack extracts within budget.
+- Schema conformance per tool (≥5 positive + ≥5 negative fixtures each).
+- Confidence calibration for document-AI tools.
+- Replay: captured payloads / source bytes produce identical tokens and output slices.
+- Spreadsheet fixtures: sheet/range selection, merged headers, hidden rows, formula cache policy, ambiguity fail-closed.
+- CSV fixtures: delimiter / encoding ambiguity, row-window pagination, row/column provenance.
+- JSON fixtures: duplicate keys, pointer/path/byte-span mismatch, selector uniqueness, sparse-index replay.
+- JSONL fixtures: line-window pagination, large-stream order, deterministic chunking.
+- Backend integration: fixture documents and structured files extracted with known expected outputs.
 
 ## Open questions
 

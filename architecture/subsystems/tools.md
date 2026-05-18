@@ -111,10 +111,10 @@ type Result struct {
 }
 
 type CapturedRead struct {
-    Source    string             // e.g., "postgres:ledger.transactions:account=1010,period=2026-05"
-    AsOf      time.Time
-    Sha256    string             // hash of the read payload
-    Storage   string             // S3 key for the full payload
+    Source   string             // e.g., "blob://run_01HXYZ/captured/ledger.transactions?account=1010&period=2026-05"
+    AsOf     time.Time
+    Sha256   string             // hash of the read payload
+    BlobRef  string             // bundle / BlobStore reference for the full payload
 }
 ```
 
@@ -124,7 +124,7 @@ type CapturedRead struct {
 - **`Version()`**: skills pin tool versions in their manifest; the registry refuses unpinned production runs.
 - **`InputSchema` / `OutputSchema`**: schema-first per [DFAH](../references.md#dfah). The registry rejects bad payloads before the tool sees them and rejects bad outputs before the agent sees them.
 - **`MintablePaths`**: the registry — not the tool — mints tokens. Tools cannot construct tokens with arbitrary sources; this preserves source integrity at the kernel layer.
-- **`DeterminismClass`**: the kernel needs to know whether to capture reads for replay. Pure-deterministic tools (`calc.*`) need no capture; captured-deterministic tools (`ledger.*`, `extract.*`) record their reads to S3 for replay.
+- **`DeterminismClass`**: the kernel needs to know whether to capture reads for replay. Pure-deterministic tools (`calc.*`) need no capture; captured-deterministic tools (`ledger.*`, `extract.*`) record their reads as bundle / BlobStore references for replay.
 - **`CapturedRead`**: enables bit-identical replay of external state. Without this, [DFAH](../references.md#dfah)-style trajectory determinism is impossible for any tool reading the world.
 
 ## Registry lifecycle
@@ -246,13 +246,13 @@ CREATE INDEX idx_tool_calls_tool ON tool_calls(tool);
 
 ```sql
 CREATE TABLE captured_reads (
-    id            TEXT PRIMARY KEY,
-    tool_call_id  TEXT NOT NULL REFERENCES tool_calls(id),
-    source        TEXT NOT NULL,
-    as_of         TIMESTAMPTZ NOT NULL,
-    sha256        TEXT NOT NULL,
-    storage_key   TEXT NOT NULL,                    -- S3 key
-    captured_at   TIMESTAMPTZ NOT NULL
+    id           TEXT PRIMARY KEY,
+    tool_call_id TEXT NOT NULL REFERENCES tool_calls(id),
+    source       TEXT NOT NULL,
+    as_of        TIMESTAMPTZ NOT NULL,
+    sha256       TEXT NOT NULL,
+    blob_ref     TEXT NOT NULL,                     -- bundle / BlobStore reference
+    captured_at  TIMESTAMPTZ NOT NULL
 );
 ```
 
