@@ -2,12 +2,12 @@
 
 Status: **v0 / reference**
 
-> Vector-similarity match backend built on Postgres + the pgvector extension. Encodes each token-bearing field with an operator-configured embedding model, persists vectors per tenant, and serves cosine-similarity proposals back to the `match` category. Provenant does **not** bundle an embedding model; the operator picks one — the same pattern as [`tools/policy/backends/pgvector.md`](../../policy/backends/pgvector.md).
+> Vector-similarity match backend built on the runtime-layer Postgres/pgvector binding (Phase 4) or an operator-provided pgvector database. Encodes each token-bearing field with an operator-configured embedding model, persists vectors per tenant, and serves cosine-similarity proposals back to the `match` category. Provenant does **not** bundle an embedding model; the operator picks one — the same pattern as [`tools/policy/backends/pgvector.md`](../../policy/backends/pgvector.md).
 
 ## Connection
 
-- **Database**: the tenant's existing Postgres instance (the same canonical store used for `audit_entries`, `tokens`, etc.). The `pgvector` extension must be installed and enabled.
-- **Auth**: re-uses the runtime layer's existing Postgres connection pool; no new credential is introduced. The backend's `Credentials()` accessor returns the same `CredentialRef.ID` as the canonical Postgres store (typical: `pg.canonical`), so the skill pack's `tools.yaml` declares the same `credential_id` it already declares for any other Postgres-backed tool.
+- **Database**: the runtime-layer pgvector binding or an operator-provided Postgres instance with the pgvector extension enabled. The same binding is used for `runtime/postgres/` and `match` vector storage.
+- **Auth**: re-uses the runtime layer's existing Postgres connection pool; no new credential is introduced. The backend's `Credentials()` accessor returns the same `CredentialRef.ID` as the runtime Postgres/pgvector binding (typical: `pg.canonical`), so the skill pack's `tools.yaml` declares the same `credential_id` it already declares for any other Postgres-backed tool.
 - **Embedding model client**: operator-configured. The runtime layer's `ModelClient` abstraction has an optional `Embeddings(text []string) [][]float32` method; backends pick from the supported providers (Anthropic, OpenAI, a local BGE/GTE serving endpoint, etc.). The choice is recorded as part of `backend_version` (see "Backend version" below).
 
 ## Schema mapping
