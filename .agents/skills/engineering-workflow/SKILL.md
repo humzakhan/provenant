@@ -7,6 +7,11 @@ description: Reusable repo workflow for branching, atomic commits, validation, r
 
 Use this skill for implementation, review, and documentation work when a repo-local workflow should govern branching, validation, and PR behavior.
 
+## Modes
+
+- **Mode A — Orchestrator sequence:** one peer/PR at a time. Finish a peer slice, review it, merge it once auto-review clears, then branch the next peer from updated `origin/main`.
+- **Mode B — Single feature:** one branch, one PR, one feature delivered normally.
+
 ## Branches
 
 - Create one branch per task from current `main` or `origin/main`.
@@ -14,6 +19,8 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 - Never commit directly to `main`.
 - Use one PR per branch and rebase instead of merge commits.
 - Use squash merge unless a human explicitly approves an exception.
+- In a Git worktree, do not switch this worktree back to `main` just to start the next task. After merge, fetch and branch the next feature from updated `origin/main`.
+- In a normal repo checkout, switching back to `main` is fine before branching the next task.
 
 ## Commits
 
@@ -30,13 +37,14 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 
 ## Implementation Loop
 
-1. Start from a task branch.
+1. Start from a task branch and choose Mode A or Mode B.
 2. Read only task-relevant context.
-3. Implement in small atomic commits.
-4. Open a draft PR after the first valid commit.
-5. Run relevant validation before marking ready for review.
-6. Run at most two automated review cycles by default.
-7. If cycle 2 still has major issues, run one final cycle 3 and stop there.
+3. As soon as the first file or first coherent change is ready, commit it.
+4. Open a draft PR immediately after that first valid commit.
+5. Continue in small atomic commits.
+6. Run relevant validation before marking ready for review.
+7. Run at most two automated review cycles by default.
+8. If cycle 2 still has major issues, run one final cycle 3 and stop there.
 
 ## Validation
 
