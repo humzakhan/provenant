@@ -1,3 +1,4 @@
+/goal
 Kickstart Phase 1 only. Treat `.planning/phases/implementation-sequence.md` as the Phase 1 contract and keep the scope to the in-process proof loop: fixture/source bytes -> one structured reader -> captured read -> kernel-minted token from a declared path -> minimal bundle -> verify/replay in memory -> one deterministic mutation that fails closed.
 
 Use the smallest JSON fixture reader, `extract.json`, unless the codebase already names the same narrow backend `extract.json_value`; do not widen the reader surface.
