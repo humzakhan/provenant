@@ -200,14 +200,14 @@ CLI reads from:
 3. `~/.provenant/config.yaml` (per-user).
 4. `/etc/provenant/config.yaml` (system).
 
-Multi-tenant deployments typically use a system config with the Postgres DSN and tenant defaults; per-user config holds personal tokens.
+Multi-tenant deployments typically use a system config with the persistent-binding choice and tenant defaults; per-user config holds personal tokens.
 
 ## Embedded mode vs server-attached mode
 
 The CLI has two operating modes:
 
-- **Embedded** (default): the CLI process owns the kernel, opens its own Postgres connection, and runs the harness in-process. Used for local development, CI, batch jobs.
-- **Server-attached**: the CLI talks to a running Provenant server over HTTP (`--server=http://...`). Used for production deployments where the kernel runs on a server tier and the CLI is a thin client for ops.
+- **Embedded** (default): the CLI process owns the kernel, runs the harness in-process against `kernel/public/memio/`, and emits bundle bytes. Used for local development, CI, batch jobs.
+- **Server-attached**: the CLI talks to a running Provenant server over HTTP (`--server=http://...`). Used for production deployments where the kernel runs on a server tier and the CLI is a thin client for ops; SQLite is the default persistent binding when HITL pause/resume is needed, Postgres is optional for multi-process/multi-tenant deployments.
 
 Embedded mode is the default. Server-attached requires `--server` and a token.
 

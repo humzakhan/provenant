@@ -5,7 +5,7 @@ Status: **v0 / load-bearing**
 > The kernel is the provenance engine. It owns tokens — the unit of currency that wraps every numeric value an agent encounters — and it enforces that no number leaves the system without traceable lineage. Nothing else in Provenant works without this.
 
 ## Depends on
-- [`subsystems/storage.md`](storage.md) — Postgres + object store
+- [`subsystems/storage.md`](storage.md) — runtime-layer reference bindings for Store/AuditSink/BlobStore/TransactionalScope
 - [`subsystems/audit.md`](audit.md) — append-only log for token mint events
 
 ## Depended on by
@@ -17,7 +17,7 @@ Status: **v0 / load-bearing**
 ## Responsibilities
 
 1. Mint provenance tokens from tool outputs.
-2. Persist tokens with their full lineage (source tool call, derivation if any).
+2. Write tokens through injected Store/AuditSink/BlobStore/TransactionalScope interfaces (memio or host/runtime bindings) with full lineage (source tool call, derivation if any).
 3. Verify that numeric claims in agent output match real tokens.
 4. Compute derivation chains across multiple tokens.
 5. Enforce non-bypassability and fail-closed behavior at the token layer.
@@ -87,7 +87,7 @@ type Derivation struct {
         │                       │                       │
         ▼                       ▼                       ▼
    audit log                token store           audit log
-   (tool call)              (Postgres)            (submit event)
+   (tool call)       (Store/AuditSink binding)   (submit event)
 ```
 
 ### 1. Mint
@@ -96,7 +96,7 @@ Triggered by a tool returning a structured result. The tool registry calls `prov
 
 1. Walks the output payload according to the tool's declared `mintable_paths` (a JSONPath list in the tool schema).
 2. For each path, extracts the numeric value, infers currency/unit from sibling fields, infers `as_of` from the tool's response or call timestamp.
-3. Creates a `Token`, persists it to Postgres, writes an `EntryKindTokenMint` audit entry.
+3. Creates a `Token` through the injected Store binding, writes an `EntryKindTokenMint` audit entry, and leaves persistence to the selected runtime binding.
 4. Returns the token IDs back to the registry, which embeds them in the tool's response to the agent.
 
 Mint is the *only* way a non-derived token comes into existence. Tools cannot construct `Token` values directly; they declare paths and the kernel does the wrapping. This preserves the "every token has kernel-assigned ID, kernel-controlled source" property.
@@ -127,9 +127,9 @@ When the agent submits its final answer, the kernel walks the claims list and:
 
 Failure is fail-closed. The agent receives a structured error and must retry. See [`subsystems/guards.md`](guards.md) for the full algorithm.
 
-## Token store
+## Token store (runtime binding projection)
 
-**Schema (Postgres):**
+**Schema (runtime binding projection):** See [`storage.md`](storage.md) for the reference SQLite/Postgres projections.
 
 ```sql
 CREATE TABLE tokens (
@@ -154,7 +154,7 @@ CREATE INDEX idx_tokens_tenant ON tokens(tenant_id);
 CREATE INDEX idx_tokens_source_call ON tokens(source_call_id);
 ```
 
-**In-memory cache.** During a run, tokens are also held in an LRU keyed by `(run_id, token_id)`. The cache is invalidated at run completion. This is for verify-time performance — Postgres remains the source of truth.
+**In-memory cache.** During a run, tokens are also held in an LRU keyed by `(run_id, token_id)`. The cache is invalidated at run completion. This is for verify-time performance — the runtime binding remains the source of truth.
 
 **Numeric precision.** `NUMERIC(38, 9)` is the canonical storage format. Tools may carry higher precision internally; the kernel rounds to 9 decimal places at mint time using banker's rounding, with the rounding event audit-logged. Tolerance configuration for verify is separate (see Guards).
 
@@ -446,9 +446,9 @@ Phase 0's done-when (see [`../../implementation-plan.md`](../../plans/implementa
 
 ## Concurrency model
 
-- Mint operations are independently safe and can run concurrently. Postgres handles ID uniqueness.
+- Mint operations are independently safe and can run concurrently. The selected runtime binding handles ID uniqueness.
 - A single run is generally single-agent and not concurrent at the agent layer, but tool calls *within* a run may execute in parallel; the kernel uses a per-run mutex only for the audit log append (see [audit.md](audit.md)).
-- Across runs, no shared state exists in the kernel beyond the Postgres connection pool.
+- Across runs, no shared state exists in the kernel beyond the injected runtime bindings.
 
 ## Failure modes
 
@@ -458,7 +458,7 @@ Phase 0's done-when (see [`../../implementation-plan.md`](../../plans/implementa
 | Mint targets a value that isn't numeric at the declared path | Mint skips that path with a warning; other paths still mint. |
 | Derivation inputs don't exist | Fail-closed at the calc tool; error to agent. |
 | Derivation result doesn't match the formula's deterministic output | Fail-closed; treated as a kernel-integrity event, escalated. |
-| Postgres write fails on mint | Tool call is rolled back; agent receives `tool_unavailable`. |
+| Runtime-binding write fails on mint | Tool call is rolled back; agent receives `tool_unavailable`. |
 
 ## Tests
 
