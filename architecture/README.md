@@ -71,7 +71,7 @@ Four kernel-level invariants. Every component preserves them; no configuration c
 1. **Non-bypassable.** The only exit for an agent is `submit_answer`. There is no other path that returns data to the user. See [ADR-0002](adrs/0002-submit-answer-as-single-exit.md). *(From [Faramesh, 2026](references.md#faramesh).)*
 2. **Fail-closed.** Validator error, tool error, schema mismatch, token verification failure — all default to denial. Silent pass is never the default. See [ADR-0003](adrs/0003-fail-closed-default.md). *(From [Faramesh, 2026](references.md#faramesh).)*
 3. **Schema-first.** Every tool, validator, input guard, and output is typed against a published JSON schema. The kernel rejects malformed traffic before LLM exposure and before downstream consumption. *(From [IBM DFAH, 2026](references.md#dfah): schema-first architectures dominate determinism under stress.)*
-4. **Replay-deterministic.** Every run's deterministic portion (tool calls, validator outcomes, audit trail, tokens minted) is bit-identical on replay. LLM-portion variance is measured and bounded by guards. See [ADR-0005](adrs/0005-determinism-faithfulness-independent.md). *(Per [DFAH](references.md#dfah), which establishes determinism and accuracy as independent metrics.)*
+4. **Replay-deterministic.** Every run's deterministic portion (tool calls, validator outcomes, audit trail, tokens minted) is bit-identical on replay when the captured inputs, pinned skill-pack facts, kernel version, and backend versions match. LLM-portion variance is measured and bounded by guards. See [ADR-0005](adrs/0005-determinism-faithfulness-independent.md). *(Per [DFAH](references.md#dfah), which establishes determinism and accuracy as independent metrics.)*
 
 These invariants are the value proposition. Everything else is in service of them.
 
@@ -106,10 +106,12 @@ The tool layer is the largest surface and the one that grows fastest. See [`tool
 | Category | Purpose | Doc | v0 backends |
 |---|---|---|---|
 | Ledger | Read GL / sub-ledger / TB | [ledger/README.md](tools/ledger/README.md) | SQL |
-| Extract | Document extraction with confidence | [extract/README.md](tools/extract/README.md) | Textract |
+| Extract | Document extraction with confidence | [extract/README.md](tools/extract/README.md) | Textract, Structured files |
 | Reconcile | Set matching with tolerances | [reconcile/README.md](tools/reconcile/README.md) | pure Go |
 | Calc | Decimal-safe arithmetic + derived tokens | [calc/README.md](tools/calc/README.md) | pure Go |
 | Policy | Cited passage retrieval | [policy/README.md](tools/policy/README.md) | keyword |
+| Match | Typed fuzzy comparison | [match/README.md](tools/match/README.md) | pgvector reference (optional runtime binding) |
+| Dedupe | Clustering on top of match | [dedupe/README.md](tools/dedupe/README.md) | pure Go |
 | External | Market / FX / sanctions data, versioned | [external/README.md](tools/external/README.md) | OpenFX, OFAC (partial) |
 
 ## ADRs
@@ -124,7 +126,7 @@ Architecture Decision Records capture the *why* with paper citations. Read these
 | [0004](adrs/0004-token-level-grounding.md) | Token-level grounding (not document-level citation) | — |
 | [0005](adrs/0005-determinism-faithfulness-independent.md) | Determinism and faithfulness as independent metrics | [DFAH](references.md#dfah) |
 | [0006](adrs/0006-skill-pack-format.md) | Skill pack as the unit of workflow | [Moody's modular AI](references.md#moodys-modular) |
-| [0007](adrs/0007-mcp-as-primary-adapter.md) | MCP as the primary adapter | — |
+| [0007](adrs/0007-mcp-as-primary-adapter.md) | MCP as the primary adapter (**superseded by 0010**) | — |
 | [0008](adrs/0008-postgres-as-canonical-store.md) | Postgres as the canonical transactional store (**superseded by 0011**) | — |
 | [0009](adrs/0009-kernel-public-go-surface.md) | Kernel public Go surface as v0 first-class | — |
 | [0010](adrs/0010-mcp-equal-not-primary.md) | MCP, HTTP, and CLI are equal first-class adapters | — |
@@ -159,7 +161,7 @@ Open architectural questions across all docs are aggregated in subsystem-level "
 - Adapters: MCP, HTTP, CLI.
 - One skill pack: reconciliation.
 - Tool categories shipped: `ledger`, `extract`, `reconcile`, `calc`, `policy`, `external`, `match` (typed fuzzy comparison; pgvector reference backend), `dedupe` (clustering built on `match`, HITL-routed below threshold).
-- Tool backends shipped: SQL ledger, Textract extract, keyword policy, OpenFX external, OFAC partial, pgvector match.
+- Tool backends shipped: SQL ledger, Textract extract, Structured files extract, keyword policy, OpenFX external, OFAC partial; pgvector match is an optional runtime reference backend.
 - Starter normalizer set (`kind: builtin`): `numeric.locale.eu_comma_decimal`, `numeric.thousands_separator.nbsp`, `currency.iso4217`, `date.iso8601_lenient`, `entity_name.basic`.
 - One model class verified: Claude.
 - Eval: four-metric reporting (trajectory determinism, decision determinism, faithfulness, accuracy).

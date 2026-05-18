@@ -7,7 +7,7 @@ Status: **v0**
 ## Depends on
 - [`subsystems/tools.md`](tools.md) — packs require tools; loader verifies availability
 - [`subsystems/guards.md`](guards.md) — packs configure validator pipelines
-- [`subsystems/storage.md`](storage.md) — pack manifests and versions persist
+- [`subsystems/storage.md`](storage.md) — runtime-layer reference bindings project pack metadata
 
 ## Depended on by
 - [`subsystems/harness.md`](harness.md) — harness loads a pack for each run
@@ -204,9 +204,9 @@ Implications, pinned here so two implementations cannot diverge:
 - **Each `builtin_id` is part of the kernel's public API contract.** Adding, renaming, or removing a `builtin_id` is a kernel-version bump (and an audit-chain-format event if any deployed chain references the old ID).
 - **Old chains with `normalizer_applied = null` remain valid across version bumps.** `normalizer_applied` is in the deterministic payload and `null` is a legal canonical value; a v0 chain (empty registry, every token has `normalizer_applied = null`) replays byte-identically on a v0.5 kernel that has registered new IDs.
 - **A pack referencing an unregistered `builtin_id` is rejected at pack-load time** with a typed `skill.normalizer_id_unknown` error. Loading is strict; there is no "soft missing normalizer" mode.
-- **The v0 registry is non-empty (cycle 9).** Cycle 5's "v0 registry is empty" rule is **superseded** by the cycle-9 amendment in this section: the registry ships with the five built-in normalizers enumerated above. The Phase 0 unit test that previously asserted `len(normalizers.Registry()) == 0` is replaced by a test asserting the registry contains exactly the five `builtin_id` values listed in the cycle-9 table, in stable order, and that each registered `Normalizer` implementation passes its fixture-input → canonical-output unit test. The `tools/enumgen/` mechanism (see [`audit.md`](audit.md#canonical-error_code-table)) is extended to also parse the cycle-9 table here and emit `kernel/public/normalizers/registry.go` so the markdown stays the single source of truth; CI's `git diff --exit-code` post-`go generate` catches any drift between this table and the kernel-registered set.
+- **The v0 registry ships the five built-ins (cycle 9).** Cycle 5's "v0 registry is empty" rule is historical; cycle 9 supersedes that content in this section: the registry ships with the five built-in normalizers enumerated above. The Phase 0 unit test that previously asserted `len(normalizers.Registry()) == 0` is replaced by a test asserting the registry contains exactly the five `builtin_id` values listed in the cycle-9 table, in stable order, and that each registered `Normalizer` implementation passes its fixture-input → canonical-output unit test. The `tools/enumgen/` mechanism (see [`audit.md`](audit.md#canonical-error_code-table)) is extended to also parse the cycle-9 table here and emit `kernel/public/normalizers/registry.go` so the markdown stays the single source of truth; CI's `git diff --exit-code` post-`go generate` catches any drift between this table and the kernel-registered set.
 
-Phase 2 task list does not load any normalizer (the registry is empty), but the registry plumbing — `kernel/internal/normalizers/registry.go`, the `Normalizer` interface, the `Lookup` accessor, and the pack-load-time `skill.normalizer_id_unknown` rejection path — ships in Phase 2 as part of the pack-loader code path so the format is enforceable from day one. See [`implementation-plan.md`](../../plans/implementation-plan.md#phase-2--tool-registry-and-guard-pipeline-pre--post).
+Phase 2 task list registers exactly the five v0 built-ins and rejects unregistered IDs; the registry plumbing — `kernel/internal/normalizers/registry.go`, the `Normalizer` interface, the `Lookup` accessor, and the pack-load-time `skill.normalizer_id_unknown` rejection path — ships in Phase 2 as part of the pack-loader code path so the format is enforceable from day one. See [`implementation-plan.md`](../../plans/implementation-plan.md#phase-2--tool-registry-and-guard-pipeline-pre--post).
 
 **Hashing.** The `normalizers/` directory is included in the skill-pack content digest under the same rules as `prompts/` and `guards.yaml` (see [`audit.md`](audit.md#skill-pack-content-digest-procedure)): two packs with different normalizer configurations produce different `skill_pack_hash` values, so a skill that silently changes its normalization is caught on replay.
 
@@ -248,7 +248,7 @@ This closes the cycle-5 critic #5 gap: the locale-numeric trade-off's mitigation
    - validate against the eval case schema
    - read thresholds
    
-7. Persist pack metadata to skills table
+7. Persist pack metadata to the runtime-layer skills table projection
    - assigns a deterministic skill_pack_hash (sha256 of canonicalized content)
    
 8. Mark pack ready
@@ -270,7 +270,9 @@ A run pinned to skill 0.3.0 will not silently upgrade. Adapters explicitly resol
 
 **Private packs**: customers publish private packs to their own registry. The commercial offering hosts private registries with signing infrastructure.
 
-## Storage
+## Storage projection (runtime layer)
+
+The `skills` table below is the runtime-layer projection for pack metadata; the kernel sees canonical pack bytes and hashes, not a storage requirement.
 
 ```sql
 CREATE TABLE skills (

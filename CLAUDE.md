@@ -17,6 +17,13 @@ Use repo-local guidance from `.claude/skills/` and `.agents/` when it matches. P
 - `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening or updating a PR title.
 - `orchestrator-mode`: when the user asks Claude to coordinate through subagents only or to enter orchestrator mode.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
+- Go skills are additive and should be loaded narrowly:
+  - `go-implementation-quality`: general Go implementation, Effective Go style, small APIs, package boundaries, and error handling.
+  - `go-testing-fuzzing`: table/golden tests, fuzzing, and invariant checks for parsers, serialization, and path handling.
+  - `go-input-validation-security`: strict decoding, bounded reads, size/depth limits, allowlists, and fail-closed input handling.
+  - `go-io-performance`: `io.Reader`/`io.Writer`, buffering, chunking, and avoiding full materialization.
+  - `go-concurrency-memory-model`: only for goroutines, channels, mutexes, atomics, or shared state; use happens-before and the race detector.
+- For active phase scope, read `.planning/phases/implementation-sequence.md` and the current phase README before using `plans/implementation-plan.md` as background.
 
 ## Claude Models
 

@@ -1,8 +1,8 @@
 # Adapter: MCP Server
 
-Status: **v0 / primary adapter**
+Status: **v0 / equal first-class adapter**
 
-> The MCP adapter is Provenant's primary integration surface. Any MCP-capable host — Claude Code, Cursor, Claude.ai connectors, custom MCP clients — points at the Provenant MCP server and gains the full finance tool surface plus the validator-gated `submit_answer`. Zero code from the integrator.
+> The MCP adapter is one of Provenant's equal first-class integration surfaces. Any MCP-capable host — Claude Code, Cursor, Claude.ai connectors, custom MCP clients — points at the Provenant MCP server and gains the full finance tool surface plus the validator-gated `submit_answer`. Zero code from the integrator, and no adapter has architectural primacy.
 
 ## Depends on
 - [`subsystems/harness.md`](../subsystems/harness.md) — partial harness role in Mode B
@@ -11,9 +11,9 @@ Status: **v0 / primary adapter**
 - [`subsystems/guards.md`](../subsystems/guards.md) — `submit_answer` enforcement
 - The official Go MCP SDK
 
-## Why MCP first
+## Why MCP matters
 
-See [ADR-0007](../adrs/0007-mcp-as-primary-adapter.md). MCP has converged into the universal agent tool protocol; both [Anthropic](../references.md#anthropic-finance-agents) and [Moody's](../references.md#moodys-agentic) ship finance agents through it. Shipping as an MCP server places Provenant inside every MCP-capable surface for free.
+See [ADR-0010](../adrs/0010-mcp-equal-not-primary.md). MCP has converged into the universal agent tool protocol; both [Anthropic](../references.md#anthropic-finance-agents) and [Moody's](../references.md#moodys-agentic) ship finance agents through it. Shipping as an MCP server places Provenant inside every MCP-capable surface, alongside the CLI and HTTP access surfaces.
 
 ## Server surface
 
@@ -115,6 +115,19 @@ mcp:
     cert_file: /etc/provenant/tls/cert.pem
     key_file: /etc/provenant/tls/key.pem
 
+storage:
+  mode: memory               # memory | sqlite | postgres
+  sqlite:
+    path: /var/lib/provenant/provenant.db
+  postgres:
+    dsn: "postgres://provenant@localhost:5432/provenant?sslmode=verify-full"
+
+blob_store:
+  mode: memory               # memory | s3
+  s3:
+    endpoint: "https://s3.amazonaws.com"
+    bucket_prefix: "provenant-"
+
 tenants:
   - id: acme
     skills:
@@ -123,13 +136,6 @@ tenants:
   - id: globex
     skills:
       - sanctions_disposition@0.1.0
-
-postgres:
-  dsn: "postgres://provenant@localhost:5432/provenant?sslmode=verify-full"
-
-object_store:
-  endpoint: "https://s3.amazonaws.com"
-  bucket_prefix: "provenant-"
 
 logging:
   level: info
@@ -141,7 +147,7 @@ logging:
 ### Local development
 
 ```bash
-docker compose up    # postgres + minio + provenant-server
+docker compose up    # memio/stateless by default; use sqlite or postgres profiles when HITL persistence is needed
 ```
 
 ### Single-tenant production
@@ -154,7 +160,9 @@ docker run -d \
   ghcr.io/provenant/server:0.1.0
 ```
 
-State lives in Postgres and S3. The server itself is stateless; multiple replicas behind a load balancer scale horizontally for shared tenants.
+SQLite is the default persistent binding when HITL pause/resume is enabled. Postgres and S3 are optional runtime bindings for multi-process or large-payload deployments; the MCP server can also run stateless against `kernel/public/memio/` when persistence is not needed.
+
+State lives in the selected runtime binding: memory for stateless runs, SQLite for single-machine persistence, or Postgres + S3 for multi-process deployments. The server itself can remain stateless; multiple replicas behind a load balancer scale horizontally for shared tenants.
 
 ### Connecting from Claude Code
 
@@ -221,4 +229,4 @@ The agent visibly retries `submit_answer` on validator failure — this is the d
 
 - [Anthropic finance agents launch](../references.md#anthropic-finance-agents) — MCP as the finance distribution channel
 - [Moody's MCP launch](../references.md#moodys-agentic) — co-validates the strategy
-- See [ADR-0007](../adrs/0007-mcp-as-primary-adapter.md) for the MCP-first decision
+- See [ADR-0010](../adrs/0010-mcp-equal-not-primary.md) for the equal-first-class adapter decision

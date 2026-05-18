@@ -201,11 +201,11 @@ Per-call timeout: 30 seconds. `cross_set` over larger inputs should be batched a
 
 | Backend | Status | Doc |
 |---|---|---|
-| pgvector | v0 reference | [backends/pgvector.md](backends/pgvector.md) |
+| pgvector | v0 runtime reference (Phase 4) | [backends/pgvector.md](backends/pgvector.md) |
 | sqlite-vss | deferred (v0.5) | not yet documented |
 | in-process-onnx | deferred (v0.5) | not yet documented |
 
-The pgvector backend re-uses the same operator-configured embedding model story as [`tools/policy/backends/pgvector.md`](../policy/backends/pgvector.md): provenant does not bundle a model; the operator points the backend at one. `sqlite-vss` and `in-process-onnx` are listed as candidate v0.5 backends; their full backend docs are not written in v0.
+The pgvector backend is the optional runtime reference backend for Phase 4. It uses the same operator-configured embedding model story as [`tools/policy/backends/pgvector.md`](../policy/backends/pgvector.md): provenant does not bundle a model; the operator points the backend at a runtime Postgres/pgvector binding or an operator-provided pgvector database. `sqlite-vss` and `in-process-onnx` remain deferred to v0.5; their full backend docs are not written in v0.
 
 ## Conformance checklist
 

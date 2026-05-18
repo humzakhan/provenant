@@ -1,0 +1,1 @@
+../../../.agents/skills/go-input-validation-security/SKILL.md

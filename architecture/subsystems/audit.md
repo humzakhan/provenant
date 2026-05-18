@@ -5,7 +5,7 @@ Status: **v0 / load-bearing**
 > Every Provenant run produces an append-only, hash-chained audit log. The log is the artifact regulators ask for. The chain hash makes tampering detectable. The `provenant audit pack` command turns a single run into a regulator-ready bundle in one command.
 
 ## Depends on
-- [`subsystems/storage.md`](storage.md) — Postgres + object store
+- [`subsystems/storage.md`](storage.md) — runtime-layer reference bindings and bundle projections
 
 ## Depended on by
 - All other subsystems write to it
@@ -156,7 +156,7 @@ Every `EntryKind` declares two payload sub-objects: `deterministic` (hashed) and
 | `hitl_decision` | `review_id`, `decision` (`approved` \| `edited` \| `rejected` \| `escalated` \| `expired`), `edits_canonical` (canonical-JSON sorted array of `{field, before, after, kind, reason}` records; required when `decision = edited`, otherwise null), `decision_rationale_hash` | `decided_at_wall`, `reviewer_principal` (non-null on every row; for `decision = expired` the value is the reserved sentinel literal `"system:escalation-sweep"` per [`hitl.md`](hitl.md#rest-api-v0); the `"system:"` prefix is reserved IAM-wide for kernel-emitted actors per [`../cross-cutting/security.md`](../cross-cutting/security.md#principal-namespace-system-reserved-prefix-iam-wide) — canonical sentinels: `system:escalation-sweep`, `system:orphan-sweep`, `system:dr-restore`, `system:audit-verify`) |
 | `run_completed` | `final_status` (`completed` \| `awaiting_review`), `exit_kind` (`submit_answer` \| `host_text_only`), `final_payload_hash` (set only when `exit_kind == submit_answer`; null otherwise) | `ended_at_wall`, `total_duration_ms`, `total_cost_usd` |
 | `run_failed` | `failure_class` (`exhausted` \| `timeout` \| `cost_cap` \| `kernel_integrity` \| `model_error` \| `aborted` \| `orphaned`), `failure_subcode` (enumerated under §"`run_failed.failure_subcode` enum" below) | `ended_at_wall`, `error_message_raw` |
-| `run_orphan_recovered` | `prior_status` (`pending` \| `running`), `last_entry_seq_before_recovery`, `threshold_seconds_used` (the per-skill `max_wall_clock_seconds × orphan_multiplier` actually applied; `orphan_multiplier` is pinned in the **skill manifest** (`bounds.orphan_multiplier`, default 2) and is **not** deployment-overridable — see [`harness.md`](harness.md#orphan-run-threshold-per-skill) and [`skills.md`](skills.md); two deployments running the same `(skill_id, skill_version)` therefore compute the same `threshold_seconds_used` and the field remains in the deterministic sub-object), `recovery_reason` | `swept_at_wall` |
+| `run_orphan_recovered` | `prior_status` (`pending` \| `running`), `last_entry_seq_before_recovery`, `threshold_seconds_used` (the per-skill `max_wall_clock_seconds × orphan_multiplier` actually applied; `orphan_multiplier` is pinned in the **skill manifest** (`bounds.orphan_multiplier`, default 2) and is **not** deployment-overridable — see [`harness.md`](harness.md#orphan-run-threshold-per-skill) and [`skills.md`](skills.md); two deployments running the same `(skill_id, skill_version)` therefore compute the same `threshold_seconds_used` and the field remains in the deterministic sub-object), `recovery_reason` (enumerated under §"`run_orphan_recovered.recovery_reason` enum" below) | `swept_at_wall` |
 | `restore_pending` | `missing_blob_refs_canonical` (sorted list) | `verified_at_wall` |
 | `restore_pending_ack` | `acknowledged_blob_refs_canonical`, `operator_principal_hash` | `acknowledged_at_wall`, `operator_principal_raw` |
 | `credential_identity_changed` | `credential_id`, `credential_identifier_hash_baseline`, `credential_identifier_hash_observed`, `at_step_index_be8` | `detected_at_wall`, `credential_id_provider` |
@@ -182,6 +182,20 @@ Naming rule: all subcodes are `snake_case` ASCII (lowercase `[a-z0-9_]+`, no lea
 | `orphan_recovered` | `orphaned` | The Phase-1 orphan-run sweep finalizes a run that had no terminal entry within its computed `threshold_seconds_used`; paired with the preceding `EntryKindRunOrphanRecovered` entry |
 
 Extension rule: adding a new `failure_subcode` is an audit-chain-format change. It requires (a) a `kernel_version` bump, (b) a new row appended to this table in the same canonical (added-at-version) order, and (c) the kernel boot-time enum validator updated in lock-step. Independent bindings consume the enum from this table — bindings that hard-code a different set (or different spellings) fail the Phase 5 cross-binding byte-identity test by construction.
+
+### `run_orphan_recovered.recovery_reason` enum
+
+`recovery_reason` is a deterministic field on `EntryKindRunOrphanRecovered` and is hashed into the chain. To prevent independent implementations (Phase 5 bindings) from choosing divergent spellings — which would break the byte-identity invariants enforced in Phase 4 and Phase 5 — the set of legal values is **enumerated here as the single source of truth**. The kernel rejects an `EntryKindRunOrphanRecovered` entry whose `recovery_reason` is not in this table at write time.
+
+Naming rule: `recovery_reason` values are `snake_case` ASCII (lowercase `[a-z0-9_]+`, no leading digit, no double underscore, no trailing underscore). Independent implementations MUST emit the byte-identical snake_case spelling listed in this table.
+
+| `recovery_reason` | Emitted when |
+|---|---|
+| `startup_sweep` | The Phase-1 startup sweep finalizes a stale run that was already `pending` or `running` when the sweep observed it |
+| `operator_sweep` | An operator-triggered sweep finalizes a stale run after an explicit administrative recovery action |
+| `restore_verify_prepass` | The Phase-4 restore-verify prepass finalizes a stale run before bundle restoration continues |
+
+Extension rule: adding a new `recovery_reason` is an audit-chain-format change. It requires (a) a `kernel_version` bump, (b) a new row appended to this table in the same canonical (added-at-version) order, and (c) the kernel boot-time enum validator updated in lock-step. Independent bindings consume the enum from this table — bindings that hard-code a different set (or different spellings) fail the Phase 5 cross-binding byte-identity test by construction.
 
 ### Canonical `error_code` table
 
@@ -251,9 +265,10 @@ This table is locked. The kernel boot enumerates these codes from a generated Go
 - `architecture/subsystems/audit.md → ### Canonical \`error_code\` table → kernel/public/errorcode/codes.go` — `error_code` constants and the `AllErrorCodes` slice consumed by the boot-time validator.
 - `architecture/subsystems/audit.md → ### Per-EntryKind payload schema (deterministic-surface enumeration) → kernel/public/audit/entrykind.go` — `EntryKind` constants and the `AllEntryKinds` slice.
 - `architecture/subsystems/audit.md → ### \`run_failed.failure_subcode\` enum → kernel/public/audit/failuresubcode.go` — `failure_subcode` constants and the `AllFailureSubcodes` slice.
+- `architecture/subsystems/audit.md → ### `run_orphan_recovered.recovery_reason` enum → kernel/public/audit/recoveryreason.go` — `recovery_reason` constants and the `AllRecoveryReasons` slice consumed by the orphan-sweep validator.
 - `architecture/subsystems/skills.md → ### v0 built-in normalizer set → kernel/public/normalizers/registry.go` — `builtin_id` constants and the registered-set slice consumed by the pack-load-time `skill.normalizer_id_unknown` check.
 
-The generator is invoked via `go generate ./kernel/public/...` (a `//go:generate` directive in each of the three target packages runs `go run ../../../tools/enumgen --table=<name>`). The generator reads only `architecture/subsystems/audit.md` from the repository tree — it does **not** fetch modules, hit the network, or read environment variables — so `go generate ./kernel/public/...` is hermetic on a clean checkout. CI runs `go generate ./kernel/public/...` followed by `git diff --exit-code`; any markdown↔Go drift (a contributor edits the table without re-running the generator, or edits the generated file without updating the table) fails the build. `tools/enumgen/` ships its own unit test (`tools/enumgen/enumgen_test.go`) that parses a fixture audit.md slice under `tools/enumgen/testdata/` and asserts the generated Go matches a golden fixture (`tools/enumgen/testdata/golden/`); the test guards the parser against silent breakage when this `audit.md` is edited in ways that change table layout. The contract is `tools/enumgen` is the only writer of the three generated files; hand-edits to those files are reverted by the next CI run.
+The generator is invoked via `go generate ./kernel/public/...` (a `//go:generate` directive in each of the three target packages runs `go run ../../../tools/enumgen --table=<name>`). The generator reads only `architecture/subsystems/audit.md` from the repository tree — it does **not** fetch modules, hit the network, or read environment variables — so `go generate ./kernel/public/...` is hermetic on a clean checkout. CI runs `go generate ./kernel/public/...` followed by `git diff --exit-code`; any markdown↔Go drift (a contributor edits the table without re-running the generator, or edits the generated file without updating the table) fails the build. `tools/enumgen/` ships its own unit test (`tools/enumgen/enumgen_test.go`) that parses a fixture audit.md slice under `tools/enumgen/testdata/` and asserts the generated Go matches a golden fixture (`tools/enumgen/testdata/golden/`); the test guards the parser against silent breakage when this `audit.md` is edited in ways that change table layout. The contract is `tools/enumgen` is the only writer of the five generated files; hand-edits to those files are reverted by the next CI run.
 
 ### Tool-call ID and seq determinism
 
@@ -471,6 +486,35 @@ The three-column persistence shape (`payload_deterministic`, `payload_non_determ
 
 `hash_input_canonical` is debug-only and is **never** emitted to any pack file; chain verification re-derives it from `payload_deterministic` via the kernel's pinned JCS canonicalizer. Including it in pack files would risk a downstream consumer using it as a primary source rather than recomputing, masking a JCS-library divergence.
 
+### Proof reconstruction/export artifact
+
+A separate audit exporter reconstructs proof workbooks from audit bundle bytes plus tokens and captured reads. It is derived only: it mints no tokens and mutates no audit-chain state.
+
+Inputs:
+- audit pack / bundle bytes
+- optional token or source scope filter
+- optional export format (`csv` / `xlsx`)
+- optional source resolver override
+
+Outputs:
+- `proof.csv` — deterministic normative export
+- `proof.xlsx` — convenience spreadsheet workbook
+
+Workbook sheets:
+- `manifest`
+- `claims_to_tokens`
+- `tokens`
+- `source_evidence`
+- `derivations`
+- `audit_chain`
+- `verify`
+
+Row columns include `token_id`, `source_tool_call_id`, `source_path`, `source_origin`, `raw_value`, `normalized_value`, `source_hash`, `capture_ref`, `parent_token_ids`, `derivation_op`, `seq`, `hash`, `prev_hash`, and `verification_status`.
+
+Formula cells may recompute proof checks, but verification must still succeed from the canonical CSV/data without trusting workbook recalculation, macros, external links, or host-local calculation settings. Export is fail-closed on missing artifacts, source-hash mismatch, ambiguous token-to-source mapping, unsupported formula/export features, or non-deterministic workbook generation.
+
+Deterministic constraints: fixed sheet order, row order, and column order; stable CSV quoting; pinned workbook writer/version; normalized number/date rendering; and deterministic ZIP/XLSX metadata.
+
 ## The `provenant audit pack` command
 
 A single command produces a regulator-ready bundle for a run:
@@ -502,7 +546,7 @@ pack-run_01HXYZ.zip
 ├── audit.pdf                       # signed PDF version
 ├── tokens.json                     # all provenance tokens
 ├── tool-calls.json                 # all tool calls
-├── captured-reads/                 # external reads (S3 fetched)
+├── captured-reads/                 # external reads (bundle / BlobStore refs)
 ├── prompts/                        # full prompts sent to the model
 ├── responses/                      # full model responses
 ├── guards.json                     # guard runs

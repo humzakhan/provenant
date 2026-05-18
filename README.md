@@ -1,42 +1,46 @@
 # Provenant
 
-**Provenant is a Go library you embed.** The MCP server and the CLI are optional access surfaces — thin shells over the same library — for hosts that can't or won't embed it directly.
+Provenant is a **Go library you embed** when AI agents need to do finance or compliance work with an auditable trail.
 
-Provenant is an open-source enforcement layer for LLM agents in regulated finance. LLM agents writing reconciliations, AP coding, variance commentary, sanctions dispositions, and SAR drafts fail in a specific, regulator-disqualifying way: they emit numbers with no traceable lineage to source data. Provenant moves enforcement into the architecture — the `submit_answer` exit is the only output channel, every numeric claim is grounded to a kernel-minted provenance token, and every run produces a hash-chained audit log that is replay-deterministic on its deterministic portions. The library makes it architecturally impossible for an agent to release a Provenant-signed answer without verifiable lineage to a tool call. **The kernel itself has no storage requirement**: it takes typed inputs and emits a self-contained audit bundle as bytes; the caller decides where the bytes live. See [ADR-0011](architecture/adrs/0011-storage-is-a-deployment-concern.md).
+If Claude or Codex are the analysts, Provenant is the **rulebook and evidence layer** around them: it makes sure important numbers come from a tool call, records where they came from, and packages the run so a reviewer can replay it later.
 
-## Documents
+## In plain language
 
-- [docs/thesis.md](docs/thesis.md) — product claim, dual-mode pluggability model, who it is for
-- [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — synthesis view: system diagram, technology stack, module-boundary contract, deployment model
-- [architecture/README.md](architecture/README.md) — navigation index for the detailed architecture tree (subsystems, adapters, tools, ADRs, cross-cutting)
-- [plans/implementation-plan.md](plans/implementation-plan.md) — phased build plan, Phase 0 through Phase 6, done-when criteria
-- [docs/CRITIC.md](docs/CRITIC.md) — structured prompt for running blocking-issues critique sessions
-- [docs/KNOWN_TRADE_OFFS.md](docs/KNOWN_TRADE_OFFS.md) — accepted trade-offs with mitigations documented
-- [docs/SESSION.md](docs/SESSION.md) — running log of Hone critique/defender cycles and outstanding items
-- [.agents/](.agents/) — agent role files (engineer, reviewer)
+- **Claude/Codex alone** can read a spreadsheet and draft an answer.
+- **Provenant** makes that work enforceable: every released answer must pass through `submit_answer`, every numeric claim is tied to provenance tokens, and every run produces an audit bundle.
+- The **MCP server** and **CLI** are optional wrappers over the same library. They are convenience surfaces, not the product itself.
+
+## How it works at a high level
+
+1. A host application embeds the Provenant library, or talks to it through MCP/CLI.
+2. Tools read source data, normalize it, and compare or calculate from it.
+3. Guards and validators check the output before anything is released.
+4. Provenant writes a tamper-detectable audit trail and emits an audit bundle for review or export.
+
+## Start here by what you need
+
+| Looking for | Go to |
+|---|---|
+| Product thesis and who it is for | [`docs/thesis.md`](docs/thesis.md) |
+| Big-picture architecture | [`architecture/OVERVIEW.md`](architecture/OVERVIEW.md) |
+| Detailed navigation map for the repo | [`architecture/README.md`](architecture/README.md) |
+| Tools and source readers | [`architecture/tools/README.md`](architecture/tools/README.md) |
+| Audit packs, proof exports, and chain format | [`architecture/subsystems/audit.md`](architecture/subsystems/audit.md) |
+| Build phases and implementation plan | [`plans/implementation-plan.md`](plans/implementation-plan.md) |
+| Known trade-offs and limits | [`docs/KNOWN_TRADE_OFFS.md`](docs/KNOWN_TRADE_OFFS.md) |
+| Security model | [`architecture/cross-cutting/security.md`](architecture/cross-cutting/security.md) |
+| Deployment options | [`architecture/cross-cutting/deployment.md`](architecture/cross-cutting/deployment.md) |
+| Architecture Decision Records (ADRs) | [`architecture/adrs/`](architecture/adrs/) |
+| Research lineage and source citations | [`architecture/references.md`](architecture/references.md) |
 
 ## Repo layout
 
 ```
 provenant/
-├── README.md                    <- you are here
-├── docs/
-│   ├── thesis.md                product claim and dual-mode model
-│   ├── CRITIC.md                blocking-issues critique prompt
-│   ├── KNOWN_TRADE_OFFS.md      accepted trade-offs
-│   └── SESSION.md               Hone cycle log
-├── architecture/
-│   ├── README.md                navigation index and core invariants
-│   ├── OVERVIEW.md              synthesis view (tech stack, module boundary)
-│   ├── references.md            paper and blog citations
-│   ├── subsystems/              one doc per kernel module
-│   ├── adapters/                MCP, HTTP, CLI, LangChain, OpenAI
-│   ├── tools/                   tool category specs and per-backend specs
-│   ├── adrs/                    Architecture Decision Records
-│   └── cross-cutting/           security, observability, deployment
-├── plans/
-│   └── implementation-plan.md   Phase 0 – Phase 6 build plan
-└── .agents/                     agent role files
+├── docs/              thesis, trade-offs, session notes
+├── architecture/      architecture overview, subsystems, tools, ADRs, references
+├── plans/             phased implementation plan
+└── .agents/           agent role files
 ```
 
 ## Status

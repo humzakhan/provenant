@@ -105,7 +105,7 @@ How the upstream schema maps to the category's canonical schema.
 Include a side-by-side table.
 
 ## Captured reads (if CapturedDeterministic)
-What's persisted to S3 for replay. Format and identifier conventions.
+What's persisted to the bundle / BlobStore reference for replay. Include format, parser/version pinning, selector/cursor conventions, and any blob/reference identifiers.
 
 ## Rate limits and retries
 Upstream limits, our retry policy.
