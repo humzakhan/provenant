@@ -8,7 +8,7 @@ import (
 	"github.com/provenant/provenant/kernel/public/bundle"
 )
 
-func TestPhaseOneCoreLoopEndToEnd(t *testing.T) {
+func TestBundleReplayReconstructsCoreLoopState(t *testing.T) {
 	t.Parallel()
 
 	run, binding := buildSingleMintState(t)
@@ -86,7 +86,7 @@ func TestPhaseOneCoreLoopEndToEnd(t *testing.T) {
 	}
 }
 
-func TestPhaseOneCoreLoopFailsClosedOnCapturedReadHashMutation(t *testing.T) {
+func TestBundleVerifyRejectsCapturedReadOutputHashMutation(t *testing.T) {
 	t.Parallel()
 
 	run, binding := buildSingleMintState(t)
