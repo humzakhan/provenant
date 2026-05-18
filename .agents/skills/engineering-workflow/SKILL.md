@@ -9,7 +9,7 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 
 ## Modes
 
-- **Mode A — Orchestrator sequence:** one peer/PR at a time. Finish a peer slice, review it, merge it once auto-review clears, then branch the next peer from updated `origin/main`.
+- **Mode A — Orchestrator sequence:** one PR at a time. Finish a slice, review it, merge it once auto-review clears, then branch the next slice from updated `origin/main`.
 - **Mode B — Single feature:** one branch, one PR, one feature delivered normally.
 
 ## Branches
