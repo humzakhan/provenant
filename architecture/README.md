@@ -106,7 +106,7 @@ The tool layer is the largest surface and the one that grows fastest. See [`tool
 | Category | Purpose | Doc | v0 backends |
 |---|---|---|---|
 | Ledger | Read GL / sub-ledger / TB | [ledger/README.md](tools/ledger/README.md) | SQL |
-| Extract | Document extraction with confidence | [extract/README.md](tools/extract/README.md) | Textract |
+| Extract | Document extraction with confidence | [extract/README.md](tools/extract/README.md) | Textract, Structured files |
 | Reconcile | Set matching with tolerances | [reconcile/README.md](tools/reconcile/README.md) | pure Go |
 | Calc | Decimal-safe arithmetic + derived tokens | [calc/README.md](tools/calc/README.md) | pure Go |
 | Policy | Cited passage retrieval | [policy/README.md](tools/policy/README.md) | keyword |
@@ -161,7 +161,7 @@ Open architectural questions across all docs are aggregated in subsystem-level "
 - Adapters: MCP, HTTP, CLI.
 - One skill pack: reconciliation.
 - Tool categories shipped: `ledger`, `extract`, `reconcile`, `calc`, `policy`, `external`, `match` (typed fuzzy comparison; pgvector reference backend), `dedupe` (clustering built on `match`, HITL-routed below threshold).
-- Tool backends shipped: SQL ledger, Textract extract, keyword policy, OpenFX external, OFAC partial; pgvector match is an optional runtime reference backend.
+- Tool backends shipped: SQL ledger, Textract extract, Structured files extract, keyword policy, OpenFX external, OFAC partial; pgvector match is an optional runtime reference backend.
 - Starter normalizer set (`kind: builtin`): `numeric.locale.eu_comma_decimal`, `numeric.thousands_separator.nbsp`, `currency.iso4217`, `date.iso8601_lenient`, `entity_name.basic`.
 - One model class verified: Claude.
 - Eval: four-metric reporting (trajectory determinism, decision determinism, faithfulness, accuracy).
