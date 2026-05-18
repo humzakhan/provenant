@@ -5,7 +5,7 @@ description: Reusable repo workflow for branching, atomic commits, validation, r
 
 # Engineering Workflow
 
-Use this skill for implementation, review, and documentation work when a repo-local workflow should govern branching, validation, and PR behavior.
+Use this skill for implementation, review, and documentation work when repo-local workflow should govern branching, validation, and PR behavior.
 
 ## Modes
 
@@ -22,6 +22,13 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 - In a Git worktree, do not switch this worktree back to `main` just to start the next task. After merge, fetch and branch the next feature from updated `origin/main`.
 - In a normal repo checkout, switching back to `main` is fine before branching the next task.
 
+## Provenant context loading
+
+- Always load this workflow for implementation, review, and docs work.
+- Load the smallest matching Provenant domain skill(s); most tasks need one, occasionally two.
+- If a task seems to need all three domain skills, narrow the slice before continuing.
+- For current phase work, read `.planning/phases/implementation-sequence.md` and the current phase README before treating `plans/implementation-plan.md` as background.
+
 ## Commits
 
 - Make atomic commits with Conventional Commit subjects.
@@ -29,11 +36,17 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 - Do not use `WIP` or bundle unrelated changes.
 - Use the `conventional-commit-guard` skill before writing commit messages or PR titles.
 
-## Context Loading
+## Phase scope guard
 
-- Read only the documents and sections needed for the current task.
-- Prefer search and targeted reads over broad full-file reads.
-- Do not reread already-loaded guidance unless it changed or a fresh check is needed.
+- Do not pre-implement later surfaces while doing Phase 1 work: no CLI, HTTP, MCP, runtime persistence, S3/SQLite/Postgres, model harness, PDF/XLSX export, broad reader coverage, or custom validator/plugin infrastructure.
+- Keep the active phase slice independently buildable and reviewable.
+
+## Validation
+
+- Prefer the narrowest Go tests that cover the touched packages.
+- Phase 1 acceptance should prove bytes-only source fixture input, captured read, kernel-minted token, bundle verify/replay, and deterministic mutation failure.
+- Run broader validation only when the repo or task explicitly needs it.
+- Record skipped or unavailable checks plainly.
 
 ## Implementation Loop
 
@@ -45,12 +58,6 @@ Use this skill for implementation, review, and documentation work when a repo-lo
 6. Run relevant validation before marking ready for review.
 7. Run at most two automated review cycles by default.
 8. If cycle 2 still has major issues, run one final cycle 3 and stop there.
-
-## Validation
-
-- Run the narrowest checks that cover the changed behavior while iterating.
-- Run broader validation before declaring work done when the repo expects it.
-- Record skipped or unavailable checks plainly.
 
 ## PR Description
 
