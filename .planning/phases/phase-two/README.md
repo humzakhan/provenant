@@ -1,7 +1,7 @@
 # Phase 2
 
 ## Goal
-Expand structured-reader coverage and selector/window edge cases on the proven Phase 1 kernel: same source-bytes input, same captured-read -> kernel-minted token -> bundle verify/replay loop, more reader shapes and stricter fail-closed selector behavior.
+Expand structured-reader coverage and selector/window edge cases on the proven core kernel: same source-bytes input, same captured-read -> kernel-minted token -> bundle verify/replay loop, more reader shapes and stricter fail-closed selector behavior.
 
 ## Packet sequence
 Use `.planning/phases/phase-two/sequential-work-packets.md` for the PR-by-PR packet order, same-worktree sequencing, and commit boundaries. Parallel work is only for read-only planning/review, or isolated worktrees.

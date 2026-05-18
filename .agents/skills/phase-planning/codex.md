@@ -20,7 +20,7 @@ Use this skill when the request is to plan a new implementation phase or revise 
 
 If a target phase directory already exists, read its three phase files before rewriting them.
 
-Use Phase 1 as the base template for file shape and packet style. Use Phase 2 as the model for adding optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
+Use the nearest existing phase docs as the base template for file shape and packet style. Use Phase 2 as the current model for optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
 
 ## Outputs
 
@@ -30,14 +30,14 @@ Create or update exactly:
 - `.planning/phases/<phase-slug>/goal-kickstart-prompt.md`
 - `.planning/phases/<phase-slug>/sequential-work-packets.md`
 
-Use lowercase hyphenated phase slugs that match repo convention, usually `phase-one`, `phase-two`, and so on.
+Use lowercase hyphenated phase slugs that match repo convention, such as `phase-two`, `phase-three`, and so on.
 
 Keep all files ASCII, concise, and operational.
 
 ## Planning rules
 
 - Mirror the prior phase structure before inventing a new format.
-- Phase 1 defines the default structure; later phases may add optional middle sections but should keep the same three-file contract.
+- Existing phase docs define the default structure; later phases may add optional middle sections but should keep the same three-file contract.
 - Keep the phase independently buildable, testable, and reviewable.
 - Treat `implementation-sequence.md` as the boundary contract; use phase-specific architecture docs to sharpen the slice, not to widen it.
 - Pull in the smallest additive contract delta needed for the phase.
