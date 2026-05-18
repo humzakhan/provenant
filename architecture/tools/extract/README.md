@@ -35,6 +35,10 @@ The same category also covers structured source readers for spreadsheets, CSV, J
 | `extract.json` | JSON pointer/path reader for exact object/array slices | CapturedDeterministic |
 | `extract.jsonl` | JSONL / large JSON streaming reader | CapturedDeterministic |
 
+## Schemas
+
+Each tool publishes JSON Schema for its inputs and outputs. The examples below show the canonical field shapes; selector fields, provenance locators, and raw/normalized values are part of the published contract.
+
 ## Document-AI readers
 
 These tools stay confidence-first and non-deterministic because they rely on OCR / document-AI backends. Replay captures the full response payload and serves it back on replay.
