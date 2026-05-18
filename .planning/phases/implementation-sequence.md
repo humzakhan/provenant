@@ -2,14 +2,6 @@
 
 Keep the loop tight: each phase must be independently buildable, testable, and reviewable. No phase should require building the whole ecosystem for days before it can produce runnable, verifiable evidence.
 
-## Phase 1 — Prove the core loop in-process
-
-- **Goal:** prove the kernel can mint a token, run one reader end to end, capture reads, and verify/replay the emitted bundle in memory.
-- **Implementation boundary:** kernel boundary, in-memory harness, one structured reader, provenance/proof emission and verification. No CLI/HTTP/MCP, persistence, export polish, or broader reader coverage.
-- **Functionality boundary:** a declared source path can mint a token; one reader call completes; reads are captured; the bundle replays and verifies; a targeted mutation fails closed.
-- **Pass criteria:** tests use source bytes/fixtures only; emitted bundle verifies; replay reproduces captured reads; mutation test fails as expected; any fixture or doc note needed for the phase is updated.
-- **Suggested validation:** focused unit/integration tests for the core loop plus one mutation/failure case.
-
 ## Phase 2 — Expand reader coverage on the same kernel
 
 - **Goal:** cover the remaining reader shapes and edge cases without changing the proven core model.

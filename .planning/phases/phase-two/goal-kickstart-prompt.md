@@ -1,5 +1,5 @@
 /goal
-Kickstart Phase 2 only. Treat `.planning/phases/implementation-sequence.md` and `.planning/phases/phase-two/README.md` as the Phase 2 contract. Expand structured-reader coverage and selector/window edge cases on the proven Phase 1 kernel without changing proof/audit semantics or adding any new access surface.
+Kickstart Phase 2 only. Treat `.planning/phases/implementation-sequence.md` and `.planning/phases/phase-two/README.md` as the Phase 2 contract. Expand structured-reader coverage and selector/window edge cases on the proven core kernel without changing proof/audit semantics or adding any new access surface.
 
 Follow `.planning/phases/phase-two/sequential-work-packets.md` in order. Execute in the same worktree, one packet at a time; parallelism is only for read-only planning/review or isolated worktrees.
 
@@ -19,7 +19,7 @@ Non-goals:
 Allowed scope:
 - the smallest additive selector/capture contract delta needed to support structured readers and windowed selectors on the same kernel
 - the matching additive bundle/verifier/replay validation needed to carry and validate those declared Phase 2 selector and captured-read fields without changing proof/audit semantics
-- reader-local locator/output metadata, pinned parser/options metadata, and replay evidence that preserve the Phase 1 mint/audit/replay model
+- reader-local locator/output metadata, pinned parser/options metadata, and replay evidence that preserve the established mint/audit/replay model
 - focused fixture additions, replay coverage, and doc updates for the implemented readers
 - fail-closed handling for selector, path, span, window, encoding, dialect, sheet, and formula-policy ambiguity
 

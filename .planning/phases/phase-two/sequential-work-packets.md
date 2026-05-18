@@ -11,7 +11,7 @@ Phase 2 is a same-worktree plan first. Execute the packets in order, one at a ti
 
 **Implementation boundary:** no new reader surfaces beyond the structured-files lane; no CLI/runtime/API work; no proof/audit semantic changes; no persistence.
 
-**Pass criteria / validation:** shared types compile; existing Phase 1 end-to-end behavior remains unchanged; the contract can express planned selectors, locator echoes, and pagination/window metadata; ambiguous or unsupported selector forms are rejected deterministically.
+**Pass criteria / validation:** shared types compile; existing end-to-end behavior remains unchanged; the contract can express planned selectors, locator echoes, and pagination/window metadata; ambiguous or unsupported selector forms are rejected deterministically.
 
 **Commit/PR boundary:** first. Land one small conventional commit in one PR; do not start Packet 2 until this PR is merged or otherwise accepted.
 

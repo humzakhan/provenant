@@ -38,13 +38,13 @@ Use this skill for implementation, review, and documentation work when repo-loca
 
 ## Phase scope guard
 
-- Do not pre-implement later surfaces while doing Phase 1 work: no CLI, HTTP, MCP, runtime persistence, S3/SQLite/Postgres, model harness, PDF/XLSX export, broad reader coverage, or custom validator/plugin infrastructure.
+- Do not pre-implement later surfaces while doing active phase work: no CLI, HTTP, MCP, runtime persistence, S3/SQLite/Postgres, model harness, PDF/XLSX export, broad reader coverage, or custom validator/plugin infrastructure unless the current phase docs explicitly allow it.
 - Keep the active phase slice independently buildable and reviewable.
 
 ## Validation
 
 - Prefer the narrowest Go tests that cover the touched packages.
-- Phase 1 acceptance should prove bytes-only source fixture input, captured read, kernel-minted token, bundle verify/replay, and deterministic mutation failure.
+- Phase acceptance should use observable evidence named by the current phase docs, with focused tests for the touched packages.
 - Run broader validation only when the repo or task explicitly needs it.
 - Record skipped or unavailable checks plainly.
 
