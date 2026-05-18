@@ -486,6 +486,35 @@ The three-column persistence shape (`payload_deterministic`, `payload_non_determ
 
 `hash_input_canonical` is debug-only and is **never** emitted to any pack file; chain verification re-derives it from `payload_deterministic` via the kernel's pinned JCS canonicalizer. Including it in pack files would risk a downstream consumer using it as a primary source rather than recomputing, masking a JCS-library divergence.
 
+### Proof reconstruction/export artifact
+
+A separate audit exporter reconstructs proof workbooks from audit bundle bytes plus tokens and captured reads. It is derived only: it mints no tokens and mutates no audit-chain state.
+
+Inputs:
+- audit pack / bundle bytes
+- optional token or source scope filter
+- optional export format (`csv` / `xlsx`)
+- optional source resolver override
+
+Outputs:
+- `proof.csv` — deterministic normative export
+- `proof.xlsx` — convenience spreadsheet workbook
+
+Workbook sheets:
+- `manifest`
+- `claims_to_tokens`
+- `tokens`
+- `source_evidence`
+- `derivations`
+- `audit_chain`
+- `verify`
+
+Row columns include `token_id`, `source_tool_call_id`, `source_path`, `source_origin`, `raw_value`, `normalized_value`, `source_hash`, `capture_ref`, `parent_token_ids`, `derivation_op`, `seq`, `hash`, `prev_hash`, and `verification_status`.
+
+Formula cells may recompute proof checks, but verification must still succeed from the canonical CSV/data without trusting workbook recalculation, macros, external links, or host-local calculation settings. Export is fail-closed on missing artifacts, source-hash mismatch, ambiguous token-to-source mapping, unsupported formula/export features, or non-deterministic workbook generation.
+
+Deterministic constraints: fixed sheet order, row order, and column order; stable CSV quoting; pinned workbook writer/version; normalized number/date rendering; and deterministic ZIP/XLSX metadata.
+
 ## The `provenant audit pack` command
 
 A single command produces a regulator-ready bundle for a run:
@@ -517,7 +546,7 @@ pack-run_01HXYZ.zip
 ├── audit.pdf                       # signed PDF version
 ├── tokens.json                     # all provenance tokens
 ├── tool-calls.json                 # all tool calls
-├── captured-reads/                 # external reads (S3 fetched)
+├── captured-reads/                 # external reads (bundle / BlobStore refs)
 ├── prompts/                        # full prompts sent to the model
 ├── responses/                      # full model responses
 ├── guards.json                     # guard runs
