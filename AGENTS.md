@@ -20,6 +20,7 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 - `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening or updating a PR title.
 - `orchestrator-mode`: when the user asks Codex to coordinate through sub-agents only or to enter orchestrator mode.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
+- For active phase scope, read `.planning/phases/implementation-sequence.md` and the current phase README before using `plans/implementation-plan.md` as background.
 
 ## Codex Models
 
