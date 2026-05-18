@@ -41,7 +41,7 @@ The library is the product. MCP and CLI are **thin shells that wrap the library*
 The novelty is not the box diagram — it is the boundary lines:
 
 - **Kernel** is pure: no I/O at the public surface, no `net/*` or `database/sql` import anywhere transitively reachable from `kernel/`. Every I/O dependency is an injected interface. The kernel ships a **first-class in-memory binding** of those interfaces under `kernel/public/memio/` as the library-mode default; it ships nothing else as a storage binding.
-- **Access surfaces** (MCP server, CLI, future HTTP) are thin runtime-layer shells over the kernel public Go surface. None has architectural primacy ([ADR-0010](adrs/0010-mcp-equal-not-primary.md)). All three must produce byte-identical deterministic-portion audit chains on the same input ([implementation-plan.md](../plans/implementation-plan.md) Phase 4 done-when).
+- **Access surfaces** (MCP server, CLI, future HTTP) are thin runtime-layer shells over the kernel public Go surface. None has architectural primacy ([ADR-0010](adrs/0010-mcp-equal-not-primary.md)). All three must produce byte-identical deterministic-portion audit chains when the captured inputs, pinned facts, kernel version, and backend versions match ([implementation-plan.md](../plans/implementation-plan.md) Phase 4 done-when).
 - **Persistent storage bindings** (`runtime/sqlite/` default, `runtime/postgres/` for multi-tenant) live **outside the kernel module** and are owned by the runtime layer. A host that embeds the library is free to ignore them entirely.
 
 For the canonical invariants (non-bypassable, fail-closed, schema-first, replay-deterministic), see [`architecture/README.md`](README.md#core-invariants). Every component below preserves them.
@@ -69,11 +69,11 @@ For the canonical invariants (non-bypassable, fail-closed, schema-first, replay-
 
 These are deliberately unresolved here. The hone critic/defender loop will adjudicate.
 
-1. **Is Go the right kernel language given the dual-mode pluggability requirement?** [ADR-0001](adrs/0001-go-as-kernel-language.md) was decided when "code-level embedding" was explicitly out of scope ("the kernel will not provide a Go-only public API to consumers; the public surface is MCP / HTTP / CLI"). The thesis now elevates code-level embeddability to a first-class requirement. Surfaces to test against Go:
+1. **Go is accepted for v0; the remaining question is binding shape.** [ADR-0001](adrs/0001-go-as-kernel-language.md) remains the v0 kernel-language decision. The open question now is whether non-Go hosts reach the library through FFI or through a strict-latency sidecar. Surfaces to test against Go:
    - CGo/FFI ergonomics for Python and TypeScript hosts: viable, but the cost of marshaling provenance tokens and decimal values across the FFI boundary is non-trivial and may force a sidecar-only strategy for non-Go hosts.
-   - Distribution as a library to non-Go hosts: requires either a stable C ABI (substantial engineering), a sidecar with strict latency budget (gives up on true in-process embedding), or a per-language port of the kernel (massive ongoing burden).
+   - Distribution as a library to non-Go hosts: requires either a stable C ABI (substantial engineering) or a sidecar with strict latency budget (gives up on true in-process embedding).
    - GC pause behavior under sustained audit-hash workloads at high throughput: not validated; could matter for hot paths.
-   - Alternatives to revisit: Rust (better FFI story; harder contributor cohort), or keep Go for the runtime and carve a minimal pure-Go-and-portable kernel core that can also be ported per-language. No decision is taken in this document.
+   - Alternatives to revisit: Rust (better FFI story; harder contributor cohort) only as a future non-Go host binding, not as a Phase-0 kernel rewrite. No decision is taken in this document.
 
 2. **Is the current top-level architecture/ structure the right shape for dual-mode pluggability?** Today: `architecture/{subsystems,adapters,tools,adrs,cross-cutting}`. The implicit assumption is that the kernel and the runtime co-locate. If code-level embedding is first-class, a better shape may be:
    ```
@@ -205,7 +205,7 @@ The host application links the Provenant kernel directly (Go module import; or, 
 - **Kernel handles:** every enforcement decision, the audit chain construction, the bundle emission, the typed `RunState` snapshot at any HITL pause boundary. **No I/O.** No network socket, no file handle, no database connection.
 - Lifecycle: host owns it. Kernel exposes a `Shutdown(ctx)` for graceful teardown only as a convenience for hosts that want to flush in-flight goroutines; the kernel does not own a process.
 - Multi-tenancy: the host passes `tenant_id` per call; the kernel enforces.
-- Audit chain: byte-identical (on the deterministic portion) to runtime-mode chains for the same input, because the same kernel Go code is doing the work.
+- Audit chain: byte-identical (on the deterministic portion) to runtime-mode chains when the captured inputs, pinned facts, kernel version, and backend versions match, because the same kernel Go code is doing the work.
 
 ### 7.2 MCP server access surface (optional)
 
