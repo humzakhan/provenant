@@ -220,6 +220,11 @@ type ValidationError struct {
 | `policy.citation_exists` | Every cited policy section ID resolves to a real anchor |
 | `confidence.extraction_min` | No extraction with confidence below threshold released without HITL |
 | `currency.consistent` | No silent currency mixing |
+| `match.confidence_min` | Rejects any `MatchProposal` whose `confidence` is below the per-skill threshold. See [`tools/match/README.md`](../tools/match/README.md). |
+| `match.similarity_min` | Rejects any `MatchProposal` whose `similarity_score` is below the per-skill threshold. See [`tools/match/README.md`](../tools/match/README.md). |
+| `match.method_allowed` | Restricts allowed `method` values per skill (e.g., `cosine_embedding`, `jaccard`, `levenshtein_normalized`). A proposal with a disallowed method is rejected. See [`tools/match/README.md`](../tools/match/README.md). |
+| `dedupe.cluster_size_max` | Rejects any cluster whose `member_token_ids` size exceeds a configured max (catches embedding-model collapse). See [`tools/dedupe/README.md`](../tools/dedupe/README.md). |
+| `dedupe.review_required` | Asserts that every cluster with `decision = review_required` has been routed through HITL and an `EntryKindHITLDecision` recorded before `submit_answer`. Fails closed with `dedupe.review_required_no_hitl` if HITL is not wired. See [`tools/dedupe/README.md`](../tools/dedupe/README.md). |
 
 Each validator implements the interface above. Validators are pure functions of their input — easy to unit-test, easy to replay against the case bank.
 

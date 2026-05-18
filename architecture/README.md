@@ -153,7 +153,9 @@ Open architectural questions across all docs are aggregated in subsystem-level "
 - Kernel invariants enforced: non-bypassable, fail-closed, schema-first, replay-deterministic.
 - Adapters: MCP, HTTP, CLI.
 - One skill pack: reconciliation.
-- Tool backends shipped: SQL ledger, Textract extract, keyword policy, OpenFX external, OFAC partial.
+- Tool categories shipped: `ledger`, `extract`, `reconcile`, `calc`, `policy`, `external`, `match` (typed fuzzy comparison; pgvector reference backend), `dedupe` (clustering built on `match`, HITL-routed below threshold).
+- Tool backends shipped: SQL ledger, Textract extract, keyword policy, OpenFX external, OFAC partial, pgvector match.
+- Starter normalizer set (`kind: builtin`): `numeric.locale.eu_comma_decimal`, `numeric.thousands_separator.nbsp`, `currency.iso4217`, `date.iso8601_lenient`, `entity_name.basic`.
 - One model class verified: Claude.
 - Eval: four-metric reporting (trajectory determinism, decision determinism, faithfulness, accuracy).
 - CLI: `run`, `replay`, `cases`, `audit`, `audit pack`, `skill`, `tools`.
