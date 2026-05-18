@@ -19,6 +19,7 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 
 - `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening or updating a PR title.
 - `orchestrator-mode`: when the user asks Codex to coordinate through sub-agents only or to enter orchestrator mode.
+- `phase-planning`: when the user asks to plan the next phase or create/update `.planning/phases/<phase-slug>/` docs in the repo's phase format.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
 - Go skills are additive and should be loaded narrowly:
   - `go-implementation-quality`: general Go implementation, Effective Go style, small APIs, package boundaries, and error handling.
