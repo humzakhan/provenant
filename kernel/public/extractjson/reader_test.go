@@ -161,6 +161,51 @@ func TestReaderReadFailures(t *testing.T) {
 			wantErr:  ErrInvalidJSON,
 		},
 		{
+			name: "jsonpath metadata not yet enforced",
+			source: kernel.SourceBytes{
+				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},
+				Bytes:  []byte(`{"invoice":1}`),
+			},
+			selector: kernel.SourceSelector{JSONPointer: "/invoice", JSONPath: "$.invoice"},
+			wantErr:  ErrUnsupportedSelector,
+		},
+		{
+			name: "byte span metadata not yet enforced",
+			source: kernel.SourceBytes{
+				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},
+				Bytes:  []byte(`{"invoice":1}`),
+			},
+			selector: kernel.SourceSelector{JSONPointer: "/invoice", ByteSpan: "0-12"},
+			wantErr:  ErrUnsupportedSelector,
+		},
+		{
+			name: "jsonl selector metadata rejected",
+			source: kernel.SourceBytes{
+				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},
+				Bytes:  []byte(`{"invoice":1}`),
+			},
+			selector: kernel.SourceSelector{JSONPointer: "/invoice", LineWindow: "1-10"},
+			wantErr:  ErrUnsupportedSelector,
+		},
+		{
+			name: "csv selector metadata rejected",
+			source: kernel.SourceBytes{
+				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},
+				Bytes:  []byte(`{"invoice":1}`),
+			},
+			selector: kernel.SourceSelector{JSONPointer: "/invoice", RowWindow: "1-10", ColumnProjection: "amount"},
+			wantErr:  ErrUnsupportedSelector,
+		},
+		{
+			name: "spreadsheet selector metadata rejected",
+			source: kernel.SourceBytes{
+				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},
+				Bytes:  []byte(`{"invoice":1}`),
+			},
+			selector: kernel.SourceSelector{JSONPointer: "/invoice", Sheet: "TrialBalance"},
+			wantErr:  ErrUnsupportedSelector,
+		},
+		{
 			name: "invalid pointer",
 			source: kernel.SourceBytes{
 				Source: kernel.Source{Path: "fixture://invoice.json", SHA256: sha256Hex([]byte(`{"invoice":1}`))},

@@ -222,6 +222,51 @@ func TestVerifyRejectsUnknownTokenMintPayloadField(t *testing.T) {
 	}
 }
 
+func TestVerifyAcceptsSupportedNonJSONPointerSelectorPayload(t *testing.T) {
+	t.Parallel()
+
+	run, binding := buildSingleMintState(t)
+	doc := decodeDocument(t, mustEmitState(t, snapshotState(t, binding, run)))
+
+	selector := kernel.SourceSelector{
+		LineWindow: "1-100",
+		Cursor:     "line:100",
+		JSONPath:   "$.invoice.items[0].amount",
+		ByteSpan:   "0-24",
+	}
+	doc.CapturedReads[0].Selector = selector
+	doc.Tokens[0].Source.SourceSelector = selector
+	mutateFirstAuditPayload(t, &doc, func(payload map[string]any) {
+		payload["source_selector"] = selector
+	})
+
+	if err := bundle.Verify(encodeDocument(t, doc)); err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+}
+
+func TestVerifyRejectsAmbiguousSelectorPayload(t *testing.T) {
+	t.Parallel()
+
+	run, binding := buildSingleMintState(t)
+	doc := decodeDocument(t, mustEmitState(t, snapshotState(t, binding, run)))
+
+	selector := kernel.SourceSelector{
+		LineWindow: "1-100",
+		RowWindow:  "1-10",
+	}
+	doc.CapturedReads[0].Selector = selector
+	doc.Tokens[0].Source.SourceSelector = selector
+	mutateFirstAuditPayload(t, &doc, func(payload map[string]any) {
+		payload["source_selector"] = selector
+	})
+
+	err := bundle.Verify(encodeDocument(t, doc))
+	if !errors.Is(err, bundle.ErrTamperDetected) {
+		t.Fatalf("Verify() error = %v, want %v", err, bundle.ErrTamperDetected)
+	}
+}
+
 type bundleDocument struct {
 	Format        string                `json:"format"`
 	Run           kernel.Run            `json:"run"`

@@ -499,6 +499,7 @@ func decodeTokenMintPayload(deterministic []byte) (tokenMintPayload, error) {
 	if err := dec.Decode(&struct{}{}); err != io.EOF {
 		return tokenMintPayload{}, errors.New("trailing payload bytes")
 	}
+	selectorErr := payload.SourceSelector.ValidatePhaseTwoSelector()
 	switch {
 	case payload.TokenID == "":
 		return tokenMintPayload{}, errors.New("missing token_id")
@@ -506,8 +507,8 @@ func decodeTokenMintPayload(deterministic []byte) (tokenMintPayload, error) {
 		return tokenMintPayload{}, errors.New("missing captured_read_id")
 	case payload.SourcePath == "":
 		return tokenMintPayload{}, errors.New("missing source_path")
-	case payload.SourceSelector.JSONPointer == "":
-		return tokenMintPayload{}, errors.New("missing source_selector.json_pointer")
+	case selectorErr != nil:
+		return tokenMintPayload{}, fmt.Errorf("invalid source_selector: %w", selectorErr)
 	case payload.OutputPath == "":
 		return tokenMintPayload{}, errors.New("missing output_path")
 	case payload.ReaderName == "":

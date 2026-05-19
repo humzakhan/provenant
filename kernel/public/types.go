@@ -2,8 +2,12 @@ package kernel
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"time"
 )
+
+var ErrInvalidSourceSelector = errors.New("kernel: invalid source selector")
 
 // RunStatus is the lifecycle state of an in-process run.
 type RunStatus string
@@ -40,9 +44,64 @@ type SourceBytes struct {
 	Bytes  []byte `json:"bytes"`
 }
 
-// SourceSelector names the exact JSON Pointer a Phase 1 source reader should resolve.
+// SourceSelector declares the deterministic selector and window metadata for structured readers.
 type SourceSelector struct {
-	JSONPointer string `json:"json_pointer"`
+	JSONPointer      string `json:"json_pointer"`
+	JSONPath         string `json:"jsonpath,omitempty"`
+	ByteSpan         string `json:"byte_span,omitempty"`
+	LineWindow       string `json:"line_window,omitempty"`
+	Cursor           string `json:"cursor,omitempty"`
+	RowWindow        string `json:"row_window,omitempty"`
+	ColumnProjection string `json:"column_projection,omitempty"`
+	Sheet            string `json:"sheet,omitempty"`
+	Range            string `json:"range,omitempty"`
+	TableName        string `json:"table_name,omitempty"`
+	HeaderRow        int    `json:"header_row,omitempty"`
+	Dialect          string `json:"dialect,omitempty"`
+	Encoding         string `json:"encoding,omitempty"`
+	FormulaPolicy    string `json:"formula_policy,omitempty"`
+}
+
+func (s SourceSelector) ValidatePhaseTwoSelector() error {
+	if s.Cursor != "" && s.LineWindow == "" && s.RowWindow == "" {
+		return fmt.Errorf("%w: cursor requires line_window or row_window", ErrInvalidSourceSelector)
+	}
+
+	if s.LineWindow != "" {
+		if s.RowWindow != "" || s.ColumnProjection != "" || s.Sheet != "" || s.Range != "" || s.TableName != "" || s.HeaderRow != 0 || s.Dialect != "" || s.Encoding != "" || s.FormulaPolicy != "" {
+			return fmt.Errorf("%w: ambiguous selector families", ErrInvalidSourceSelector)
+		}
+		return nil
+	}
+
+	if s.Sheet != "" || s.Range != "" || s.TableName != "" || s.FormulaPolicy != "" {
+		if s.JSONPointer != "" || s.JSONPath != "" || s.ByteSpan != "" || s.HeaderRow != 0 || s.Dialect != "" || s.Encoding != "" || s.Cursor != "" {
+			return fmt.Errorf("%w: ambiguous selector families", ErrInvalidSourceSelector)
+		}
+		if s.Sheet == "" && s.Range == "" && s.TableName == "" {
+			return fmt.Errorf("%w: spreadsheet selector requires sheet, range, or table_name", ErrInvalidSourceSelector)
+		}
+		return nil
+	}
+
+	if s.RowWindow != "" || s.ColumnProjection != "" || s.HeaderRow != 0 || s.Dialect != "" || s.Encoding != "" || s.Cursor != "" {
+		if s.JSONPointer != "" || s.JSONPath != "" || s.ByteSpan != "" {
+			return fmt.Errorf("%w: ambiguous selector families", ErrInvalidSourceSelector)
+		}
+		if s.RowWindow == "" {
+			return fmt.Errorf("%w: csv selector requires row_window", ErrInvalidSourceSelector)
+		}
+		return nil
+	}
+
+	if s.JSONPointer != "" || s.JSONPath != "" || s.ByteSpan != "" {
+		if s.JSONPointer == "" {
+			return fmt.Errorf("%w: json selector requires json_pointer", ErrInvalidSourceSelector)
+		}
+		return nil
+	}
+
+	return fmt.Errorf("%w: no supported selector family", ErrInvalidSourceSelector)
 }
 
 // CapturedRead records the deterministic evidence needed to replay a source read.

@@ -25,6 +25,7 @@ var (
 	ErrMissingSourceSHA256 = errors.New("extractjson: missing source sha256")
 	ErrSourceHashMismatch  = errors.New("extractjson: source hash mismatch")
 	ErrMissingJSONPointer  = errors.New("extractjson: missing json pointer")
+	ErrUnsupportedSelector = errors.New("extractjson: unsupported selector metadata")
 	ErrInvalidJSONPointer  = errors.New("extractjson: invalid json pointer")
 	ErrInvalidJSON         = errors.New("extractjson: invalid json")
 	ErrSelectorNotFound    = errors.New("extractjson: selector not found")
@@ -39,8 +40,8 @@ func (Reader) Read(_ context.Context, run kernel.Run, source kernel.SourceBytes,
 	if source.Source.SHA256 == "" {
 		return kernel.ReadResult{}, ErrMissingSourceSHA256
 	}
-	if selector.JSONPointer == "" {
-		return kernel.ReadResult{}, ErrMissingJSONPointer
+	if err := validateSelector(selector); err != nil {
+		return kernel.ReadResult{}, err
 	}
 
 	sourceHash := sha256.Sum256(source.Bytes)
@@ -122,6 +123,44 @@ func readID(runID, sourcePath, pointer, sourceSHA256, outputSHA256 string) strin
 		outputSHA256,
 	}, "\n")))
 	return "read_" + hex.EncodeToString(sum[:16])
+}
+
+func validateSelector(selector kernel.SourceSelector) error {
+	if selector.JSONPointer == "" &&
+		selector.JSONPath == "" &&
+		selector.ByteSpan == "" &&
+		selector.LineWindow == "" &&
+		selector.Cursor == "" &&
+		selector.RowWindow == "" &&
+		selector.ColumnProjection == "" &&
+		selector.Sheet == "" &&
+		selector.Range == "" &&
+		selector.TableName == "" &&
+		selector.HeaderRow == 0 &&
+		selector.Dialect == "" &&
+		selector.Encoding == "" &&
+		selector.FormulaPolicy == "" {
+		return ErrMissingJSONPointer
+	}
+	if selector.JSONPath != "" ||
+		selector.ByteSpan != "" ||
+		selector.LineWindow != "" ||
+		selector.Cursor != "" ||
+		selector.RowWindow != "" ||
+		selector.ColumnProjection != "" ||
+		selector.Sheet != "" ||
+		selector.Range != "" ||
+		selector.TableName != "" ||
+		selector.HeaderRow != 0 ||
+		selector.Dialect != "" ||
+		selector.Encoding != "" ||
+		selector.FormulaPolicy != "" {
+		return ErrUnsupportedSelector
+	}
+	if selector.JSONPointer == "" {
+		return ErrMissingJSONPointer
+	}
+	return nil
 }
 
 type valueKind uint8
