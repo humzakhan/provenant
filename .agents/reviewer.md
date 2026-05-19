@@ -197,20 +197,22 @@ correctness issues — if the spec is violated, the fix is required.
 
 ## Phase-specific review notes
 
-We are at **Phase 0**. The done-when for Phase 0 is specific and test-driven:
+Use `../.planning/implementation-plan.md` as the canonical phase taxonomy and current
+status. At present, **Phase 0 is complete, Phases 1-2 are complete, and Phase 3 is
+current**.
 
-- `go build ./kernel/...` and `go test ./kernel/...` pass with mocked I/O.
-- The import-guard check passes.
-- The TransactionalScope boot-time mismatch test passes.
-- The `EMPTY_CJSON_SHA256` pinned-constant test passes (sha256 of `0x7B 0x7D` =
-  `44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a`).
-- The kernel-header release-gate test passes.
-- The three write-time enumeration-gate negative tests pass.
-- `go generate ./kernel/public/...` followed by `git diff --exit-code` returns 0.
-- The projection round-trip test covers every `EntryKind`.
-- The snapshot test covers every public type listed in `kernel.md`.
+For current review scope:
 
-I do not approve Phase 0 work that skips any of these. They are not optional polish.
+- Review against **Phase 3 - Thin Access Surfaces and Derived Export** boundaries unless
+  the implementation plan changes.
+- Expect thin CLI/HTTP/MCP wrappers, convenience views, and derived export work that
+  reads only from captured provenance.
+- Block Phase 3 changes that introduce a new provenance store, a divergent read path,
+  proof or audit semantic changes, or other scope that the implementation plan defers to
+  later replanning.
+
+Phase-specific done-when and validation expectations come from the current phase entry in
+`../.planning/implementation-plan.md`, not from older persona-local phase taxonomies.
 
 ---
 

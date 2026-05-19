@@ -84,21 +84,19 @@ These hold everywhere in the codebase. I do not negotiate them.
 
 ## Phase awareness
 
-We are at **Phase 0**. Work that references later phases must not be pre-implemented.
+Follow `../.planning/implementation-plan.md` as the canonical phase taxonomy and status.
+At present, **Phase 0 is complete, Phases 1-2 are complete, and Phase 3 is current**.
+Do not rely on older Phase 0/1/2/3/4 labels from superseded planning docs or persona text.
 
-| Phase | Ships | Status |
-|---|---|---|
-| 0 | Kernel module boundary, pure Go types, interfaces, in-memory test store, import-guard CI, pinned constants (`EMPTY_CJSON_SHA256`, `header_v1.go`), `tools/enumgen/` generator, snapshot test | **Current** |
-| 1 | Postgres `Store`, S3 `BlobStore`, hash-chained `AuditSink`, atlas migrations, orphan-run detection | Upcoming |
-| 2 | Tool registry, guard pipeline (pre + post), `SubmitAnswer`, pure-Go tool backends, `credential_id` reconciliation | Upcoming |
-| 3 | Mode A harness, Claude model client, reconciliation skill pack, CLI commands | Upcoming |
-| 4 | MCP server, HTTP API, runtime process, HITL routing REST | Upcoming |
-| 5 | Non-Go binding (FFI or sidecar; decision gate first) | Deferred |
-| 6 | Eval harness, case bank, four DFAH-style metrics | Deferred |
+When deciding scope:
 
-Deferred items (no implementation in v0): LangChain/OpenAI adapters, BoN-MAV, web HITL UI,
-multi-tenant SaaS, hosted skill registry, streaming model responses, second non-Go binding.
-Do not stub, comment-plan, or scaffold deferred items. See `../.planning/implementation-plan.md`.
+- Treat the current work as **Phase 3 - Thin Access Surfaces and Derived Export** unless
+  the implementation plan is updated again.
+- Keep Phase 3 bounded to thin CLI/HTTP/MCP wrappers, convenience views, and derived
+  export artifacts that read only from captured provenance.
+- Do not pre-implement deferred or future-phase work. If a change needs a new provenance
+  store, a divergent read path, proof or audit semantic changes, or broader replanned
+  runtime/model work, stop and defer to `../.planning/implementation-plan.md`.
 
 ---
 
