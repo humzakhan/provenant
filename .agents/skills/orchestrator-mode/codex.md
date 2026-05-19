@@ -49,7 +49,10 @@ The boot agent must:
 - Narrow repo discovery: `gpt-5.4-mini`, medium reasoning.
 - Small mechanical edit: small fast coding model.
 - Straightforward implementation: `gpt-5.4`, medium reasoning.
-- Architecture direction or high-stakes review: `gpt-5.5`, high reasoning.
+- Default review: `gpt-5.4`, raising reasoning effort to high when needed; most code reviews can use `gpt-5.4` high.
+- Unclear, critical, business-logic, or security-sensitive review: `gpt-5.5`, medium reasoning.
+- Decision-making or genuinely high-stakes ambiguity: `gpt-5.5`, high reasoning.
+- Architecture direction: `gpt-5.5`, high reasoning.
 
 ## Output Format
 
