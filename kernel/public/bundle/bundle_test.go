@@ -16,6 +16,7 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/kernel/public/extractjson"
+	"github.com/provenant/provenant/kernel/public/extractjsonl"
 	"github.com/provenant/provenant/kernel/public/internal/phaseone"
 	"github.com/provenant/provenant/kernel/public/memio"
 )
@@ -203,6 +204,77 @@ func TestReplayIgnoresUnauditedTokenFields(t *testing.T) {
 	}
 	if replayed.Tokens[0].Derivation != nil {
 		t.Fatalf("Replay() token Derivation = %#v, want nil", replayed.Tokens[0].Derivation)
+	}
+}
+
+func TestEmitReplayPreservesJSONLCapturedReadMetadata(t *testing.T) {
+	t.Parallel()
+
+	run := kernel.Run{ID: "run_jsonl", TenantID: "tenant_1", Status: kernel.RunRunning}
+	sourceBytes := []byte("{\"amount\":\"1.10\",\"note\":\"a\"}\n{\"amount\":\"2.20\",\"note\":\"b\"}\n{\"amount\":\"3.30\",\"note\":\"c\"}\n{\"amount\":\"4.40\",\"note\":\"d\"}\n{\"amount\":\"5.50\",\"note\":\"e\"}")
+	source := sourceWithHash("fixture://amounts.jsonl", sourceBytes)
+	binding := memio.NewBinding(source)
+	selector := kernel.SourceSelector{
+		LineWindow:  "1-1",
+		Cursor:      "line:2",
+		JSONPointer: "/amount",
+	}
+	clock := &sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)}}
+
+	result, err := kernel.ReadAndMint(
+		context.Background(),
+		binding,
+		binding,
+		extractjsonl.Reader{},
+		binding,
+		binding,
+		clock,
+		run,
+		kernel.ReadAndMintRequest{
+			SourcePath: "fixture://amounts.jsonl",
+			Selector:   selector,
+			OutputPath: "$.value",
+		},
+	)
+	if err != nil {
+		t.Fatalf("ReadAndMint() error = %v", err)
+	}
+	wantOutput := []byte(`{"cursor":"line:2","effective_line_end":3,"effective_line_start":3,"line_window":"1-1","next_cursor":"line:3","normalized_value":"3.30","raw_value":"\"3.30\"","record_count":1,"record_order":"source_line_asc","records":[{"byte_end":74,"byte_start":68,"json_pointer":"/amount","line":3,"normalized_value":"3.30","raw_value":"\"3.30\"","value":"3.30","window_index":0}],"source_hash":"` + source.Source.SHA256 + `","value":"3.30"}`)
+	if !bytes.Equal(result.ReadResult.Output, wantOutput) {
+		t.Fatalf("ReadResult.Output = %s, want %s", result.ReadResult.Output, wantOutput)
+	}
+
+	state := snapshotState(t, binding, run)
+	bundleBytes, err := bundle.Emit(state)
+	if err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+	replayed, err := bundle.Replay(bundleBytes)
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(replayed.CapturedReads) != 1 {
+		t.Fatalf("len(Replay().CapturedReads) = %d, want 1", len(replayed.CapturedReads))
+	}
+
+	got := replayed.CapturedReads[0]
+	if got.ID != result.ReadResult.CapturedRead.ID {
+		t.Fatalf("Replay().CapturedReads[0].ID = %s, want %s", got.ID, result.ReadResult.CapturedRead.ID)
+	}
+	if got.Selector != selector {
+		t.Fatalf("Replay().CapturedReads[0].Selector = %#v, want %#v", got.Selector, selector)
+	}
+	if got.Origin != "fixture://amounts.jsonl#line=3-3&ptr=/amount&byte=68-74" {
+		t.Fatalf("Replay().CapturedReads[0].Origin = %s", got.Origin)
+	}
+	if string(got.ReaderOptions) != string(result.ReadResult.CapturedRead.ReaderOptions) {
+		t.Fatalf("Replay().CapturedReads[0].ReaderOptions = %s, want %s", got.ReaderOptions, result.ReadResult.CapturedRead.ReaderOptions)
+	}
+	if string(got.Locator) != string(result.ReadResult.CapturedRead.Locator) {
+		t.Fatalf("Replay().CapturedReads[0].Locator = %s, want %s", got.Locator, result.ReadResult.CapturedRead.Locator)
+	}
+	if !bytes.Equal(got.Output, wantOutput) {
+		t.Fatalf("Replay().CapturedReads[0].Output = %s, want %s", got.Output, wantOutput)
 	}
 }
 
