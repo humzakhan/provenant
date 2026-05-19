@@ -5,9 +5,9 @@ Follow `.planning/phases/phase-four/sequential-work-packets.md` in order. Execut
 
 Objective:
 - add fail-closed negative regression coverage for shipped paths
-- add recovery behavior coverage for already-supported flows
+- add recovery behavior coverage only for already-shipped flows that can be cited from existing tests, docs, or code
 - add lightweight performance smoke for shipped paths
-- finish with final test-matrix, docs, and handoff alignment
+- finish with final test-matrix, docs, handoff alignment, and a final handoff checklist that proves no open handoff gaps
 
 Non-goals:
 - no new features or new user-facing surfaces
@@ -17,12 +17,14 @@ Non-goals:
 
 Allowed scope:
 - focused negative-path coverage on already-shipped behavior
-- focused recovery-path coverage on already-supported behavior
+- focused recovery-path coverage only for concrete already-shipped flows evidenced by existing tests, docs, or code
 - lightweight performance smoke and baseline evidence
 - docs and handoff updates that reflect implemented behavior and deferred work
+- a final handoff checklist mapped to `.planning/implementation-plan.md` Phase 4 exit criteria
 
 Disallowed actions:
 - widening hardening into feature work, surface work, or contract expansion
+- adding a new restart, retry, replay-adjacent, or equivalent recovery flow because the repo does not already ship and evidence it
 - adding new storage, runtime, model, or adapter paths to satisfy a hardening gap
 - changing proof, audit, minting, replay, or reader semantics
 - pulling future-phase cleanup or replanning into the Phase 4 delivery slice
@@ -30,6 +32,7 @@ Disallowed actions:
 Escalation / stop conditions:
 - stop if a hardening gap requires a new feature, new surface, or Phase 3 scope expansion
 - stop if a recovery scenario needs new storage/runtime/model/adapter behavior to be testable
+- stop if a candidate recovery flow cannot be cited from existing shipped behavior in tests, docs, or code on this branch
 - stop if fail-closed coverage exposes proof, audit, minting, replay, or reader semantic work
 - stop if final handoff alignment depends on future-phase roadmap decisions rather than current shipped behavior
 
@@ -38,6 +41,7 @@ Observable evidence to report:
 - files changed
 - tests run
 - negative fail-closed result per shipped path covered
-- recovery result per already-supported flow covered
+- recovery result per repo-cited shipped flow covered, or an explicit stop because no such shipped flow could be cited
 - lightweight performance smoke result and any handoff caveat
 - final doc and test-matrix alignment result
+- final handoff checklist result showing no open handoff gaps against `.planning/implementation-plan.md` Phase 4 exit criteria

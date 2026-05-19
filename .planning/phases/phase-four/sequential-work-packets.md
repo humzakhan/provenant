@@ -18,13 +18,13 @@ Phase 4 is a same-worktree plan first. Execute the packets in order, one at a ti
 ## PR 2 / Packet 2 - recovery behavior coverage
 **What the PR should do:** add focused coverage for already-supported recovery behavior that matters to release handoff confidence.
 
-**What it should build:** recovery-path tests for existing restart, retry, replay-adjacent, or equivalent already-supported flows, plus minimal fixtures needed to prove that behavior.
+**What it should build:** recovery-path tests only for concrete shipped recovery flows that can be cited from existing tests, docs, or code in this repo, plus minimal fixtures needed to prove that behavior. If no such shipped flow can be cited, stop and carry that gap forward instead of inventing a recovery path.
 
 **Skills/guidance to load:** `engineering-workflow`; `go-testing-fuzzing`; `go-input-validation-security`; `conventional-commit-guard` before any commit message or PR title change.
 
-**Implementation boundary:** no new recovery mechanisms, no new runtime/storage behavior, no new access surface behavior, and no semantic widening to make an unsupported scenario pass.
+**Implementation boundary:** no new recovery mechanisms, no new runtime/storage behavior, no new access surface behavior, no replay-adjacent broadening, and no semantic widening to make an unsupported scenario pass.
 
-**Pass criteria / validation:** recovery coverage proves the targeted already-supported flows behave as documented and fail closed when the existing contract is exceeded.
+**Pass criteria / validation:** recovery coverage proves only the targeted repo-cited shipped flows behave as documented and fail closed when the existing contract is exceeded; if the repo cannot cite a concrete shipped recovery flow, the packet stops with that finding rather than adding one.
 
 **Commit/PR boundary:** second, after Packet 1. Land one small conventional-commit PR dedicated to recovery behavior coverage.
 
@@ -44,12 +44,12 @@ Phase 4 is a same-worktree plan first. Execute the packets in order, one at a ti
 ## PR 4 / Packet 4 - final test matrix, docs, and handoff alignment
 **What the PR should do:** close Phase 4 by aligning the final test matrix, docs, and handoff notes to the hardened shipped behavior.
 
-**What it should build:** final matrix evidence, doc updates, and handoff notes that describe shipped behavior, hardening evidence, deferred work, and any explicit release caveats.
+**What it should build:** final matrix evidence, doc updates, handoff notes, and a final handoff checklist that describes shipped behavior, hardening evidence, deferred work, explicit release caveats, and confirms no open handoff gaps against `.planning/implementation-plan.md` Phase 4 exit criteria.
 
 **Skills/guidance to load:** `engineering-workflow`; `conventional-commit-guard` before any commit message or PR title change.
 
 **Implementation boundary:** no new features, no late surface additions, and no cleanup outside what is required to align the final hardening evidence and handoff docs.
 
-**Pass criteria / validation:** docs and matrix evidence match the shipped behavior and Phase 4 hardening results, deferred work remains clearly out of scope, and the phase PR is up for review.
+**Pass criteria / validation:** docs and matrix evidence match the shipped behavior and Phase 4 hardening results, deferred work remains clearly out of scope, the final handoff checklist shows no open handoff gaps, and the phase PR is up for review.
 
 **Commit/PR boundary:** last. Land one final small conventional-commit PR for test-matrix, docs, and handoff alignment only.
