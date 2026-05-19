@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Phases 0-3 complete. Currently at Phase 4. Phase 3 completion is based on the landed packet sequence through the smoke-matrix and doc-alignment closure pass; this plan does not claim completion of the older, broader Phase 2 tool/guard scope that existed in `plans/implementation-plan.md` before the phase sequence narrowed execution.
+Phases 0-4 complete. The current release sequence is closed at the Phase 4 handoff boundary recorded in `.planning/phases/phase-four/handoff.md`. Phase 3 completion is based on the landed packet sequence through the smoke-matrix and doc-alignment closure pass; this plan does not claim completion of the older, broader Phase 2 tool/guard scope that existed in `plans/implementation-plan.md` before the phase sequence narrowed execution.
 
 This is the canonical phase plan for Provenant v0 execution. It welds the completed state from the former `.planning/phases/implementation-sequence.md` into the implementation plan and uses phase-level boundaries only. Every phase definition of done is: the phase PR is up for review with validation evidence attached.
 
@@ -47,7 +47,7 @@ This is the canonical phase plan for Provenant v0 execution. It welds the comple
 - **Scope boundaries:** Negative/recovery coverage, lightweight performance checks, and final test-matrix/doc alignment only; no new features, no new surfaces, and no scope expansion beyond behavior already exposed by Phase 3.
 - **Exit criteria:** PR up for review with targeted regression evidence, recovery/fail-closed evidence, performance smoke evidence, and a final checklist showing no open handoff gaps.
 - **Dependencies:** Phase 3.
-- **Status:** not started.
+- **Status:** done. Closed by the final handoff evidence in `.planning/phases/phase-four/handoff.md`, with packet evidence from PRs #32, #33, and this closeout PR.
 
 ## Deferred Future Phases
 
