@@ -58,7 +58,8 @@ PR, update from `origin/main`, and continue to the next branch.
 - Default automated code review should use `gpt-5.4`; increase reasoning effort to high when the diff or failure mode warrants it.
 - Most code reviews can be handled by `gpt-5.4` with high reasoning.
 - Escalate review work to `gpt-5.5`, medium reasoning, when the review is unclear, critical, business-logic-heavy, or security-sensitive.
-- Reserve `gpt-5.5`, high reasoning, for decision-making or genuinely high-stakes ambiguity, not routine code review.
+- Reserve `gpt-5.5`, high reasoning, for decision-making, genuinely high-stakes ambiguity, or cases where repo-level guidance classifies the review as high-risk and requires high reasoning.
+- Repo-level model routing in `AGENTS.md` wins if this skill and repo guidance ever differ, especially for high-risk reviews.
 
 ## Implementation Loop
 
