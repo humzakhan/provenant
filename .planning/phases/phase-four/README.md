@@ -29,6 +29,7 @@ Use `.planning/phases/phase-four/sequential-work-packets.md` for the PR-by-PR pa
 ## Closure
 - Phase 4 closes the current release sequence at the hardening and handoff boundary described in `.planning/implementation-plan.md`.
 - The final deliverable is a handoff checklist with observable evidence for regression, recovery/fail-closed, performance smoke, and doc/test-matrix alignment, with no unresolved handoff gaps left open.
+- Final closeout artifact: `.planning/phases/phase-four/handoff.md`.
 - Stop instead of widening scope if hardening reveals a need for new surfaces, new storage/runtime/model/adapter work, or any Phase 3 contract expansion.
 - Stop the recovery lane if the only candidate flow is a proposed restart, retry, replay-adjacent, or equivalent behavior that cannot be cited from existing shipped behavior in this repo.
 - Deferred work beyond hardening stays out of this phase and must be replanned separately.
