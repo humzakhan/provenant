@@ -20,7 +20,7 @@ Use this skill when the request is to plan a new implementation phase or revise 
 
 If a target phase directory already exists, read its three phase files before rewriting them.
 
-Use the nearest existing phase docs as the base template for file shape and packet style. Use Phase 2 as the current model for optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
+Use the nearest existing phase docs as the base template for file shape and packet style. Treat the nearest existing phase docs, or the current target phase docs when they already exist, as the current model for optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
 
 ## Outputs
 
