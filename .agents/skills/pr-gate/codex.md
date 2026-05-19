@@ -1,6 +1,6 @@
 ---
 name: pr-gate
-description: Use only in single-feature mode when a push, PR, merge, phase-transition, or done boundary requires explicit human approval. Do not use when Orchestrator Mode is active.
+description: Use only in single-feature mode when a push, PR, merge, milestone transition, or done boundary requires explicit human approval. Do not use when Orchestrator Mode is active.
 ---
 
 # pr-gate
@@ -23,7 +23,7 @@ A single-feature PR boundary is any of:
 - Creating a PR (`gh pr create`)
 - Pushing a branch that will become a PR
 - Merging or squash-merging
-- Moving from phase N to phase N+1 in a multi-phase plan
+- Moving from one milestone or planned slice to the next
 - Declaring a feature "done"
 
 ## Required Behavior
@@ -32,7 +32,7 @@ A single-feature PR boundary is any of:
    what tests were run, and what is still open.
 2. Ask plainly: **"Approve to proceed? (y/n)"** Wait for an affirmative human
    reply. Silence, ambiguity, or "looks fine" is not approval; re-ask.
-3. Never chain phases. Finishing phase N does not authorize phase N+1.
+3. Never chain planned slices. Finishing one slice does not authorize the next.
 4. Never auto-merge in single-feature mode. Never push with `--force` without
    an explicit instruction in the same turn.
 5. If the engineer-reviewer loop has not run, surface that and offer to run it
