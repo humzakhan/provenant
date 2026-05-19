@@ -397,6 +397,94 @@ func TestValidateDerivedExportFailsClosedOnTamperedOrNonCanonicalExport(t *testi
 	}
 }
 
+func TestDerivedExportPathsFailClosedOnMissingOrMalformedInput(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceCLI,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+
+	tests := []struct {
+		name    string
+		run     func() error
+		wantErr error
+	}{
+		{
+			name: "generate requires export surface",
+			run: func() error {
+				_, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+					Surface:     corepath.SurfaceCLI,
+					BundleBytes: executed.BundleBytes,
+				})
+				return err
+			},
+			wantErr: corepath.ErrExportRequiresExportSurface,
+		},
+		{
+			name: "generate requires bundle bytes",
+			run: func() error {
+				_, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+					Surface: corepath.SurfaceExport,
+				})
+				return err
+			},
+			wantErr: corepath.ErrMissingBundleBytes,
+		},
+		{
+			name: "validate requires export bytes",
+			run: func() error {
+				_, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+					Surface:     corepath.SurfaceExport,
+					BundleBytes: executed.BundleBytes,
+				})
+				return err
+			},
+			wantErr: corepath.ErrMissingExportBytes,
+		},
+		{
+			name: "validate rejects malformed export json",
+			run: func() error {
+				_, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+					Surface:     corepath.SurfaceExport,
+					BundleBytes: executed.BundleBytes,
+					ExportBytes: []byte(`{"format_version":`),
+				})
+				return err
+			},
+			wantErr: corepath.ErrDerivedExportMismatch,
+		},
+		{
+			name: "validate rejects unknown export fields",
+			run: func() error {
+				_, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+					Surface:     corepath.SurfaceExport,
+					BundleBytes: executed.BundleBytes,
+					ExportBytes: []byte(`{"format_version":"phase3.derived_export/v1","run":{"id":"run_1","tenant_id":"tenant_1","status":"running"},"bundle_sha256":"` + sha256Hex(executed.BundleBytes) + `","rows":[],"extra":true}`),
+				})
+				return err
+			},
+			wantErr: corepath.ErrDerivedExportMismatch,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if err := tt.run(); !errors.Is(err, tt.wantErr) {
+				t.Fatalf("error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 type smokeFixture struct {
 	surface corepath.Surface
 	run     kernel.Run
