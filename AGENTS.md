@@ -28,7 +28,7 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
   - `go-input-validation-security`: strict decoding, bounded reads, size/depth limits, allowlists, and fail-closed input handling.
   - `go-io-performance`: `io.Reader`/`io.Writer`, buffering, chunking, and avoiding full materialization.
   - `go-concurrency-memory-model`: only for goroutines, channels, mutexes, atomics, or shared state; use happens-before and the race detector.
-- For active phase scope, read `.planning/phases/implementation-sequence.md` and the current phase README before using `plans/implementation-plan.md` as background.
+- For active phase scope, read `.planning/implementation-plan.md` and the current phase README before using phase work-packet docs as execution guidance.
 
 ## Codex Models
 

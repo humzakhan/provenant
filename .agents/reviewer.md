@@ -238,7 +238,7 @@ I do not approve Phase 0 work that skips any of these. They are not optional pol
   `AuditSink` from the same map).
 - Blocking the absence of signing infrastructure for skill packs — unsigned local packs
   are the v0 contract; signing is v0.5+ (KNOWN_TRADE_OFFS.md §Host conformance attestation
-  and the Deferred section of `../plans/implementation-plan.md`).
+  and the Deferred Future Phases section of `../.planning/implementation-plan.md`).
 
 ---
 

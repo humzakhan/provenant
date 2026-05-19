@@ -10,9 +10,9 @@ Supersedes: [ADR-0007](0007-mcp-as-primary-adapter.md) ("MCP is the primary adap
 
 ## Decision
 
-MCP, HTTP, and CLI are **equal first-class adapters** in v0. None of the three has architectural primacy. All three are thin runtime-layer shells over the kernel public Go surface; all three are subject to the same conformance tests; all three must produce byte-identical deterministic-portion audit chains on the same input (the Phase 4 done-when in [`implementation-plan.md`](../../plans/implementation-plan.md)).
+MCP, HTTP, and CLI are **equal first-class adapters** in v0. None of the three has architectural primacy. All three are thin runtime-layer shells over the kernel public Go surface; all three are subject to the same conformance tests; all three must reach the same verified core path without introducing a second source of truth (the Phase 3 and Phase 4 boundaries in [`implementation-plan.md`](../../.planning/implementation-plan.md)).
 
-The engineering sequence in which the three adapters ship is a project-management concern, not an architectural one. v0 plan-of-record: CLI in Phase 3 (it embeds the Mode A harness directly); MCP and HTTP in Phase 4 (they are runtime-layer surfacings of the same kernel). Marketing emphasis remains on MCP because of the host-ecosystem reach; that is a go-to-market choice, not an architectural privileging.
+The engineering sequence in which the three adapters ship is a project-management concern, not an architectural one. v0 plan-of-record: Phase 3 adds thin CLI, HTTP, and MCP access surfaces over the same verified core path; Phase 4 hardens and hands them off. Marketing emphasis remains on MCP because of the host-ecosystem reach; that is a go-to-market choice, not an architectural privileging.
 
 ## Rationale
 
@@ -25,7 +25,7 @@ The engineering sequence in which the three adapters ship is a project-managemen
 **Positive:**
 - The ADR set is internally consistent with [`architecture.md`](../OVERVIEW.md) §1 and §2.1.3.
 - Customers who must use HTTP (e.g., a regulated finance buyer whose host vendor does not speak MCP) are not second-class adopters.
-- The Phase 4 done-when ("the same fixture run via HTTP API directly produces the same byte-identical deterministic-portion audit chain") gains explicit ADR backing.
+- The Phase 3/4 access-surface and hardening criteria gain explicit ADR backing.
 
 **Negative:**
 - Three adapters at "equal first-class" polish is more conformance-suite work than one primary plus two secondary. The mitigation is that the runtime-layer shells are deliberately thin and share most code; the conformance suite is shared across them.
@@ -43,6 +43,6 @@ The engineering sequence in which the three adapters ship is a project-managemen
 
 - [`thesis.md`](../../docs/thesis.md) — dual-mode pluggability
 - [`architecture.md`](../OVERVIEW.md) §1, §2.1.3, §3.3 — adapter equality and the now-resolved open question
-- [`implementation-plan.md`](../../plans/implementation-plan.md) Phase 3, Phase 4 — CLI in Phase 3, MCP and HTTP in Phase 4
+- [`implementation-plan.md`](../../.planning/implementation-plan.md) Phase 3, Phase 4 - thin access surfaces, then hardening and handoff
 - [ADR-0007](0007-mcp-as-primary-adapter.md) — superseded ADR
 - [ADR-0009](0009-kernel-public-go-surface.md) — kernel public Go surface that all three adapters rest on

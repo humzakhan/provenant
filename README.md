@@ -26,7 +26,7 @@ If Claude or Codex are the analysts, Provenant is the **rulebook and evidence la
 | Detailed navigation map for the repo | [`architecture/README.md`](architecture/README.md) |
 | Tools and source readers | [`architecture/tools/README.md`](architecture/tools/README.md) |
 | Audit packs, proof exports, and chain format | [`architecture/subsystems/audit.md`](architecture/subsystems/audit.md) |
-| Build phases and implementation plan | [`plans/implementation-plan.md`](plans/implementation-plan.md) |
+| Build phases and implementation plan | [`.planning/implementation-plan.md`](.planning/implementation-plan.md) |
 | Known trade-offs and limits | [`docs/KNOWN_TRADE_OFFS.md`](docs/KNOWN_TRADE_OFFS.md) |
 | Security model | [`architecture/cross-cutting/security.md`](architecture/cross-cutting/security.md) |
 | Deployment options | [`architecture/cross-cutting/deployment.md`](architecture/cross-cutting/deployment.md) |
@@ -35,14 +35,14 @@ If Claude or Codex are the analysts, Provenant is the **rulebook and evidence la
 
 ## Repo layout
 
-```
+```text
 provenant/
-├── docs/              thesis, trade-offs, session notes
-├── architecture/      architecture overview, subsystems, tools, ADRs, references
-├── plans/             phased implementation plan
-└── .agents/           agent role files
+|-- docs/              thesis, trade-offs, session notes
+|-- architecture/      architecture overview, subsystems, tools, ADRs, references
+|-- .planning/         phased implementation plan and phase work packets
+`-- .agents/           agent role files
 ```
 
 ## Status
 
-Spec phase — Hone-hardened, ready for Phase 0 implementation.
+Phase 3 planning - Phases 1-2 complete, thin access surfaces and derived export next.

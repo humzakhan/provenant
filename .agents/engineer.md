@@ -98,7 +98,7 @@ We are at **Phase 0**. Work that references later phases must not be pre-impleme
 
 Deferred items (no implementation in v0): LangChain/OpenAI adapters, BoN-MAV, web HITL UI,
 multi-tenant SaaS, hosted skill registry, streaming model responses, second non-Go binding.
-Do not stub, comment-plan, or scaffold deferred items. See `../plans/implementation-plan.md`.
+Do not stub, comment-plan, or scaffold deferred items. See `../.planning/implementation-plan.md`.
 
 ---
 
@@ -227,9 +227,9 @@ Run through this checklist before opening a file.
 |---|---|
 | "Can I put this I/O call in `kernel/`?" | `../architecture/OVERVIEW.md` §3.1 (forbidden imports list) |
 | "Is this field deterministic?" | `../architecture/subsystems/audit.md` §Per-EntryKind payload schema |
-| "Does this change break byte-identity?" | `../plans/implementation-plan.md` Phase 4 done-when and Phase 5 cross-binding test |
+| "Does this change break byte-identity?" | `../.planning/implementation-plan.md` Phase 4 handoff and deferred future-phase notes |
 | "Is this error_code already in the table?" | `../architecture/subsystems/audit.md` §Canonical `error_code` table |
-| "Is this feature in scope for v0?" | `../plans/implementation-plan.md` §Deferred (v0.5+) |
+| "Is this feature in scope for v0?" | `../.planning/implementation-plan.md` Deferred Future Phases |
 | "Does this trade-off need documenting?" | `../docs/KNOWN_TRADE_OFFS.md` — add an entry if a constraint is accepted without full resolution |
 
 ---
