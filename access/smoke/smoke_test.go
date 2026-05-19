@@ -178,6 +178,173 @@ func TestPhaseThreeCrossSurfaceSmokeMatrix(t *testing.T) {
 	}
 }
 
+func BenchmarkPhaseThreeReadMintBundleCrossSurface(b *testing.B) {
+	fixture := newSmokeFixture()
+	requestBytes, err := json.Marshal(fixture.cliRequest())
+	if err != nil {
+		b.Fatalf("Marshal(request) error = %v", err)
+	}
+
+	type lane struct {
+		name string
+		run  func(context.Context) (corepath.ReadMintBundleResult, error)
+	}
+
+	lanes := []lane{
+		{
+			name: "corepath-cli-lane",
+			run: func(ctx context.Context) (corepath.ReadMintBundleResult, error) {
+				return corepath.ExecuteReadMintBundle(ctx, fixture.dependencies(), corepath.ReadMintBundleRequest{
+					Surface: corepath.SurfaceCLI,
+					Run:     fixture.run,
+					Read:    fixture.read,
+				})
+			},
+		},
+		{
+			name: "cli",
+			run: func(ctx context.Context) (corepath.ReadMintBundleResult, error) {
+				var stdout bytes.Buffer
+				runner := cli.Runner{
+					Now: func() time.Time { return fixture.now },
+				}
+				if err := runner.Run(ctx, []string{"read-mint-bundle", "--request", "-"}, bytes.NewReader(requestBytes), &stdout); err != nil {
+					return corepath.ReadMintBundleResult{}, err
+				}
+
+				var result corepath.ReadMintBundleResult
+				if err := json.Unmarshal(stdout.Bytes(), &result); err != nil {
+					return corepath.ReadMintBundleResult{}, err
+				}
+				return result, nil
+			},
+		},
+		{
+			name: "http",
+			run: func(_ context.Context) (corepath.ReadMintBundleResult, error) {
+				var result corepath.ReadMintBundleResult
+				handler := httpapi.Handler{
+					Now: func() time.Time { return fixture.now },
+				}
+
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodPost, httpapi.RouteReadMintBundle, bytes.NewReader(requestBytes))
+				request.Header.Set("Content-Type", "application/json")
+				handler.ServeHTTP(recorder, request)
+				if recorder.Code != http.StatusOK {
+					return corepath.ReadMintBundleResult{}, &httpStatusError{status: recorder.Code, body: recorder.Body.String()}
+				}
+				if err := json.Unmarshal(recorder.Body.Bytes(), &result); err != nil {
+					return corepath.ReadMintBundleResult{}, err
+				}
+				return result, nil
+			},
+		},
+		{
+			name: "mcp",
+			run: func(ctx context.Context) (corepath.ReadMintBundleResult, error) {
+				surface := mcpapi.Surface{
+					Now: func() time.Time { return fixture.now },
+				}
+				result, err := surface.CallTool(ctx, mcpapi.ToolReadMintBundle, requestBytes)
+				if err != nil {
+					return corepath.ReadMintBundleResult{}, err
+				}
+				return result.StructuredContent, nil
+			},
+		},
+	}
+
+	for _, lane := range lanes {
+		lane := lane
+		b.Run(lane.name, func(b *testing.B) {
+			b.ReportAllocs()
+
+			for i := 0; i < b.N; i++ {
+				result, err := lane.run(context.Background())
+				if err != nil {
+					b.Fatalf("%s run() error = %v", lane.name, err)
+				}
+				if len(result.BundleBytes) == 0 {
+					b.Fatalf("%s BundleBytes is empty", lane.name)
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkPhaseThreeDerivedExportPath(b *testing.B) {
+	fixture := newSmokeFixture()
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceCLI,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		b.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+
+	b.Run("verify-export-source", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			result, err := corepath.VerifyExportSource(context.Background(), corepath.ExportSourceRequest{
+				Surface:     corepath.SurfaceExport,
+				BundleBytes: executed.BundleBytes,
+			})
+			if err != nil {
+				b.Fatalf("VerifyExportSource() error = %v", err)
+			}
+			if result.BundleSHA256 == "" {
+				b.Fatal("VerifyExportSource() BundleSHA256 is empty")
+			}
+		}
+	})
+
+	exported, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+	})
+	if err != nil {
+		b.Fatalf("GenerateDerivedExport() setup error = %v", err)
+	}
+
+	b.Run("generate-derived-export", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			result, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+				Surface:     corepath.SurfaceExport,
+				BundleBytes: executed.BundleBytes,
+			})
+			if err != nil {
+				b.Fatalf("GenerateDerivedExport() error = %v", err)
+			}
+			if len(result.ExportBytes) == 0 {
+				b.Fatal("GenerateDerivedExport() ExportBytes is empty")
+			}
+		}
+	})
+
+	b.Run("validate-derived-export", func(b *testing.B) {
+		b.ReportAllocs()
+
+		for i := 0; i < b.N; i++ {
+			result, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+				Surface:     corepath.SurfaceExport,
+				BundleBytes: executed.BundleBytes,
+				ExportBytes: exported.ExportBytes,
+			})
+			if err != nil {
+				b.Fatalf("ValidateDerivedExport() error = %v", err)
+			}
+			if result.ExportSHA256 == "" {
+				b.Fatal("ValidateDerivedExport() ExportSHA256 is empty")
+			}
+		}
+	})
+}
+
 type smokeFixture struct {
 	source kernel.SourceBytes
 	run    kernel.Run
