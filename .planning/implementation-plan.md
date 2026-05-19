@@ -1,6 +1,6 @@
 # Implementation Plan
 
-Phases 1-2 complete. Currently at Phase 3. Phase 0 is also complete as the prerequisite kernel baseline. Completion is based on the landed commit sequence through `test: add structured reader matrix`; this plan does not claim completion of the older, broader Phase 2 tool/guard scope that existed in `plans/implementation-plan.md` before the phase sequence narrowed execution.
+Phases 0-3 complete. Currently at Phase 4. Phase 3 completion is based on the landed packet sequence through the smoke-matrix and doc-alignment closure pass; this plan does not claim completion of the older, broader Phase 2 tool/guard scope that existed in `plans/implementation-plan.md` before the phase sequence narrowed execution.
 
 This is the canonical phase plan for Provenant v0 execution. It welds the completed state from the former `.planning/phases/implementation-sequence.md` into the implementation plan and uses phase-level boundaries only. Every phase definition of done is: the phase PR is up for review with validation evidence attached.
 
@@ -38,7 +38,7 @@ This is the canonical phase plan for Provenant v0 execution. It welds the comple
 - **Scope boundaries:** Access shells, convenience views, and derived export artifacts only; no alternate provenance store, no divergent read path, no persistence-first rewrite, and no new proof/audit semantics.
 - **Exit criteria:** PR up for review with one smoke test per access surface, export verification against canonical bundle bytes/proof, and evidence that no surface introduces a second source of truth.
 - **Dependencies:** Phase 2.
-- **Status:** not started.
+- **Status:** done.
 
 ## Phase 4 - Release-Ready Hardening
 
