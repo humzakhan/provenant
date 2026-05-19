@@ -39,7 +39,7 @@ PR, update from `origin/main`, and continue to the next branch.
 - Make atomic commits with Conventional Commit subjects.
 - Keep commits small, coherent, and independently understandable.
 - Do not use `WIP` or bundle unrelated changes.
-- Use the `conventional-commit-guard` skill before writing commit messages or PR titles.
+- Use the `conventional-commit-guard` skill before writing commit messages and before opening, creating, or updating PRs.
 
 ## Scope guard
 
