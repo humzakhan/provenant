@@ -175,6 +175,42 @@ func TestRunnerReadMintBundleFailsClosedOnMalformedInput(t *testing.T) {
 			wantErr: cli.ErrInvalidRequest,
 		},
 		{
+			name: "missing source bytes",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: kernel.SourceBytes{
+					Source: validRequest.Source.Source,
+				},
+				Run:  validRequest.Run,
+				Read: validRequest.Read,
+			},
+			wantErr: cli.ErrInvalidRequest,
+		},
+		{
+			name: "missing selector",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: validRequest.Source,
+				Run:    validRequest.Run,
+				Read: kernel.ReadAndMintRequest{
+					SourcePath: validRequest.Read.SourcePath,
+					OutputPath: validRequest.Read.OutputPath,
+					Unit:       validRequest.Read.Unit,
+				},
+			},
+			wantErr: cli.ErrInvalidRequest,
+		},
+		{
 			name:    "trailing data",
 			raw:     mustMarshalRequest(validRequest) + "\n{}",
 			wantErr: cli.ErrInvalidRequest,

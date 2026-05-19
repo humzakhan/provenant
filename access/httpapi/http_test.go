@@ -159,6 +159,52 @@ func TestHandlerReadMintBundleRejectsMalformedInput(t *testing.T) {
 			wantErr:    httpapi.ErrInvalidRequest,
 		},
 		{
+			name:        "missing source bytes",
+			method:      http.MethodPost,
+			path:        httpapi.RouteReadMintBundle,
+			contentType: "application/json",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: kernel.SourceBytes{
+					Source: validRequest.Source.Source,
+				},
+				Run:  validRequest.Run,
+				Read: validRequest.Read,
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "validation_failed",
+			wantErr:    httpapi.ErrInvalidRequest,
+		},
+		{
+			name:        "missing selector",
+			method:      http.MethodPost,
+			path:        httpapi.RouteReadMintBundle,
+			contentType: "application/json",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: validRequest.Source,
+				Run:    validRequest.Run,
+				Read: kernel.ReadAndMintRequest{
+					SourcePath: validRequest.Read.SourcePath,
+					OutputPath: validRequest.Read.OutputPath,
+					Unit:       validRequest.Read.Unit,
+				},
+			},
+			wantStatus: http.StatusBadRequest,
+			wantCode:   "validation_failed",
+			wantErr:    httpapi.ErrInvalidRequest,
+		},
+		{
 			name:       "missing content type",
 			method:     http.MethodPost,
 			path:       httpapi.RouteReadMintBundle,

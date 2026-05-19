@@ -166,6 +166,44 @@ func TestSurfaceRejectsMalformedInput(t *testing.T) {
 			wantError: mcpapi.ErrInvalidArguments,
 		},
 		{
+			name:     "missing source bytes",
+			toolName: mcpapi.ToolReadMintBundle,
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: kernel.SourceBytes{
+					Source: validRequest.Source.Source,
+				},
+				Run:  validRequest.Run,
+				Read: validRequest.Read,
+			},
+			wantError: mcpapi.ErrInvalidArguments,
+		},
+		{
+			name:     "missing selector",
+			toolName: mcpapi.ToolReadMintBundle,
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: validRequest.Source,
+				Run:    validRequest.Run,
+				Read: kernel.ReadAndMintRequest{
+					SourcePath: validRequest.Read.SourcePath,
+					OutputPath: validRequest.Read.OutputPath,
+					Unit:       validRequest.Read.Unit,
+				},
+			},
+			wantError: mcpapi.ErrInvalidArguments,
+		},
+		{
 			name:      "trailing data",
 			toolName:  mcpapi.ToolReadMintBundle,
 			raw:       mustMarshalRequest(validRequest) + "\n{}",
