@@ -58,7 +58,8 @@ func ExtractMintValue(output []byte, outputPath string) (string, error) {
 	dec.UseNumber()
 
 	var payload struct {
-		Value any `json:"value"`
+		Value    any    `json:"value"`
+		RawValue string `json:"raw_value"`
 	}
 	if err := dec.Decode(&payload); err != nil {
 		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
@@ -71,6 +72,9 @@ func ExtractMintValue(output []byte, outputPath string) (string, error) {
 	case string:
 		return value, nil
 	case json.Number:
+		if payload.RawValue != "" {
+			return payload.RawValue, nil
+		}
 		return value.String(), nil
 	default:
 		return "", fmt.Errorf("%w: %s", ErrMintValueNotNumeric, outputPath)
