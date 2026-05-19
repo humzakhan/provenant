@@ -1,6 +1,6 @@
 ---
 name: research-mode
-description: Use when the user says "Enter Research Mode", "Use our Research Mode", or otherwise asks Codex to coordinate a research workflow. The current Codex session coordinates only: it enables plan mode, delegates read-only research scouting to sub-agents with customized prompts, then synthesizes cited findings from their reports.
+description: 'Use when the user says "Enter Research Mode", "Use our Research Mode", or otherwise asks Codex to coordinate a research workflow. The current Codex session coordinates only: it enables plan mode, delegates read-only research scouting to sub-agents with customized prompts, then synthesizes cited findings from their reports.'
 ---
 
 # Research Mode
