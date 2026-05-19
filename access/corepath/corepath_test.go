@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -202,6 +203,197 @@ func TestVerifyExportSourceRejectsReplayValidNonCanonicalBytes(t *testing.T) {
 		BundleBytes: nonCanonical,
 	}); !errors.Is(err, bundle.ErrTamperDetected) {
 		t.Fatalf("VerifyExportSource(nonCanonical) error = %v, want %v", err, bundle.ErrTamperDetected)
+	}
+}
+
+func TestGenerateDerivedExportUsesCanonicalBundleBytesOnly(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceCLI,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+
+	result, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDerivedExport() error = %v", err)
+	}
+	if result.Surface != corepath.SurfaceExport {
+		t.Fatalf("Surface = %q, want %q", result.Surface, corepath.SurfaceExport)
+	}
+	if result.Document.FormatVersion == "" {
+		t.Fatal("Document.FormatVersion is empty")
+	}
+	if result.Document.BundleSHA256 != sha256Hex(executed.BundleBytes) {
+		t.Fatalf("Document.BundleSHA256 = %s, want %s", result.Document.BundleSHA256, sha256Hex(executed.BundleBytes))
+	}
+	if result.BundleSHA256 != sha256Hex(executed.BundleBytes) {
+		t.Fatalf("BundleSHA256 = %s, want %s", result.BundleSHA256, sha256Hex(executed.BundleBytes))
+	}
+	if result.ExportSHA256 != sha256Hex(result.ExportBytes) {
+		t.Fatalf("ExportSHA256 = %s, want %s", result.ExportSHA256, sha256Hex(result.ExportBytes))
+	}
+	if len(result.Document.Rows) != 1 {
+		t.Fatalf("len(Document.Rows) = %d, want 1", len(result.Document.Rows))
+	}
+	row := result.Document.Rows[0]
+	if row.TokenID != executed.ReadAndMint.Token.ID {
+		t.Fatalf("row.TokenID = %s, want %s", row.TokenID, executed.ReadAndMint.Token.ID)
+	}
+	if row.CapturedReadID != executed.ReadAndMint.ReadResult.CapturedRead.ID {
+		t.Fatalf("row.CapturedReadID = %s, want %s", row.CapturedReadID, executed.ReadAndMint.ReadResult.CapturedRead.ID)
+	}
+	if row.OutputSHA256 != executed.ReadAndMint.ReadResult.CapturedRead.OutputSHA256 {
+		t.Fatalf("row.OutputSHA256 = %s, want %s", row.OutputSHA256, executed.ReadAndMint.ReadResult.CapturedRead.OutputSHA256)
+	}
+	if row.AuditSeq != 1 {
+		t.Fatalf("row.AuditSeq = %d, want 1", row.AuditSeq)
+	}
+}
+
+func TestValidateDerivedExportPassesAgainstCanonicalBundleFixture(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceHTTP,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+	exported, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDerivedExport() error = %v", err)
+	}
+
+	validated, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+		ExportBytes: exported.ExportBytes,
+	})
+	if err != nil {
+		t.Fatalf("ValidateDerivedExport() error = %v", err)
+	}
+	if validated.BundleSHA256 != exported.BundleSHA256 {
+		t.Fatalf("BundleSHA256 = %s, want %s", validated.BundleSHA256, exported.BundleSHA256)
+	}
+	if validated.ExportSHA256 != exported.ExportSHA256 {
+		t.Fatalf("ExportSHA256 = %s, want %s", validated.ExportSHA256, exported.ExportSHA256)
+	}
+	if validated.Document.BundleSHA256 != exported.Document.BundleSHA256 {
+		t.Fatalf("Document.BundleSHA256 = %s, want %s", validated.Document.BundleSHA256, exported.Document.BundleSHA256)
+	}
+}
+
+func TestGenerateDerivedExportFailsClosedOnMissingOrMismatchedCapturedProvenance(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceCLI,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+
+	var missingReadBundle struct {
+		Format        string                `json:"format"`
+		Run           kernel.Run            `json:"run"`
+		CapturedReads []kernel.CapturedRead `json:"captured_reads"`
+		Tokens        []kernel.Token        `json:"tokens"`
+		AuditJSONL    string                `json:"audit_jsonl"`
+	}
+	if err := json.Unmarshal(executed.BundleBytes, &missingReadBundle); err != nil {
+		t.Fatalf("Unmarshal(BundleBytes) error = %v", err)
+	}
+	missingReadBundle.CapturedReads = append([]kernel.CapturedRead(nil), missingReadBundle.CapturedReads...)
+	missingReadBundle.CapturedReads[0].ID = "read_missing"
+	missingReadBundleBytes, err := json.Marshal(missingReadBundle)
+	if err != nil {
+		t.Fatalf("Marshal(missingReadBundle) error = %v", err)
+	}
+	if _, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: missingReadBundleBytes,
+	}); !errors.Is(err, bundle.ErrMissingArtifact) {
+		t.Fatalf("GenerateDerivedExport(missing read) error = %v, want %v", err, bundle.ErrMissingArtifact)
+	}
+
+	var mismatchedBundle struct {
+		Format        string                `json:"format"`
+		Run           kernel.Run            `json:"run"`
+		CapturedReads []kernel.CapturedRead `json:"captured_reads"`
+		Tokens        []kernel.Token        `json:"tokens"`
+		AuditJSONL    string                `json:"audit_jsonl"`
+	}
+	if err := json.Unmarshal(executed.BundleBytes, &mismatchedBundle); err != nil {
+		t.Fatalf("Unmarshal(BundleBytes) error = %v", err)
+	}
+	mismatchedBundle.Tokens = append([]kernel.Token(nil), mismatchedBundle.Tokens...)
+	mismatchedBundle.Tokens[0].Source.SourcePath = "fixture://other.json"
+	mismatchedBundleBytes, err := json.Marshal(mismatchedBundle)
+	if err != nil {
+		t.Fatalf("Marshal(mismatchedBundle) error = %v", err)
+	}
+	if _, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: mismatchedBundleBytes,
+	}); !errors.Is(err, bundle.ErrTamperDetected) {
+		t.Fatalf("GenerateDerivedExport(mismatched provenance) error = %v, want %v", err, bundle.ErrTamperDetected)
+	}
+}
+
+func TestValidateDerivedExportFailsClosedOnTamperedOrNonCanonicalExport(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceMCP,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+	exported, err := corepath.GenerateDerivedExport(context.Background(), corepath.DerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+	})
+	if err != nil {
+		t.Fatalf("GenerateDerivedExport() error = %v", err)
+	}
+
+	tamperedExport := bytes.Replace(exported.ExportBytes, []byte(exported.Document.Rows[0].ValueCanonical), []byte("999.000000000"), 1)
+	if _, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+		ExportBytes: tamperedExport,
+	}); !errors.Is(err, corepath.ErrDerivedExportMismatch) {
+		t.Fatalf("ValidateDerivedExport(tampered export) error = %v, want %v", err, corepath.ErrDerivedExportMismatch)
+	}
+
+	nonCanonicalExport := append(append([]byte(nil), exported.ExportBytes...), '\n')
+	if _, err := corepath.ValidateDerivedExport(context.Background(), corepath.ValidateDerivedExportRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: executed.BundleBytes,
+		ExportBytes: nonCanonicalExport,
+	}); !errors.Is(err, corepath.ErrDerivedExportMismatch) {
+		t.Fatalf("ValidateDerivedExport(non-canonical export) error = %v, want %v", err, corepath.ErrDerivedExportMismatch)
 	}
 }
 
