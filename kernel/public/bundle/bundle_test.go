@@ -15,6 +15,7 @@ import (
 	"github.com/gowebpki/jcs"
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
+	"github.com/provenant/provenant/kernel/public/extractcsvrows"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/extractjsonl"
 	"github.com/provenant/provenant/kernel/public/internal/phaseone"
@@ -265,6 +266,80 @@ func TestEmitReplayPreservesJSONLCapturedReadMetadata(t *testing.T) {
 		t.Fatalf("Replay().CapturedReads[0].Selector = %#v, want %#v", got.Selector, selector)
 	}
 	if got.Origin != "fixture://amounts.jsonl#line=3-3&ptr=/amount&byte=68-74" {
+		t.Fatalf("Replay().CapturedReads[0].Origin = %s", got.Origin)
+	}
+	if string(got.ReaderOptions) != string(result.ReadResult.CapturedRead.ReaderOptions) {
+		t.Fatalf("Replay().CapturedReads[0].ReaderOptions = %s, want %s", got.ReaderOptions, result.ReadResult.CapturedRead.ReaderOptions)
+	}
+	if string(got.Locator) != string(result.ReadResult.CapturedRead.Locator) {
+		t.Fatalf("Replay().CapturedReads[0].Locator = %s, want %s", got.Locator, result.ReadResult.CapturedRead.Locator)
+	}
+	if !bytes.Equal(got.Output, wantOutput) {
+		t.Fatalf("Replay().CapturedReads[0].Output = %s, want %s", got.Output, wantOutput)
+	}
+}
+
+func TestEmitReplayPreservesCSVCapturedReadMetadata(t *testing.T) {
+	t.Parallel()
+
+	run := kernel.Run{ID: "run_csv", TenantID: "tenant_1", Status: kernel.RunRunning}
+	sourceBytes := []byte("account,amount,note\ncash,1.10,a\nar,2.20,b\nap,3.30,c")
+	source := sourceWithHash("fixture://amounts.csv", sourceBytes)
+	binding := memio.NewBinding(source)
+	selector := kernel.SourceSelector{
+		RowWindow:        "1-1",
+		Cursor:           "row:2",
+		ColumnProjection: "amount",
+		HeaderRow:        1,
+		Dialect:          "excel",
+		Encoding:         "utf-8",
+	}
+	clock := &sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)}}
+
+	result, err := kernel.ReadAndMint(
+		context.Background(),
+		binding,
+		binding,
+		extractcsvrows.Reader{},
+		binding,
+		binding,
+		clock,
+		run,
+		kernel.ReadAndMintRequest{
+			SourcePath: "fixture://amounts.csv",
+			Selector:   selector,
+			OutputPath: "$.value",
+		},
+	)
+	if err != nil {
+		t.Fatalf("ReadAndMint() error = %v", err)
+	}
+	wantOutput := []byte(`{"column_count":1,"column_order":"source_column_asc","column_projection":"amount","cursor":"row:2","effective_row_end":3,"effective_row_start":3,"header":{"cells":[{"column":2,"normalized_value":"amount","raw_value":"amount","value":"amount"}],"row":1},"header_row":1,"next_cursor":"row:3","normalized_value":"2.20","raw_value":"2.20","row_count":1,"row_order":"source_row_asc","row_window":"1-1","rows":[{"cells":[{"column":2,"header":"amount","normalized_value":"2.20","raw_value":"2.20","row":3,"value":"2.20"}],"row":3,"window_index":0}],"source_hash":"` + source.Source.SHA256 + `","value":"2.20"}`)
+	if !bytes.Equal(result.ReadResult.Output, wantOutput) {
+		t.Fatalf("ReadResult.Output = %s, want %s", result.ReadResult.Output, wantOutput)
+	}
+
+	state := snapshotState(t, binding, run)
+	bundleBytes, err := bundle.Emit(state)
+	if err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+	replayed, err := bundle.Replay(bundleBytes)
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(replayed.CapturedReads) != 1 {
+		t.Fatalf("len(Replay().CapturedReads) = %d, want 1", len(replayed.CapturedReads))
+	}
+
+	got := replayed.CapturedReads[0]
+	if got.ID != result.ReadResult.CapturedRead.ID {
+		t.Fatalf("Replay().CapturedReads[0].ID = %s, want %s", got.ID, result.ReadResult.CapturedRead.ID)
+	}
+	if got.Selector != selector {
+		t.Fatalf("Replay().CapturedReads[0].Selector = %#v, want %#v", got.Selector, selector)
+	}
+	if got.Origin != "fixture://amounts.csv#row=3&col=2&header_row=1&header=amount" {
 		t.Fatalf("Replay().CapturedReads[0].Origin = %s", got.Origin)
 	}
 	if string(got.ReaderOptions) != string(result.ReadResult.CapturedRead.ReaderOptions) {
