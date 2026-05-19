@@ -20,7 +20,7 @@ Status: **v0**
 
 Financial workflows often start with a document: a bank statement, a vendor invoice, an expense receipt, a 10-K. The raw text is not the unit of value — the structured fields with confidence are. Provenant keeps that as a category contract so document AI can evolve without changing the kernel surface.
 
-The same category also covers structured source readers for spreadsheets, CSV, JSON, and JSONL. Those readers are selector-first, streaming/windowed when needed, and deterministic on replay when the captured bytes and parser/options are pinned. PDFs stay out of this slice.
+The same category also covers structured source readers for XLSX workbooks, CSV, JSON, and JSONL. Those readers are selector-first, windowed when needed, and deterministic on replay when the captured bytes, selector, and reader options are pinned. PDFs and broad document-AI extraction stay out of this slice.
 
 ## Tools provided
 
@@ -30,7 +30,7 @@ The same category also covers structured source readers for spreadsheets, CSV, J
 | `extract.invoice` | Invoice → header + line items with confidence | NonDeterministic |
 | `extract.receipt` | Receipt → merchant + total + line items with confidence | NonDeterministic |
 | `extract.kv_pairs` | Generic key-value extraction with a schema | NonDeterministic |
-| `extract.spreadsheet` | XLS/XLSX sheet/range/cell reader | CapturedDeterministic |
+| `extract.spreadsheet` | XLSX sheet/range/table reader | CapturedDeterministic |
 | `extract.csv_rows` | CSV / large CSV windowed row reader | CapturedDeterministic |
 | `extract.json` | JSON pointer/path reader for exact object/array slices | CapturedDeterministic |
 | `extract.jsonl` | JSONL / large JSON streaming reader | CapturedDeterministic |
@@ -78,18 +78,26 @@ Input: `{document_url, schema: {field_name: type}}`. Output: extracted values ke
 
 Common rules:
 - selector-first reads; no scan-everything default
-- windowed / chunked pagination for large inputs
+- windowed reads for large inputs where the reader supports them
 - deterministic ordering by source order, then byte/cell order
-- fail closed on ambiguity (delimiter, sheet, selector, key, byte span)
+- fail closed on ambiguity (sheet, range, table, selector, key, projection, byte span, encoding)
 - capture source bytes + parser/version/options + normalized output in the bundle/BlobStore reference, not as an S3 requirement
 - `source.origin` carries the physical locator; `source.path` stays JSONPath into the tool output
 - every selected scalar carries `raw_value`, `normalized_value`, and `source_hash`
 
 ### `extract.spreadsheet`
 
-Reads XLS/XLSX sheets, ranges, and windows.
+Reads XLSX workbook source bytes only. The v0 implementation does not ship an `.xls` reader.
 
-Input selectors: `sheet`, `range`, optional `table_name`, optional `row_window`, optional `column_projection`, optional `formula_policy` (`cached_only` or `fail_closed`).
+Input selectors: `sheet`, `range`, optional `table_name`, optional `row_window`, optional `column_projection`, optional `formula_policy`.
+
+Shipped behavior:
+- `sheet`, `range`, and `table_name` can be used alone or as an intersection when they agree.
+- `range` uses A1 syntax and `column_projection` uses absolute workbook column letters such as `B` or `B,C`.
+- `row_window` is `start-end` relative to the selected range or table.
+- `formula_policy` is fail-closed unless omitted or set to `cached_only`; live formula evaluation is not supported.
+- unsupported workbook features fail closed, including malformed zip/XML structure, duplicate relationship IDs, unsupported cell types, and formula cells with no cached value.
+- when a workbook has multiple sheets and the selector is otherwise ambiguous, the caller must pin `sheet`.
 
 Origin examples:
 - `file:///book.xlsx#sheet=TrialBalance!R12C7`
@@ -103,6 +111,13 @@ Reads CSV in bounded row windows.
 
 Input selectors: `row_window`, optional `column_projection`, optional `header_row`, declared `dialect` / `encoding`.
 
+Shipped behavior:
+- `row_window` is required and uses `start-end`; `cursor=row:N` resumes after the last emitted row.
+- `dialect` and `encoding` are required and fail closed when omitted or unsupported.
+- `dialect` is pinned, not inferred; `encoding` is pinned, not inferred.
+- `column_projection` is either comma-separated header names when `header_row` is present or comma-separated 1-based column indexes when it is not.
+- duplicate header names, malformed quoting, ragged rows, projection whitespace, and header-window overlap fail closed.
+
 Origin examples:
 - `file:///gl.csv#row=1042&col=7&header=amount`
 - `blob://run-01HXYZ/gl.csv#row=1-500`
@@ -111,9 +126,15 @@ Output rows include absolute row/column coordinates, header echo, `raw_value`, `
 
 ### `extract.json`
 
-Reads exact JSON objects/arrays by selector.
+Reads exact JSON values, objects, or arrays by selector.
 
 Input selectors: `json_pointer` (canonical), optional `jsonpath` when it resolves uniquely, optional `byte_span`.
+
+Shipped behavior:
+- `json_pointer` is required.
+- `jsonpath` is accepted only when it resolves to the same unique node as `json_pointer`.
+- `byte_span` is accepted only when it exactly matches the selected raw slice.
+- duplicate keys, malformed JSON, unsupported `jsonpath` syntax, selector mismatches, and non-unique `jsonpath` results fail closed.
 
 Origin examples:
 - `file:///invoice.json#ptr=/invoice/total&byte=123-136`
@@ -123,9 +144,15 @@ Output nodes preserve document order and include `json_pointer`, `jsonpath`, `by
 
 ### `extract.jsonl`
 
-Reads JSONL and large JSON streams with sparse indexing and line windows.
+Reads JSONL with line windows.
 
 Input selectors: `line_window`, optional `json_pointer` / `jsonpath`, optional `byte_span`.
+
+Shipped behavior:
+- `line_window` is required and uses `start-end`; `cursor=line:N` resumes after the last emitted line.
+- `json_pointer` and `jsonpath` project within each selected record; `jsonpath` must resolve uniquely when supplied.
+- `byte_span` is accepted only when exactly one record is selected and the span matches the selected value bytes.
+- malformed lines, blank lines, selector mismatches, non-unique `jsonpath`, and ambiguous byte spans fail closed.
 
 Origin examples:
 - `file:///batch.jsonl#line=482&byte=88421-88502`
@@ -149,7 +176,7 @@ Output records include line number, pointer/path, byte span, `raw_value`, `norma
 ## Determinism and replay
 
 - Document-AI tools are `NonDeterministic`; replay captures the full response payload.
-- Structured readers are `CapturedDeterministic`; replay captures source bytes, parser version, options, selector, sparse index metadata, and normalized output.
+- Structured readers are `CapturedDeterministic`; replay captures source bytes, parser version, selector, locator metadata, reader options, and normalized output.
 - Replay must preserve byte-identical deterministic portions and deterministic ordering.
 
 ## Failure modes
@@ -158,12 +185,12 @@ Output records include line number, pointer/path, byte span, `raw_value`, `norma
 |---|---|---|
 | `extract.document_not_found` | URL unreachable | Abort |
 | `extract.unsupported_format` | Not a supported file type | Abort |
-| `extract.malformed_csv` | Bad dialect, quoting, or encoding | Abort |
-| `extract.invalid_json` | Malformed JSON / duplicate keys / invalid UTF-8 | Abort |
-| `extract.invalid_jsonl` | Malformed JSONL line or span | Abort |
-| `extract.ambiguous_selector` | Multiple plausible matches or inferred selector is not unique | Abort |
+| `extract.malformed_csv` | Bad quoting, ragged rows, duplicate projected headers, or invalid UTF-8/BOM under the declared encoding | Abort |
+| `extract.invalid_json` | Malformed JSON, duplicate keys, or unsupported selector syntax | Abort |
+| `extract.invalid_jsonl` | Malformed JSONL line or blank line under a selected window | Abort |
+| `extract.ambiguous_selector` | Multiple plausible sheet/table/path matches or selector family ambiguity | Abort |
 | `extract.byte_range_mismatch` | Byte span disagrees with the parsed locator | Abort |
-| `extract.formula_unsupported` | Spreadsheet formula policy is not pinned | Abort or use cached-only mode |
+| `extract.formula_unsupported` | Spreadsheet formula policy is unsupported or a formula lacks a cached value | Abort |
 | `extract.low_confidence` | All fields below threshold | Route to HITL |
 | `extract.upstream_unavailable` | Backend/network error | Retry per policy |
 | `extract.unsupported_language` | Language not configured | Abort |
@@ -199,10 +226,10 @@ Unstructured docs use Textract; structured source readers use the pure-Go struct
 - Schema conformance per tool (≥5 positive + ≥5 negative fixtures each).
 - Confidence calibration for document-AI tools.
 - Replay: captured payloads / source bytes produce identical tokens and output slices.
-- Spreadsheet fixtures: sheet/range selection, merged headers, hidden rows, formula cache policy, ambiguity fail-closed.
-- CSV fixtures: delimiter / encoding ambiguity, row-window pagination, row/column provenance.
-- JSON fixtures: duplicate keys, pointer/path/byte-span mismatch, selector uniqueness, sparse-index replay.
-- JSONL fixtures: line-window pagination, large-stream order, deterministic chunking.
+- Spreadsheet fixtures: sheet/range/table selection, cached-formula handling, relationship validation, and ambiguity fail-closed.
+- CSV fixtures: declared dialect/encoding handling, row-window pagination, row/column provenance, and projection failures.
+- JSON fixtures: duplicate keys, pointer/path/byte-span mismatch, selector uniqueness, and deterministic replay.
+- JSONL fixtures: line-window pagination, cursoring, projection mismatch, and deterministic record order.
 - Backend integration: fixture documents and structured files extracted with known expected outputs.
 
 ## Open questions

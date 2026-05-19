@@ -2,13 +2,13 @@
 
 Status: **v0**
 
-> Pure-Go backend for selector-first CSV, XLS/XLSX, JSON, and JSONL source readers.
+> Pure-Go backend for selector-first CSV, XLSX, JSON, and JSONL source readers.
 
 ## Connection
 
 - Input is a file/blob reference resolved through the runtime `BlobStore` or a bundle capture reference.
 - No S3, Postgres, or external document service is required for v0.
-- Supported inputs: `text/csv`, `application/vnd.ms-excel`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/json`, `application/x-ndjson`, `application/jsonl`.
+- Supported inputs: `text/csv`, `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`, `application/json`, `application/x-ndjson`, `application/jsonl`.
 
 ## Schema mapping
 
@@ -22,9 +22,11 @@ Status: **v0**
 Rules:
 
 - selection is explicit and deterministic
-- sparse indexes are used only to narrow large reads; they never change ordering
-- ambiguous selectors, duplicate keys, byte-span mismatches, or unsupported encodings fail closed
-- spreadsheet formula handling is cached-value only by default; any other policy must be pinned and deterministic
+- line/row windows are deterministic and cursor-driven where supported
+- ambiguous selectors, duplicate keys, byte-span mismatches, malformed workbook relationships, or unsupported encodings fail closed
+- spreadsheet formula handling is cached-value only; live formula evaluation is not supported
+- spreadsheet column projection uses absolute A1 column letters and range syntax uses A1 refs
+- CSV dialect and encoding are declared, not inferred
 
 ## Captured reads
 
@@ -34,7 +36,7 @@ Captured metadata includes:
 - source bytes hash
 - parser/version string
 - selector and pagination cursor
-- sparse index metadata where applicable
+- row/line window metadata where applicable
 - normalized output payload
 - source locator echo (`sheet`, `range`, `row`, `column`, `json_pointer`, `line`, `byte_span`)
 
@@ -49,21 +51,21 @@ No upstream throttling contract exists; parse failures are local and fail closed
 | Code | When | Recommended handling |
 |---|---|---|
 | `extract.unsupported_format` | Not one of the supported structured file formats | Abort |
-| `extract.malformed_csv` | Invalid CSV quoting / delimiter / encoding | Abort |
-| `extract.invalid_json` | Invalid JSON or duplicate-key violation | Abort |
-| `extract.invalid_jsonl` | Invalid JSONL line or byte span | Abort |
-| `extract.ambiguous_selector` | Selector matches multiple plausible targets | Abort |
+| `extract.malformed_csv` | Invalid CSV quoting, ragged rows, duplicate projected columns, or invalid bytes under the declared encoding | Abort |
+| `extract.invalid_json` | Invalid JSON, duplicate-key violation, or unsupported selector syntax | Abort |
+| `extract.invalid_jsonl` | Invalid JSONL line, blank line, or invalid line/byte window | Abort |
+| `extract.ambiguous_selector` | Selector matches multiple plausible targets or mixes selector families | Abort |
 | `extract.byte_range_mismatch` | Byte span does not match the selected slice | Abort |
-| `extract.formula_unsupported` | Spreadsheet formula policy cannot be satisfied deterministically | Abort or fall back to cached-only mode |
+| `extract.formula_unsupported` | Spreadsheet formula policy cannot be satisfied deterministically or a formula lacks a cached value | Abort |
 | `extract.unsupported_encoding` | Encoding is not pinned or not supported | Abort |
 
 ## Tests
 
 - Positive and negative schema fixtures for each tool.
-- Spreadsheet: merged cells, hidden rows, table-name selection, range windows, formula cache policy, fail-closed ambiguity.
-- CSV: delimiter/quote/encoding edge cases, large row windows, deterministic chunking.
-- JSON: pointer/path resolution, byte-span checks, duplicate-key rejection, sparse-index replay.
-- JSONL: line windows, large-stream ordering, deterministic pagination.
+- Spreadsheet: sheet/range/table selection, cached-formula handling, relationship validation, unsupported cell types, and fail-closed ambiguity.
+- CSV: declared dialect/encoding edge cases, row windows, pagination cursors, and projection failures.
+- JSON: pointer/path resolution, byte-span checks, duplicate-key rejection, and deterministic replay.
+- JSONL: line windows, cursors, projection mismatch handling, and deterministic pagination.
 - Replay: captured reads reproduce identical slices and token minting.
 
 ## Configuration
@@ -72,16 +74,13 @@ No upstream throttling contract exists; parse failures are local and fail closed
 backend: structured_files
 config:
   csv:
-    delimiter: ","
     header_row: 1
     encoding: "utf-8"
+    dialect: "excel"
   spreadsheet:
     formula_policy: "cached_only"
-    hidden_rows: "exclude"
   json:
     selector_mode: "json_pointer"
-  jsonl:
-    chunk_size: 500
 ```
 
 ## References
