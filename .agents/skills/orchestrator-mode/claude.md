@@ -43,13 +43,40 @@ The boot subagent must:
 - Do not duplicate a subagent's work in the orchestrator session.
 - Use subagents to gather evidence, implement scoped work, validate, or review.
 
+## Deterministic Operator
+
+Use `claude-haiku-4-5` for bounded deterministic operations that only need
+already-selected commands or mechanical edits.
+
+Good deterministic tasks:
+
+- Merge, fetch, branch, and status checks.
+- PR comment, PR status, and check-run lookups.
+- Scope scans with preselected patterns.
+- Format checks and simple rename edits.
+- Already-selected validation commands.
+
+Forbidden deterministic tasks:
+
+- Code review or independent approval.
+- Architecture, security, reliability, or tenant-boundary decisions.
+- Choosing risky validation coverage or deciding E2E sufficiency.
+- Synthesis, recommendations, or ambiguous implementation planning.
+
 ## Model Selection
 
+- Deterministic operator: `claude-haiku-4-5`, thinking off.
 - Boot/context reading: `claude-haiku-4-5`, thinking off.
 - Narrow repo discovery: `claude-haiku-4-5`, thinking off.
 - Small mechanical edit: `claude-haiku-4-5`, thinking off.
 - Straightforward implementation: `claude-sonnet-4-6`, thinking off.
 - Architecture direction or high-stakes review: `claude-opus-4-7`, thinking on.
+
+## PR Creation
+
+Before opening or updating a PR, load `conventional-commit-guard` and validate
+the PR title. Prepared PR bodies do not remove the title-validation
+requirement.
 
 ## Output Format
 

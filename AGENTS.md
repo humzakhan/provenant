@@ -17,7 +17,7 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 
 ## Skills
 
-- `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening or updating a PR title.
+- `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening, creating, or updating a PR.
 - `orchestrator-mode`: when the user asks Codex to coordinate through sub-agents only or to enter orchestrator mode.
 - `phase-planning`: when the user asks to plan the next phase or create/update `.planning/phases/<phase-slug>/` docs in the repo's phase format.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
@@ -36,7 +36,20 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 - Broad repo study and docs synthesis: `gpt-5.4-mini`, medium reasoning.
 - Normal implementation and refactoring: `gpt-5.4`, medium reasoning.
 - High-risk implementation or review: `gpt-5.5`, high reasoning.
-- Small mechanical edits: fastest small coding model available.
+- Deterministic operator work: `gpt-5.3-codex-spark`; fall back to `gpt-5.4-mini` when Spark is unavailable.
+- Small mechanical edits: `gpt-5.3-codex-spark`; fall back to `gpt-5.4-mini` when Spark is unavailable.
+
+## Deterministic Operators
+
+Use Spark-class models for fully deterministic, bounded operations that do not
+need judgment beyond following already-selected commands or text edits. Good
+fits include merge/fetch/branch state checks, PR comment or status reads,
+scope scans, format checks, simple renames, and already-selected validation
+commands.
+
+Do not use Spark-class models for review, architecture, security, reliability,
+tenant-boundary decisions, synthesis, recommendations, or deciding whether a
+test matrix is sufficient.
 
 ## Codex Delegation
 

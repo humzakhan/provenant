@@ -44,6 +44,15 @@ The boot subagent must:
 - Use subagents only to gather evidence, summarize, cite sources, compare options, identify risks, or independently review research conclusions.
 - Research subagents are scouts: they gather, summarize, cite, and report back. They do not modify code, files, tickets, branches, PRs, external services, or any other state.
 
+## Deterministic Lookup
+
+Use `claude-haiku-4-5` for bounded read-only lookup or state checks when the
+query, files, commands, and expected output are already narrow.
+
+Haiku scouts may gather exact facts, citations, command output, or status
+checks. Do not use Haiku scouts for synthesis, recommendations, risk
+assessment, architecture judgment, or deciding what evidence is sufficient.
+
 ## Scout Prompt Rules
 
 Generate a customized prompt on the fly for each spawned research scout.
@@ -60,6 +69,7 @@ Each scout prompt must explicitly say:
 
 ## Model Selection
 
+- Deterministic lookup/state check: `claude-haiku-4-5`, thinking off.
 - Boot/context reading: `claude-haiku-4-5`, thinking off.
 - Narrow research scouting: `claude-haiku-4-5`, thinking off.
 - Broad research synthesis or high-stakes review: `claude-opus-4-7`, thinking on.

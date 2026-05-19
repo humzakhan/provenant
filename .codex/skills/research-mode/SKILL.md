@@ -44,6 +44,16 @@ The boot agent must:
 - Use sub-agents only to gather evidence, summarize, cite sources, compare options, identify risks, or independently review research conclusions.
 - Research sub-agents are scouts: they gather, summarize, cite, and report back. They do not modify code, files, tickets, branches, PRs, external services, or any other state.
 
+## Deterministic Lookup
+
+Use `gpt-5.3-codex-spark` for bounded read-only lookup or state checks when
+the query, files, commands, and expected output are already narrow. Fall back
+to `gpt-5.4-mini` when Spark is unavailable.
+
+Spark scouts may gather exact facts, citations, command output, or status
+checks. Do not use Spark scouts for synthesis, recommendations, risk
+assessment, architecture judgment, or deciding what evidence is sufficient.
+
 ## Scout Prompt Rules
 
 Generate a customized prompt on the fly for each spawned research scout.
@@ -60,6 +70,7 @@ Each scout prompt must explicitly say:
 
 ## Model Selection
 
+- Deterministic lookup/state check: `gpt-5.3-codex-spark`, falling back to `gpt-5.4-mini`.
 - Boot/context reading: `gpt-5.4-mini`, medium reasoning.
 - Narrow research scouting: `gpt-5.4-mini`, medium reasoning.
 - Broad research synthesis or high-stakes review: `gpt-5.5`, high reasoning.

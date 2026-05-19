@@ -1,11 +1,12 @@
 ---
 name: conventional-commit-guard
-description: Use before Codex creates, amends, squashes, or suggests a git commit message, and before Codex opens or updates a pull request title. Enforces Conventional Commit subjects for every commit and PR title without adding hooks or CI checks.
+description: Use before Codex creates, amends, squashes, or suggests a git commit message, and before Codex opens, creates, or updates a pull request. Enforces Conventional Commit subjects for every commit and PR title without adding hooks or CI checks.
 ---
 
 # Conventional Commit Guard
 
-Use this skill immediately before writing any commit message or PR title.
+Use this skill immediately before writing any commit message, opening or
+creating a PR, or updating a PR title.
 
 ## Required Format
 
@@ -36,6 +37,7 @@ Allowed types:
 - Do not use `WIP`, `temp`, `savepoint`, `misc`, or vague subjects.
 - PR titles must follow the same format as commit subjects.
 - Prefer a PR title that would also work as the squash commit title.
+- Prepared PR bodies still require PR title validation before opening or updating the PR.
 
 ## Before Committing
 

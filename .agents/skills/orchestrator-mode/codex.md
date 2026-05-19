@@ -43,8 +43,30 @@ The boot agent must:
 - Do not duplicate a sub-agent's work in the orchestrator session.
 - Use sub-agents to gather evidence, implement scoped work, validate, or review.
 
+## Deterministic Operator
+
+Use `gpt-5.3-codex-spark` for bounded deterministic operations that only need
+already-selected commands or mechanical edits. Fall back to `gpt-5.4-mini`
+when Spark is unavailable.
+
+Good Spark tasks:
+
+- Merge, fetch, branch, and status checks.
+- PR comment, PR status, and check-run lookups.
+- Scope scans with preselected patterns.
+- Format checks and simple rename edits.
+- Already-selected validation commands.
+
+Forbidden Spark tasks:
+
+- Code review or independent approval.
+- Architecture, security, reliability, or tenant-boundary decisions.
+- Choosing risky validation coverage or deciding E2E sufficiency.
+- Synthesis, recommendations, or ambiguous implementation planning.
+
 ## Model Selection
 
+- Deterministic operator: `gpt-5.3-codex-spark`, falling back to `gpt-5.4-mini`.
 - Boot/context reading: `gpt-5.4-mini`, medium reasoning.
 - Narrow repo discovery: `gpt-5.4-mini`, medium reasoning.
 - Small mechanical edit: small fast coding model.
@@ -54,6 +76,12 @@ The boot agent must:
 - Decision-making, genuinely high-stakes ambiguity, or repo-classified high-risk review: `gpt-5.5`, high reasoning.
 - Architecture direction: `gpt-5.5`, high reasoning.
 - Repo-level model routing in `AGENTS.md` wins if this skill and repo guidance ever differ, especially for high-risk reviews.
+
+## PR Creation
+
+Before opening or updating a PR, load `conventional-commit-guard` and validate
+the PR title. Prepared PR bodies do not remove the title-validation
+requirement.
 
 ## Output Format
 
