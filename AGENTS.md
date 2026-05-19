@@ -21,14 +21,13 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 - `orchestrator-mode`: when the user asks Codex to coordinate through sub-agents only or to enter orchestrator mode.
 - `phase-planning`: when the user asks to plan the next phase or create/update `.planning/phases/<phase-slug>/` docs in the repo's phase format.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
-- `pr-gate`: only in single-feature mode when a push, PR, merge, phase-transition, or done boundary requires explicit human approval. Do not use when orchestrator mode is active.
+- `pr-gate`: only in single-feature mode when a push, PR, merge, milestone transition, or done boundary requires explicit human approval. Do not use when orchestrator mode is active.
 - Go skills are additive and should be loaded narrowly:
   - `go-implementation-quality`: general Go implementation, Effective Go style, small APIs, package boundaries, and error handling.
   - `go-testing-fuzzing`: table/golden tests, fuzzing, and invariant checks for parsers, serialization, and path handling.
   - `go-input-validation-security`: strict decoding, bounded reads, size/depth limits, allowlists, and fail-closed input handling.
   - `go-io-performance`: `io.Reader`/`io.Writer`, buffering, chunking, and avoiding full materialization.
   - `go-concurrency-memory-model`: only for goroutines, channels, mutexes, atomics, or shared state; use happens-before and the race detector.
-- For active phase scope, read `.planning/implementation-plan.md` and the current phase README before using phase work-packet docs as execution guidance.
 
 ## Codex Models
 

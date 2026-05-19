@@ -15,4 +15,4 @@ Use this skill for source readers, extractors, captured reads, or any path that 
 - The kernel/registry mints from declared mintable paths.
 - Preserve source hash, parser/version/options, selector, locator, raw value, and canonical value where applicable.
 - Fail closed on ambiguity, malformed input, missing selector, unsupported numeric forms, or source-hash mismatch.
-- Keep reader coverage within the active phase boundary; do not widen into additional formats unless the current phase docs explicitly allow them.
+- Keep reader coverage within the requested scope; do not widen into additional formats unless the user or an explicitly loaded spec asks for them.

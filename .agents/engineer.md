@@ -64,7 +64,7 @@ These hold everywhere in the codebase. I do not negotiate them.
 
 | Concern | Convention |
 |---|---|
-| Language | Go for the kernel, runtime, and adapters. Non-Go is a Phase 5 concern. |
+| Language | Go for the kernel, runtime, and adapters. Non-Go work requires explicit scope approval. |
 | Canonical transactional store | Postgres 15+ via `pgx` + `sqlc`. Never raw `database/sql` in `kernel/`. |
 | Object store | S3-compatible (`runtime/blobstore/s3/`). |
 | Numeric arithmetic | `shopspring/decimal`. Never `float64` for monetary values. |
@@ -79,24 +79,6 @@ These hold everywhere in the codebase. I do not negotiate them.
 | Migrations | `atlas`, forward-only only. Never roll back a migration retroactively. |
 | Migrations | `atlas`, forward-only. No backwards mutations — the audit chain must be consistent across years. |
 | system: sentinels | The only legal `"system:"` IAM principals are `system:escalation-sweep`, `system:orphan-sweep`, `system:dr-restore`, `system:audit-verify`. No others. See `../architecture/cross-cutting/security.md` §Principal namespace. |
-
----
-
-## Phase awareness
-
-Follow `../.planning/implementation-plan.md` as the canonical phase taxonomy and status.
-At present, **Phase 0 is complete, Phases 1-3 are complete, and Phase 4 is current**.
-Do not rely on older Phase 0/1/2/3/4 labels from superseded planning docs or persona text.
-
-When deciding scope:
-
-- Treat the current work as **Phase 4 - Release-Ready Hardening** unless
-  the implementation plan is updated again.
-- Keep Phase 4 bounded to negative and recovery coverage, lightweight performance smoke,
-  and final test-matrix and doc alignment over already-shipped behavior.
-- Do not pre-implement deferred or future-phase work. If a change needs a new feature,
-  new surface, new provenance store, divergent read path, proof or audit semantic change,
-  or broader replanned runtime/model work, stop and defer to `../.planning/implementation-plan.md`.
 
 ---
 
@@ -133,7 +115,7 @@ Run through this checklist before opening a file.
    `PayloadEnvelope.Deterministic` for any `EntryKind`, any change to the hash construction
    formula, or any change to `header_v1.go` requires bumping `kernel_version` and updating
    the fixture files under `kernel/testdata/header-fixtures/`. Forgetting this breaks
-   Phase 4's byte-identity done-when and Phase 5's cross-binding tests.
+   byte-identity and cross-binding replay tests.
 
 4. **Does my change add a new `error_code`?**
    Update the markdown table in `../architecture/subsystems/audit.md` §Canonical `error_code`
@@ -158,7 +140,7 @@ Run through this checklist before opening a file.
    uses to mint tokens. The backend cannot construct `Token` values directly.
 4. If the backend uses a credential: declare the `CredentialRef.ID` in `Credentials()`.
    The skill's `tools.yaml` entry MUST declare a matching `credential_id`. The pack-load-time
-   reconciliation step (Phase 2) rejects mismatches with `skill.credential_id_missing`,
+   reconciliation step rejects mismatches with `skill.credential_id_missing`,
    `skill.credential_id_unexpected`, or `credential.id_manifest_mismatch`.
 5. Normalize numeric outputs to the kernel grammar
    (`^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?$`) before they reach `mintable_paths`.
@@ -202,8 +184,8 @@ Run through this checklist before opening a file.
 
 - No comments unless the WHY is non-obvious. What the code does is readable from the code.
 - No premature abstractions. Do not generalize before the second concrete use case exists.
-- Small commits. Each commit corresponds to a single phase task or a single named
-  spec item. Do not bundle unrelated spec changes in one commit.
+- Small commits. Each commit corresponds to one coherent code or spec change. Do not
+  bundle unrelated spec changes in one commit.
 - No `float64` for any monetary or quota value. `shopspring/decimal` everywhere.
 - Do not import `net/*`, `database/sql`, `pgx`, MCP SDK, `os/exec`, or any CLI-flag
   packages from any file under `kernel/`. The CI import-guard check will catch it.
@@ -225,9 +207,9 @@ Run through this checklist before opening a file.
 |---|---|
 | "Can I put this I/O call in `kernel/`?" | `../architecture/OVERVIEW.md` §3.1 (forbidden imports list) |
 | "Is this field deterministic?" | `../architecture/subsystems/audit.md` §Per-EntryKind payload schema |
-| "Does this change break byte-identity?" | `../.planning/implementation-plan.md` Phase 4 handoff and deferred future-phase notes |
 | "Is this error_code already in the table?" | `../architecture/subsystems/audit.md` §Canonical `error_code` table |
-| "Is this feature in scope for v0?" | `../.planning/implementation-plan.md` Deferred Future Phases |
+| "Does this change break byte-identity?" | `../architecture/subsystems/audit.md` §Hash construction and replay determinism sections |
+| "Is this feature in scope for this task?" | The user's request, the PR description, and any explicitly loaded planning docs |
 | "Does this trade-off need documenting?" | `../docs/KNOWN_TRADE_OFFS.md` — add an entry if a constraint is accepted without full resolution |
 
 ---

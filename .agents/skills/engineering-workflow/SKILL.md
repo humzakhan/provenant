@@ -13,7 +13,7 @@ Use this skill for implementation, review, and documentation work when repo-loca
 - **Mode B — Single feature:** one branch, one PR, one feature delivered normally.
 
 `pr-gate` applies only to Mode B. In Mode A, do not stop for human approval at
-push, PR, merge, phase-transition, or done boundaries. Instead, run automated
+push, PR, merge, milestone-transition, or done boundaries. Instead, run automated
 sub-agent review; once review approves and merge criteria pass, squash-merge the
 PR, update from `origin/main`, and continue to the next branch.
 
@@ -32,7 +32,7 @@ PR, update from `origin/main`, and continue to the next branch.
 - Always load this workflow for implementation, review, and docs work.
 - Load the smallest matching Provenant domain skill(s); most tasks need one, occasionally two.
 - If a task seems to need all three domain skills, narrow the slice before continuing.
-- For current phase work, read `.planning/implementation-plan.md` and the current phase README before treating phase work-packet docs as execution guidance.
+- Load planning documents only when the user asks for planning work or explicitly names those documents.
 
 ## Commits
 
@@ -41,15 +41,15 @@ PR, update from `origin/main`, and continue to the next branch.
 - Do not use `WIP` or bundle unrelated changes.
 - Use the `conventional-commit-guard` skill before writing commit messages or PR titles.
 
-## Phase scope guard
+## Scope guard
 
-- Do not pre-implement later surfaces while doing active phase work: no CLI, HTTP, MCP, runtime persistence, S3/SQLite/Postgres, model harness, PDF/XLSX export, broad reader coverage, or custom validator/plugin infrastructure unless the current phase docs explicitly allow it.
-- Keep the active phase slice independently buildable and reviewable.
+- Do not pre-implement adjacent surfaces outside the requested task: no CLI, HTTP, MCP, runtime persistence, S3/SQLite/Postgres, model harness, PDF/XLSX export, broad reader coverage, or custom validator/plugin infrastructure unless the user or an explicitly loaded spec asks for it.
+- Keep the active slice independently buildable and reviewable.
 
 ## Validation
 
 - Prefer the narrowest Go tests that cover the touched packages.
-- Phase acceptance should use observable evidence named by the current phase docs, with focused tests for the touched packages.
+- Acceptance should use observable evidence named by the user request or explicitly loaded spec, with focused tests for the touched packages.
 - Run broader validation only when the repo or task explicitly needs it.
 - Record skipped or unavailable checks plainly.
 

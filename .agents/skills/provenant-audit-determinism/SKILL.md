@@ -15,4 +15,4 @@ Use this skill for `audit`, hash input, bundle verify/replay, enum tables, or an
 - Hash input must be canonical; do not rely on ordinary JSON marshalling on the hash path.
 - `EntryKind`, `error_code`, `failure_subcode`, and `recovery_reason` come from the canonical source tables; generated Go is derived.
 - Bundle verify/replay must stay pure over bundle bytes, with no DB or CLI dependency.
-- Bundle scope is phase-bound: carry only the captured reads/artifacts plus the token graph needed by the current phase to verify and replay.
+- Bundle scope is task-bound: carry only the captured reads/artifacts plus the token graph needed by the requested verification or replay path.
