@@ -17,6 +17,7 @@ Use repo-local guidance from `.claude/skills/` and `.agents/` when it matches. P
 - `conventional-commit-guard`: before creating, amending, squashing, or suggesting any commit message, and before opening or updating a PR title.
 - `orchestrator-mode`: when the user asks Claude to coordinate through subagents only or to enter orchestrator mode.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
+- `pr-gate`: only in single-feature mode when a push, PR, merge, phase-transition, or done boundary requires explicit human approval. Do not use when orchestrator mode is active.
 - Go skills are additive and should be loaded narrowly:
   - `go-implementation-quality`: general Go implementation, Effective Go style, small APIs, package boundaries, and error handling.
   - `go-testing-fuzzing`: table/golden tests, fuzzing, and invariant checks for parsers, serialization, and path handling.
@@ -37,5 +38,6 @@ Use repo-local guidance from `.claude/skills/` and `.agents/` when it matches. P
 ## Claude Delegation
 
 - In orchestrator mode, delegate repo reading, implementation, validation, and review.
+- In orchestrator mode, `pr-gate` is not applicable: after automated subagent review approves a PR and merge criteria pass, merge it and branch the next slice from updated `origin/main`.
 - Outside orchestrator mode, use subagents only when parallel study or independent review materially reduces risk or time.
 - For broad architecture review, prefer 2-4 narrow read-only readers plus one independent reviewer.
