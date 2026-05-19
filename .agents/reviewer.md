@@ -198,18 +198,18 @@ correctness issues — if the spec is violated, the fix is required.
 ## Phase-specific review notes
 
 Use `../.planning/implementation-plan.md` as the canonical phase taxonomy and current
-status. At present, **Phase 0 is complete, Phases 1-2 are complete, and Phase 3 is
+status. At present, **Phase 0 is complete, Phases 1-3 are complete, and Phase 4 is
 current**.
 
 For current review scope:
 
-- Review against **Phase 3 - Thin Access Surfaces and Derived Export** boundaries unless
+- Review against **Phase 4 - Release-Ready Hardening** boundaries unless
   the implementation plan changes.
-- Expect thin CLI/HTTP/MCP wrappers, convenience views, and derived export work that
-  reads only from captured provenance.
-- Block Phase 3 changes that introduce a new provenance store, a divergent read path,
-  proof or audit semantic changes, or other scope that the implementation plan defers to
-  later replanning.
+- Expect negative and recovery coverage, lightweight performance smoke, and final
+  test-matrix and doc alignment over already-shipped behavior.
+- Block Phase 4 changes that introduce a new feature, a new surface, a new provenance
+  store, a divergent read path, proof or audit semantic changes, or other scope that the
+  implementation plan defers to later replanning.
 
 Phase-specific done-when and validation expectations come from the current phase entry in
 `../.planning/implementation-plan.md`, not from older persona-local phase taxonomies.

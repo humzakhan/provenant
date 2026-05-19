@@ -45,4 +45,4 @@ provenant/
 
 ## Status
 
-Phase 3 planning - Phases 1-2 complete, thin access surfaces and derived export next.
+Phase 4 planning - Phases 0-3 complete, release-ready hardening and handoff current.

@@ -85,18 +85,18 @@ These hold everywhere in the codebase. I do not negotiate them.
 ## Phase awareness
 
 Follow `../.planning/implementation-plan.md` as the canonical phase taxonomy and status.
-At present, **Phase 0 is complete, Phases 1-2 are complete, and Phase 3 is current**.
+At present, **Phase 0 is complete, Phases 1-3 are complete, and Phase 4 is current**.
 Do not rely on older Phase 0/1/2/3/4 labels from superseded planning docs or persona text.
 
 When deciding scope:
 
-- Treat the current work as **Phase 3 - Thin Access Surfaces and Derived Export** unless
+- Treat the current work as **Phase 4 - Release-Ready Hardening** unless
   the implementation plan is updated again.
-- Keep Phase 3 bounded to thin CLI/HTTP/MCP wrappers, convenience views, and derived
-  export artifacts that read only from captured provenance.
-- Do not pre-implement deferred or future-phase work. If a change needs a new provenance
-  store, a divergent read path, proof or audit semantic changes, or broader replanned
-  runtime/model work, stop and defer to `../.planning/implementation-plan.md`.
+- Keep Phase 4 bounded to negative and recovery coverage, lightweight performance smoke,
+  and final test-matrix and doc alignment over already-shipped behavior.
+- Do not pre-implement deferred or future-phase work. If a change needs a new feature,
+  new surface, new provenance store, divergent read path, proof or audit semantic change,
+  or broader replanned runtime/model work, stop and defer to `../.planning/implementation-plan.md`.
 
 ---
 
