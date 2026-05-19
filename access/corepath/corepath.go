@@ -1,6 +1,7 @@
 package corepath
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -152,6 +153,13 @@ func VerifyExportSource(_ context.Context, request ExportSourceRequest) (ExportS
 	state, err := bundle.Replay(request.BundleBytes)
 	if err != nil {
 		return ExportSourceResult{}, err
+	}
+	canonicalBundleBytes, err := bundle.Emit(state)
+	if err != nil {
+		return ExportSourceResult{}, err
+	}
+	if !bytes.Equal(canonicalBundleBytes, request.BundleBytes) {
+		return ExportSourceResult{}, fmt.Errorf("%w: bundle bytes are not canonical", bundle.ErrTamperDetected)
 	}
 
 	return ExportSourceResult{

@@ -175,6 +175,36 @@ func TestVerifyExportSourceFailsClosedOnInvalidInput(t *testing.T) {
 	}
 }
 
+func TestVerifyExportSourceRejectsReplayValidNonCanonicalBytes(t *testing.T) {
+	t.Parallel()
+
+	fixture := newSmokeFixture(corepath.SurfaceExport)
+	executed, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
+		Surface: corepath.SurfaceCLI,
+		Run:     fixture.run,
+		Read:    fixture.read,
+	})
+	if err != nil {
+		t.Fatalf("ExecuteReadMintBundle() error = %v", err)
+	}
+
+	nonCanonical := append(append([]byte(nil), executed.BundleBytes...), '\n', '\t')
+	replayed, err := bundle.Replay(nonCanonical)
+	if err != nil {
+		t.Fatalf("Replay(nonCanonical) error = %v", err)
+	}
+	if replayed.Run != fixture.run {
+		t.Fatalf("Replay(nonCanonical).Run = %#v, want %#v", replayed.Run, fixture.run)
+	}
+
+	if _, err := corepath.VerifyExportSource(context.Background(), corepath.ExportSourceRequest{
+		Surface:     corepath.SurfaceExport,
+		BundleBytes: nonCanonical,
+	}); !errors.Is(err, bundle.ErrTamperDetected) {
+		t.Fatalf("VerifyExportSource(nonCanonical) error = %v, want %v", err, bundle.ErrTamperDetected)
+	}
+}
+
 type smokeFixture struct {
 	surface corepath.Surface
 	run     kernel.Run
