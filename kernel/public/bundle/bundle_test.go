@@ -18,7 +18,9 @@ import (
 	"github.com/provenant/provenant/kernel/public/extractcsvrows"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/extractjsonl"
+	"github.com/provenant/provenant/kernel/public/extractspreadsheet"
 	"github.com/provenant/provenant/kernel/public/internal/phaseone"
+	"github.com/provenant/provenant/kernel/public/internal/testxlsx"
 	"github.com/provenant/provenant/kernel/public/memio"
 )
 
@@ -353,6 +355,78 @@ func TestEmitReplayPreservesCSVCapturedReadMetadata(t *testing.T) {
 	}
 }
 
+func TestEmitReplayPreservesSpreadsheetCapturedReadMetadata(t *testing.T) {
+	t.Parallel()
+
+	run := kernel.Run{ID: "run_sheet", TenantID: "tenant_1", Status: kernel.RunRunning}
+	sourceBytes := spreadsheetWorkbookBytes(t)
+	source := sourceWithHash("fixture://amounts.xlsx", sourceBytes)
+	binding := memio.NewBinding(source)
+	selector := kernel.SourceSelector{
+		TableName:        "Amounts",
+		RowWindow:        "3-3",
+		ColumnProjection: "B",
+	}
+	clock := &sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 10, 0, 0, 0, time.UTC)}}
+
+	result, err := kernel.ReadAndMint(
+		context.Background(),
+		binding,
+		binding,
+		extractspreadsheet.Reader{},
+		binding,
+		binding,
+		clock,
+		run,
+		kernel.ReadAndMintRequest{
+			SourcePath: source.Source.Path,
+			Selector:   selector,
+			OutputPath: "$.value",
+		},
+	)
+	if err != nil {
+		t.Fatalf("ReadAndMint() error = %v", err)
+	}
+
+	wantOutput := []byte(`{"column_count":1,"column_order":"source_column_asc","column_projection":"B","effective_row_end":3,"effective_row_start":3,"formula_policy":"cached_only","normalized_value":"2.20","range":"A1:B3","raw_value":"=B2*2","row_count":1,"row_order":"source_row_asc","row_window":"3-3","rows":[{"cells":[{"a1":"B3","column":2,"formula":"=B2*2","formula_cached_value":"2.20","normalized_value":"2.20","raw_value":"=B2*2","row":3,"sheet":"TrialBalance","value":"2.20"}],"row":3,"sheet":"TrialBalance","window_index":0}],"sheet":"TrialBalance","source_hash":"` + source.Source.SHA256 + `","table_name":"Amounts","value":"2.20"}`)
+	if !bytes.Equal(result.ReadResult.Output, wantOutput) {
+		t.Fatalf("ReadResult.Output = %s, want %s", result.ReadResult.Output, wantOutput)
+	}
+
+	state := snapshotState(t, binding, run)
+	bundleBytes, err := bundle.Emit(state)
+	if err != nil {
+		t.Fatalf("Emit() error = %v", err)
+	}
+	replayed, err := bundle.Replay(bundleBytes)
+	if err != nil {
+		t.Fatalf("Replay() error = %v", err)
+	}
+	if len(replayed.CapturedReads) != 1 {
+		t.Fatalf("len(Replay().CapturedReads) = %d, want 1", len(replayed.CapturedReads))
+	}
+
+	got := replayed.CapturedReads[0]
+	if got.ID != result.ReadResult.CapturedRead.ID {
+		t.Fatalf("Replay().CapturedReads[0].ID = %s, want %s", got.ID, result.ReadResult.CapturedRead.ID)
+	}
+	if got.Selector != selector {
+		t.Fatalf("Replay().CapturedReads[0].Selector = %#v, want %#v", got.Selector, selector)
+	}
+	if got.Origin != "fixture://amounts.xlsx#sheet=TrialBalance&row=3&col=2&a1=B3" {
+		t.Fatalf("Replay().CapturedReads[0].Origin = %s", got.Origin)
+	}
+	if string(got.ReaderOptions) != string(result.ReadResult.CapturedRead.ReaderOptions) {
+		t.Fatalf("Replay().CapturedReads[0].ReaderOptions = %s, want %s", got.ReaderOptions, result.ReadResult.CapturedRead.ReaderOptions)
+	}
+	if string(got.Locator) != string(result.ReadResult.CapturedRead.Locator) {
+		t.Fatalf("Replay().CapturedReads[0].Locator = %s, want %s", got.Locator, result.ReadResult.CapturedRead.Locator)
+	}
+	if !bytes.Equal(got.Output, wantOutput) {
+		t.Fatalf("Replay().CapturedReads[0].Output = %s, want %s", got.Output, wantOutput)
+	}
+}
+
 func TestVerifyRejectsUnknownTokenMintPayloadField(t *testing.T) {
 	t.Parallel()
 
@@ -543,6 +617,32 @@ func sourceWithHash(path string, data []byte) kernel.SourceBytes {
 		},
 		Bytes: data,
 	}
+}
+
+func spreadsheetWorkbookBytes(t *testing.T) []byte {
+	t.Helper()
+
+	raw, err := testxlsx.Build(testxlsx.Workbook{
+		Sheets: []testxlsx.Sheet{
+			{
+				Name:      "TrialBalance",
+				Dimension: "A1:B3",
+				Cells: []testxlsx.Cell{
+					{A1: "A1", Value: "account"},
+					{A1: "B1", Value: "amount"},
+					{A1: "A2", Value: "cash"},
+					{A1: "B2", Value: "1.10"},
+					{A1: "A3", Value: "ar"},
+					{A1: "B3", Formula: "=B2*2", CachedValue: "2.20"},
+				},
+				Tables: []testxlsx.Table{{Name: "Amounts", Range: "A1:B3"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("testxlsx.Build() error = %v", err)
+	}
+	return raw
 }
 
 func decodeDocument(t *testing.T, bundleBytes []byte) bundleDocument {
