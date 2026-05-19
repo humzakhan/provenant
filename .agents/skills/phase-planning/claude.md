@@ -10,17 +10,17 @@ Use this skill when the request is to plan a new implementation phase or revise 
 ## Read first
 
 1. `AGENTS.md`
-2. `.planning/phases/implementation-sequence.md`
-3. The nearest prior phase docs:
+2. `.planning/implementation-plan.md`
+3. The nearest prior phase docs, if present:
    - `.planning/phases/<previous-phase>/README.md`
    - `.planning/phases/<previous-phase>/goal-kickstart-prompt.md`
    - `.planning/phases/<previous-phase>/sequential-work-packets.md`
 4. Any phase-specific architecture or contract docs named by the user.
-5. `plans/implementation-plan.md` only as background after the phase sequence and current architecture inputs are clear.
+5. Any existing target phase docs before rewriting them.
 
 If a target phase directory already exists, read its three phase files before rewriting them.
 
-Use the nearest existing phase docs as the base template for file shape and packet style. Use Phase 2 as the current model for optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
+Use the nearest existing phase docs as the base template for file shape and packet style. Treat the nearest existing phase docs, or the current target phase docs when they already exist, as the current model for optional scope sections, richer non-goals, and larger reader or fixture matrices without changing the overall format.
 
 ## Outputs
 
@@ -39,7 +39,7 @@ Keep all files ASCII, concise, and operational.
 - Mirror the prior phase structure before inventing a new format.
 - Existing phase docs define the default structure; later phases may add optional middle sections but should keep the same three-file contract.
 - Keep the phase independently buildable, testable, and reviewable.
-- Treat `implementation-sequence.md` as the boundary contract; use phase-specific architecture docs to sharpen the slice, not to widen it.
+- Treat `.planning/implementation-plan.md` as the boundary contract; use phase-specific architecture docs to sharpen the slice, not to widen it.
 - Pull in the smallest additive contract delta needed for the phase.
 - Use OpenAI or Google goal-boundary ideas only as heuristics for tight goals, explicit non-goals, stop conditions, and observable evidence. Do not cite them as authority or let them change the repo format.
 - If an input implies later-phase work, split it out or mark it deferred.
@@ -124,7 +124,7 @@ Before finishing:
 2. Check that every `Build` item appears in at least one packet.
 3. Check that every packet traces to a pass criterion or explicit evidence line.
 4. Check that non-goals, disallowed actions, and stop conditions all block the same kinds of scope creep.
-5. Check that implementation-sequence ordering still makes sense after the new phase is added or revised.
+5. Check that `.planning/implementation-plan.md` ordering still makes sense after the new phase is added or revised.
 
 ## Review
 

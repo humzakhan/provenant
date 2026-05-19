@@ -41,7 +41,7 @@ The library is the product. MCP and CLI are **thin shells that wrap the library*
 The novelty is not the box diagram — it is the boundary lines:
 
 - **Kernel** is pure: no I/O at the public surface, no `net/*` or `database/sql` import anywhere transitively reachable from `kernel/`. Every I/O dependency is an injected interface. The kernel ships a **first-class in-memory binding** of those interfaces under `kernel/public/memio/` as the library-mode default; it ships nothing else as a storage binding.
-- **Access surfaces** (MCP server, CLI, future HTTP) are thin runtime-layer shells over the kernel public Go surface. None has architectural primacy ([ADR-0010](adrs/0010-mcp-equal-not-primary.md)). All three must produce byte-identical deterministic-portion audit chains when the captured inputs, pinned facts, kernel version, and backend versions match ([implementation-plan.md](../plans/implementation-plan.md) Phase 4 done-when).
+- **Access surfaces** (MCP server, CLI, HTTP) are thin runtime-layer shells over the kernel public Go surface. None has architectural primacy ([ADR-0010](adrs/0010-mcp-equal-not-primary.md)). All three must reach the same verified core path and avoid a second source of truth when the captured inputs, pinned facts, kernel version, and backend versions match ([implementation-plan.md](../.planning/implementation-plan.md) Phase 3/4 boundaries).
 - **Persistent storage bindings** (`runtime/sqlite/` default, `runtime/postgres/` for multi-tenant) live **outside the kernel module** and are owned by the runtime layer. A host that embeds the library is free to ignore them entirely.
 
 For the canonical invariants (non-bypassable, fail-closed, schema-first, replay-deterministic), see [`architecture/README.md`](README.md#core-invariants). Every component below preserves them.
@@ -88,7 +88,7 @@ These are deliberately unresolved here. The hone critic/defender loop will adjud
    ```
    The current ADRs do not address this split. No decision is taken here; this is flagged for the critic loop.
 
-3. **MCP-first vs. MCP-only — resolved cycle 4.** ~~[ADR-0007](adrs/0007-mcp-as-primary-adapter.md) makes MCP primary.~~ Resolved by [ADR-0010](adrs/0010-mcp-equal-not-primary.md): MCP, HTTP, and CLI are equal first-class adapters; none has architectural primacy. The runtime layer treats MCP as one of N transports. Engineering-sequencing remains in [`implementation-plan.md`](../plans/implementation-plan.md) (CLI in Phase 3, MCP and HTTP in Phase 4). Listed here for cross-reference rather than as an open question.
+3. **MCP-first vs. MCP-only - resolved cycle 4.** ~~[ADR-0007](adrs/0007-mcp-as-primary-adapter.md) makes MCP primary.~~ Resolved by [ADR-0010](adrs/0010-mcp-equal-not-primary.md): MCP, HTTP, and CLI are equal first-class adapters; none has architectural primacy. The runtime layer treats MCP as one of N transports. Engineering sequencing is tracked in [`implementation-plan.md`](../.planning/implementation-plan.md): Phase 3 adds thin access surfaces and Phase 4 hardens them. Listed here for cross-reference rather than as an open question.
 
 ## 3. Module boundary contract
 
@@ -265,4 +265,4 @@ Per-subsystem open questions live in the "Open questions" sections of each [`sub
 - For the security threat model: [`architecture/cross-cutting/security.md`](cross-cutting/security.md).
 - For the observability story: [`architecture/cross-cutting/observability.md`](cross-cutting/observability.md).
 - For deployment shapes and runbooks: [`architecture/cross-cutting/deployment.md`](cross-cutting/deployment.md).
-- For the phased build plan: [`implementation-plan.md`](../plans/implementation-plan.md).
+- For the phased build plan: [`implementation-plan.md`](../.planning/implementation-plan.md).

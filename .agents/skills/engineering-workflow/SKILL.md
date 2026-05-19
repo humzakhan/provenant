@@ -32,7 +32,7 @@ PR, update from `origin/main`, and continue to the next branch.
 - Always load this workflow for implementation, review, and docs work.
 - Load the smallest matching Provenant domain skill(s); most tasks need one, occasionally two.
 - If a task seems to need all three domain skills, narrow the slice before continuing.
-- For current phase work, read `.planning/phases/implementation-sequence.md` and the current phase README before treating `plans/implementation-plan.md` as background.
+- For current phase work, read `.planning/implementation-plan.md` and the current phase README before treating phase work-packet docs as execution guidance.
 
 ## Commits
 

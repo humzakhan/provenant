@@ -442,7 +442,7 @@ func (k *Kernel) Resume(ctx context.Context, runState []byte, decision *HITLDeci
 
 **Host responsibility (serialization is bytes, nothing else).** The kernel emits the snapshot as a typed Go value with `MarshalCanonicalJSON`. The host serializes those bytes to whatever substrate it operates (a database column, a Kafka topic, an object-store key, a Lambda event payload, a base64 string in a job-queue record). The kernel **does not persist** and has no opinion on where the bytes lived. On resume, the host loads the bytes and hands them to `Resume`. See [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md) and [`docs/KNOWN_TRADE_OFFS.md`](../../docs/KNOWN_TRADE_OFFS.md) #9 ("Library mode does not ship cross-process HITL persistence").
 
-Phase 0's done-when (see [`../../implementation-plan.md`](../../plans/implementation-plan.md#phase-0--establish-the-kernel-module-boundary)) ratifies the boot-time and tx-local-canary tests against this contract.
+Phase 0's done-when (see [`implementation-plan.md`](../../.planning/implementation-plan.md#phase-0---kernel-baseline)) ratifies the boot-time and tx-local-canary tests against this contract.
 
 ## Concurrency model
 
