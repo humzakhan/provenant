@@ -150,6 +150,9 @@ func validateRequest(request ReadMintBundleRequest) error {
 	if request.Run.ID == "" || request.Run.TenantID == "" {
 		return fmt.Errorf("%w: run id and tenant_id are required", ErrInvalidRequest)
 	}
+	if !isAllowedRunStatus(request.Run.Status) {
+		return fmt.Errorf("%w: run status must be one of pending, running, completed, failed", ErrInvalidRequest)
+	}
 	if request.Read.SourcePath == "" || request.Read.OutputPath == "" {
 		return fmt.Errorf("%w: read source_path and output_path are required", ErrInvalidRequest)
 	}
@@ -172,6 +175,15 @@ func validateRequest(request ReadMintBundleRequest) error {
 		return fmt.Errorf("%w: %v", ErrInvalidRequest, err)
 	}
 	return nil
+}
+
+func isAllowedRunStatus(status kernel.RunStatus) bool {
+	switch status {
+	case kernel.RunPending, kernel.RunRunning, kernel.RunCompleted, kernel.RunFailed:
+		return true
+	default:
+		return false
+	}
 }
 
 func buildDependencies(request ReadMintBundleRequest, now time.Time) (corepath.Dependencies, error) {

@@ -132,6 +132,49 @@ func TestRunnerReadMintBundleFailsClosedOnMalformedInput(t *testing.T) {
 			wantErr: cli.ErrInvalidRequest,
 		},
 		{
+			name: "invalid run status",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: validRequest.Source,
+				Run: kernel.Run{
+					ID:       validRequest.Run.ID,
+					TenantID: validRequest.Run.TenantID,
+					Status:   kernel.RunStatus("paused"),
+				},
+				Read: validRequest.Read,
+			},
+			wantErr: cli.ErrInvalidRequest,
+		},
+		{
+			name: "empty run status",
+			request: struct {
+				Reader string                    `json:"reader"`
+				Source kernel.SourceBytes        `json:"source"`
+				Run    kernel.Run                `json:"run"`
+				Read   kernel.ReadAndMintRequest `json:"read"`
+			}{
+				Reader: validRequest.Reader,
+				Source: validRequest.Source,
+				Run: kernel.Run{
+					ID:       validRequest.Run.ID,
+					TenantID: validRequest.Run.TenantID,
+					Status:   "",
+				},
+				Read: validRequest.Read,
+			},
+			wantErr: cli.ErrInvalidRequest,
+		},
+		{
+			name:    "missing run status",
+			raw:     `{"reader":"extract.json","source":{"source":{"path":"fixture://invoice.json","sha256":"abc"},"bytes":"AQ=="},"run":{"id":"run_1","tenant_id":"tenant_1"},"read":{"source_path":"fixture://invoice.json","selector":{"json_pointer":"/invoice/total"},"output_path":"$.value"}}`,
+			wantErr: cli.ErrInvalidRequest,
+		},
+		{
 			name:    "trailing data",
 			raw:     mustMarshalRequest(validRequest) + "\n{}",
 			wantErr: cli.ErrInvalidRequest,
