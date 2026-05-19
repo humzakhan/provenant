@@ -159,6 +159,15 @@ func TestHandlerReadMintBundleRejectsMalformedInput(t *testing.T) {
 			wantErr:    httpapi.ErrInvalidRequest,
 		},
 		{
+			name:       "missing content type",
+			method:     http.MethodPost,
+			path:       httpapi.RouteReadMintBundle,
+			body:       mustMarshalRequest(validRequest),
+			wantStatus: http.StatusUnsupportedMediaType,
+			wantCode:   "unsupported_media_type",
+			wantErr:    httpapi.ErrInvalidRequest,
+		},
+		{
 			name:        "wrong content type",
 			method:      http.MethodPost,
 			path:        httpapi.RouteReadMintBundle,

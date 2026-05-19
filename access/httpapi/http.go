@@ -196,7 +196,7 @@ func sourceReader(name string) (kernel.SourceReader, error) {
 
 func requireJSONContentType(contentType string) error {
 	if contentType == "" {
-		return nil
+		return fmt.Errorf("%w: content type must be application/json", ErrInvalidRequest)
 	}
 
 	mediaType, _, err := mime.ParseMediaType(contentType)
