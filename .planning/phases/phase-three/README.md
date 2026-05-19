@@ -26,3 +26,10 @@ Use `.planning/phases/phase-three/sequential-work-packets.md` for the PR-by-PR p
 - No surface introduces a second source of truth or bypasses verified core behavior.
 - Phase 3 docs and handoff notes match implemented behavior and deferred work.
 - The phase PR is up for review with validation evidence attached.
+
+## Closure
+- Shipped surfaces: `access/corepath`, `access/cli`, `access/httpapi`, `access/mcpapi`, and the derived export path in `access/corepath`.
+- Smoke evidence: `access/smoke/smoke_test.go` exercises the core path, CLI, HTTP, and MCP lanes against one deterministic request and proves byte-identical bundle and export outputs across all shipped surfaces.
+- Export evidence: the smoke matrix replays canonical bundle bytes through `VerifyExportSource`, `GenerateDerivedExport`, and `ValidateDerivedExport` for every shipped surface.
+- Stop conditions encountered: none. Packet 6 did not require a new provenance store, divergent read path, or proof/audit semantic change.
+- Deferred to Phase 4: broaden negative and recovery coverage, add lightweight performance smoke, and do the final hardening sweep without widening the Phase 3 surface set.
