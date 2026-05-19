@@ -12,6 +12,11 @@ Use this skill for implementation, review, and documentation work when repo-loca
 - **Mode A — Orchestrator sequence:** one PR at a time. Finish a slice, review it, merge it once auto-review clears, then branch the next slice from updated `origin/main`.
 - **Mode B — Single feature:** one branch, one PR, one feature delivered normally.
 
+`pr-gate` applies only to Mode B. In Mode A, do not stop for human approval at
+push, PR, merge, phase-transition, or done boundaries. Instead, run automated
+sub-agent review; once review approves and merge criteria pass, squash-merge the
+PR, update from `origin/main`, and continue to the next branch.
+
 ## Branches
 
 - Create one branch per task from current `main` or `origin/main`.
@@ -58,6 +63,8 @@ Use this skill for implementation, review, and documentation work when repo-loca
 6. Run relevant validation before marking ready for review.
 7. Run at most two automated review cycles by default.
 8. If cycle 2 still has major issues, run one final cycle 3 and stop there.
+9. In Mode A, merge after automated review approval and passing merge criteria;
+   in Mode B, stop at PR boundaries for explicit human approval.
 
 ## PR Description
 

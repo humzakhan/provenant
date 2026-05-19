@@ -13,6 +13,10 @@ The current Claude session is the orchestrator only.
 
 Do not directly read, write, edit, search, inspect, test, or validate repository files. Delegate those operations to subagents and make decisions from their reports.
 
+`pr-gate` is not applicable while Orchestrator Mode is active. Use automated
+subagent review as the approval gate; after a PR is approved and merge criteria
+pass, merge it and branch the next slice from updated `origin/main`.
+
 ## Required Delegation Shape
 
 Minimum shape:

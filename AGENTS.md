@@ -21,6 +21,7 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 - `orchestrator-mode`: when the user asks Codex to coordinate through sub-agents only or to enter orchestrator mode.
 - `phase-planning`: when the user asks to plan the next phase or create/update `.planning/phases/<phase-slug>/` docs in the repo's phase format.
 - `engineering-workflow`: default process for branching, commits, validation, review cycles, and PR lifecycle.
+- `pr-gate`: only in single-feature mode when a push, PR, merge, phase-transition, or done boundary requires explicit human approval. Do not use when orchestrator mode is active.
 - Go skills are additive and should be loaded narrowly:
   - `go-implementation-quality`: general Go implementation, Effective Go style, small APIs, package boundaries, and error handling.
   - `go-testing-fuzzing`: table/golden tests, fuzzing, and invariant checks for parsers, serialization, and path handling.
@@ -41,5 +42,6 @@ Use repo-local guidance from `.codex/skills/` and `.agents/` when it matches. Pr
 ## Codex Delegation
 
 - In orchestrator mode, delegate repo reading, implementation, validation, and review.
+- In orchestrator mode, `pr-gate` is not applicable: after automated sub-agent review approves a PR and merge criteria pass, merge it and branch the next slice from updated `origin/main`.
 - Outside orchestrator mode, use subagents only when parallel study or independent review materially reduces risk or time.
 - For broad architecture review, prefer 2-4 narrow read-only readers plus one independent reviewer.
