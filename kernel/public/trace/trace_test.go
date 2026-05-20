@@ -681,6 +681,122 @@ func TestTraceRoundHalfEven(t *testing.T) {
 	assertContrib(t, g.Leaves, leafA.ID, "100.500000000")
 }
 
+// TestTraceFilterSumWhere: filter.sum_where matched inputs contribute their
+// values; unmatched inputs contribute "0". The matched list is read from the
+// deterministic audit payload (authoritative), not heuristically reconstructed.
+func TestTraceFilterSumWhere(t *testing.T) {
+	t.Parallel()
+
+	run := kernel.Run{ID: "run_tr_filter", TenantID: "tenant_tr", Status: kernel.RunRunning}
+
+	// Three USD leaves; matched = {A, C} (so B is excluded by the predicate).
+	// This is the case the old heuristic would have mis-attributed:
+	// sum(unit-matched) = 100+50+30 = 180 != evaluated 130, and falling back to
+	// "treat all candidates as matched" would have given a sum of 180, failing
+	// the invariant. The audit-payload-authoritative read gives the correct
+	// contributions A=+100, B=0, C=+30, total = 130.
+	srcA := sourceBytes("fixture://flt_a.json", []byte(`{"val":100}`))
+	srcB := sourceBytes("fixture://flt_b.json", []byte(`{"val":50}`))
+	srcC := sourceBytes("fixture://flt_c.json", []byte(`{"val":30}`))
+
+	bindA := memio.NewBinding(srcA)
+	bindB := memio.NewBinding(srcB)
+	bindC := memio.NewBinding(srcC)
+
+	leafA, rawA := mintLeafInBinding(t, bindA, run, srcA, "/val", "USD")
+	leafB, rawB := mintLeafInBinding(t, bindB, run, srcB, "/val", "USD")
+	leafC, rawC := mintLeafInBinding(t, bindC, run, srcC, "/val", "USD")
+
+	prev := genesisHash(run.TenantID)
+	entryA := rebuildLeafEntry(t, run, rawA, prev, 1)
+	entryB := rebuildLeafEntry(t, run, rawB, entryA.Hash, 2)
+	entryC := rebuildLeafEntry(t, run, rawC, entryB.Hash, 3)
+
+	// Build a derived filter.sum_where token where matched = {A, C}.
+	inputs := []kernel.Token{leafA, leafB, leafC}
+	inputIDs := []string{leafA.ID, leafB.ID, leafC.ID}
+	matched := []string{leafA.ID, leafC.ID}
+	evaluated := "130.000000000"
+	unit := "USD"
+
+	tokenID := deriveTokenID(run.ID, run.TenantID, "filter.sum_where", inputIDs, evaluated, unit)
+	derivedTok := kernel.Token{
+		ID:             tokenID,
+		RunID:          run.ID,
+		TenantID:       run.TenantID,
+		ValueCanonical: evaluated,
+		Unit:           unit,
+		Derivation: &kernel.Derivation{
+			Operation: "filter.sum_where",
+			Inputs:    append([]string(nil), inputIDs...),
+			FormulaID: "filter.sum_where",
+			Rounding:  kernel.RoundingPolicy{Mode: "half_even", Scale: 9},
+			Evaluated: evaluated,
+		},
+	}
+
+	payloadMap := map[string]any{
+		"evaluated":  evaluated,
+		"formula_id": "filter.sum_where",
+		"inputs":     inputIDs,
+		"matched":    matched,
+		"operation":  "filter.sum_where",
+		"predicate": map[string]any{
+			"field": "row.tag",
+			"op":    "in",
+			"values": []string{"keep_a", "keep_c"},
+		},
+		"rounding": map[string]any{
+			"mode":  "half_even",
+			"scale": 9,
+		},
+		"token_id": tokenID,
+		"unit":     unit,
+	}
+	det := canonicalJSON(t, payloadMap)
+	hash := auditHash(entryC.Hash, 4, run.ID, run.TenantID, kernel.EntryKindTokenDerive, det)
+	deriveEntry := kernel.AuditEntry{
+		Seq:      4,
+		RunID:    run.ID,
+		TenantID: run.TenantID,
+		Kind:     kernel.EntryKindTokenDerive,
+		At:       traceTestClock.Now(),
+		PrevHash: append([]byte(nil), entryC.Hash...),
+		Hash:     hash,
+		Payload: kernel.PayloadEnvelope{
+			Deterministic:      det,
+			HashInputCanonical: det,
+		},
+	}
+	_ = inputs
+
+	allReads := concat(
+		getReads(t, bindA, run),
+		getReads(t, bindB, run),
+		getReads(t, bindC, run),
+	)
+	bundleBytes, err := bundle.Emit(bundle.State{
+		Run:           run,
+		CapturedReads: allReads,
+		Tokens:        []kernel.Token{leafA, leafB, leafC, derivedTok},
+		AuditEntries:  []kernel.AuditEntry{entryA, entryB, entryC, deriveEntry},
+	})
+	if err != nil {
+		t.Fatalf("bundle.Emit: %v", err)
+	}
+
+	g, err := trace.Trace(bundleBytes, derivedTok.ID)
+	if err != nil {
+		t.Fatalf("Trace() error = %v", err)
+	}
+	if g.RootValue != evaluated {
+		t.Errorf("RootValue = %q, want %q", g.RootValue, evaluated)
+	}
+	assertContrib(t, g.Leaves, leafA.ID, "100.000000000")
+	assertContrib(t, g.Leaves, leafB.ID, "0.000000000")
+	assertContrib(t, g.Leaves, leafC.ID, "30.000000000")
+}
+
 // TestTraceUnknownToken: returns ErrTokenNotFound.
 func TestTraceUnknownToken(t *testing.T) {
 	t.Parallel()

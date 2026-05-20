@@ -103,14 +103,20 @@ func Trace(bundleBytes []byte, tokenID string) (*Graph, error) {
 		readsByID[r.ID] = r
 	}
 
-	// Build seq index: token ID -> audit seq.
+	// Build seq index: token ID -> audit seq, and matched index for
+	// filter.sum_where derivations: token ID -> matched input IDs.
 	seqByTokenID := make(map[string]uint64, len(state.AuditEntries))
+	matchedByTokenID := make(map[string][]string)
 	for _, entry := range state.AuditEntries {
 		if entry.Kind == kernel.EntryKindTokenMint || entry.Kind == kernel.EntryKindTokenDerive {
-			// Extract token_id from payload deterministic bytes.
-			id, err2 := extractTokenIDFromPayload(entry.Payload.Deterministic)
+			// Extract token_id (and matched list, when present) from the
+			// deterministic payload bytes.
+			id, matched, err2 := extractDeriveMetaFromPayload(entry.Payload.Deterministic)
 			if err2 == nil && id != "" {
 				seqByTokenID[id] = entry.Seq
+				if matched != nil {
+					matchedByTokenID[id] = matched
+				}
 			}
 		}
 	}
@@ -129,7 +135,7 @@ func Trace(bundleBytes []byte, tokenID string) (*Graph, error) {
 	}
 
 	// Compute contributions for each distinct leaf.
-	leafContribs, err := computeContributions(root, tokensByID, readsByID, decimal.New(1, 0))
+	leafContribs, err := computeContributions(root, tokensByID, readsByID, matchedByTokenID, decimal.New(1, 0))
 	if err != nil {
 		return nil, err
 	}
@@ -238,6 +244,7 @@ func computeContributions(
 	tok kernel.Token,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	if tok.Derivation == nil {
@@ -271,19 +278,19 @@ func computeContributions(
 
 	switch op {
 	case "calc.add", "calc.sum", "select.passthrough":
-		return passThroughContribs(inputs, tokensByID, readsByID, multiplier)
+		return passThroughContribs(inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	case "calc.subtract":
-		return subtractContribs(inputs, tokensByID, readsByID, multiplier)
+		return subtractContribs(inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	case "round.half_even":
-		return roundContribs(tok, inputs, tokensByID, readsByID, multiplier)
+		return roundContribs(tok, inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	case "calc.multiply":
-		return multiplyContribs(tok, inputs, tokensByID, readsByID, multiplier)
+		return multiplyContribs(tok, inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	case "calc.divide":
-		return divideContribs(tok, inputs, tokensByID, readsByID, multiplier)
+		return divideContribs(tok, inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	case "filter.sum_where":
 		// The Derivation on filter.sum_where has a Matched field embedded in the
@@ -305,11 +312,9 @@ func computeContributions(
 		// evaluated — but for a stable implementation, we walk the inputs and
 		// include those that match the unit. This is the same logic filter.sum_where uses.
 		//
-		// However, the cleanest, most correct approach is to carry the Matched
-		// list from the audit payload. Since kernel.Derivation does not expose it,
-		// we need a different path. The bundle already validates the Matched list
-		// in the payload — we re-decode it here via a helper.
-		return filterSumWhereContribs(tok, inputs, tokensByID, readsByID, multiplier)
+		// The Matched list is authoritative: we read it from the deterministic
+		// audit payload via matchedByTokenID (extracted in Trace).
+		return filterSumWhereContribs(tok, inputs, tokensByID, readsByID, matchedByTokenID, multiplier)
 
 	default:
 		return nil, fmt.Errorf("trace: unsupported operation %q", op)
@@ -322,31 +327,16 @@ func passThroughContribs(
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	var out []LeafContribution
-	seen := make(map[string]bool)
 	for _, id := range inputs {
-		if seen[id] {
-			// Deduplicated inputs (e.g. add(leaf, leaf)) — combine later by
-			// accumulating contributions for the same leaf token.
-			tok, ok := tokensByID[id]
-			if !ok {
-				return nil, fmt.Errorf("trace: input token %s not found", id)
-			}
-			contribs, err := computeContributions(tok, tokensByID, readsByID, multiplier)
-			if err != nil {
-				return nil, err
-			}
-			out = append(out, contribs...)
-			continue
-		}
-		seen[id] = true
 		tok, ok := tokensByID[id]
 		if !ok {
 			return nil, fmt.Errorf("trace: input token %s not found", id)
 		}
-		contribs, err := computeContributions(tok, tokensByID, readsByID, multiplier)
+		contribs, err := computeContributions(tok, tokensByID, readsByID, matchedByTokenID, multiplier)
 		if err != nil {
 			return nil, err
 		}
@@ -361,6 +351,7 @@ func subtractContribs(
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	if len(inputs) != 2 {
@@ -374,13 +365,13 @@ func subtractContribs(
 	if !ok {
 		return nil, fmt.Errorf("trace: input token %s not found", inputs[1])
 	}
-	contribsA, err := computeContributions(tokA, tokensByID, readsByID, multiplier)
+	contribsA, err := computeContributions(tokA, tokensByID, readsByID, matchedByTokenID, multiplier)
 	if err != nil {
 		return nil, err
 	}
 	// Negate b's multiplier.
 	negMul := multiplier.Neg()
-	contribsB, err := computeContributions(tokB, tokensByID, readsByID, negMul)
+	contribsB, err := computeContributions(tokB, tokensByID, readsByID, matchedByTokenID, negMul)
 	if err != nil {
 		return nil, err
 	}
@@ -395,6 +386,7 @@ func roundContribs(
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	if len(inputs) != 1 {
@@ -404,7 +396,7 @@ func roundContribs(
 	if !ok {
 		return nil, fmt.Errorf("trace: input token %s not found", inputs[0])
 	}
-	contribs, err := computeContributions(input, tokensByID, readsByID, multiplier)
+	contribs, err := computeContributions(input, tokensByID, readsByID, matchedByTokenID, multiplier)
 	if err != nil {
 		return nil, err
 	}
@@ -442,6 +434,7 @@ func multiplyContribs(
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	if len(inputs) != 2 {
@@ -475,11 +468,11 @@ func multiplyContribs(
 		// b's leaves: contribution = b_leaf_val * a_val * multiplier.
 		// a's leaves: contribution = 0.
 		scaledMul := multiplier.Mul(aVal)
-		contribsB, err := computeContributions(tokB, tokensByID, readsByID, scaledMul)
+		contribsB, err := computeContributions(tokB, tokensByID, readsByID, matchedByTokenID, scaledMul)
 		if err != nil {
 			return nil, err
 		}
-		contribsA, err := zeroContribs(tokA, tokensByID, readsByID)
+		contribsA, err := zeroContribs(tokA, tokensByID, readsByID, matchedByTokenID)
 		if err != nil {
 			return nil, err
 		}
@@ -490,11 +483,11 @@ func multiplyContribs(
 		// a's leaves: contribution = a_leaf_val * b_val * multiplier.
 		// b's leaves: contribution = 0.
 		scaledMul := multiplier.Mul(bVal)
-		contribsA, err := computeContributions(tokA, tokensByID, readsByID, scaledMul)
+		contribsA, err := computeContributions(tokA, tokensByID, readsByID, matchedByTokenID, scaledMul)
 		if err != nil {
 			return nil, err
 		}
-		contribsB, err := zeroContribs(tokB, tokensByID, readsByID)
+		contribsB, err := zeroContribs(tokB, tokensByID, readsByID, matchedByTokenID)
 		if err != nil {
 			return nil, err
 		}
@@ -505,11 +498,11 @@ func multiplyContribs(
 		// Treat as: result = a * b; a's leaves contribute a_leaf * b_val * multiplier,
 		// b's leaves contribute 0.
 		scaledMul := multiplier.Mul(bVal)
-		contribsA, err := computeContributions(tokA, tokensByID, readsByID, scaledMul)
+		contribsA, err := computeContributions(tokA, tokensByID, readsByID, matchedByTokenID, scaledMul)
 		if err != nil {
 			return nil, err
 		}
-		contribsB, err := zeroContribs(tokB, tokensByID, readsByID)
+		contribsB, err := zeroContribs(tokB, tokensByID, readsByID, matchedByTokenID)
 		if err != nil {
 			return nil, err
 		}
@@ -527,6 +520,7 @@ func divideContribs(
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
 	if len(inputs) != 2 {
@@ -552,11 +546,11 @@ func divideContribs(
 	// Scale multiplier by 1/denominator.
 	scaledMul := multiplier.Div(denomVal)
 
-	contribsNum, err := computeContributions(numerator, tokensByID, readsByID, scaledMul)
+	contribsNum, err := computeContributions(numerator, tokensByID, readsByID, matchedByTokenID, scaledMul)
 	if err != nil {
 		return nil, err
 	}
-	contribsDen, err := zeroContribs(denominator, tokensByID, readsByID)
+	contribsDen, err := zeroContribs(denominator, tokensByID, readsByID, matchedByTokenID)
 	if err != nil {
 		return nil, err
 	}
@@ -589,66 +583,24 @@ func divideContribs(
 
 // filterSumWhereContribs handles filter.sum_where.
 // Matched inputs contribute their values; unmatched inputs contribute 0.
-// We reconstruct the matched set by summing inputs that add up to the
-// derived token's evaluated value.
+// The matched set is read authoritatively from the deterministic audit payload
+// of the derived token (which bundle.Replay has already validated as a subset
+// of inputs).
 func filterSumWhereContribs(
 	tok kernel.Token,
 	inputs []string,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 	multiplier decimal.Decimal,
 ) ([]LeafContribution, error) {
-	// Reconstruct matched inputs: for filter.sum_where the matched list is
-	// stored in the audit payload. We use the bundle replay result's token,
-	// which carries the derivation but not the matched list in its struct.
-	//
-	// Strategy: determine matched by checking which inputs' unit matches the
-	// derived token's unit AND their sum equals the derived token's value.
-	//
-	// Since bundle.Replay already validated matched ⊆ inputs, we use a
-	// simpler approach: sum all inputs with matching unit; if that sum equals
-	// the evaluated value, those are the matched inputs. If not, we fall back
-	// to treating all as unmatched (zero contribution) which is safe.
-	//
-	// This is correct because filter.sum_where only accepts inputs of the same
-	// unit as the result (RequireSameUnit over matched tokens), so any input
-	// with a different unit was not matched.
-
-	matchedSet := make(map[string]bool)
-	derivedVal, err := parseCanonical(tok.ValueCanonical)
-	if err != nil {
-		return nil, fmt.Errorf("trace: parse filter result: %w", err)
+	matched, ok := matchedByTokenID[tok.ID]
+	if !ok {
+		return nil, fmt.Errorf("trace: filter.sum_where token %s has no audit-payload matched list", tok.ID)
 	}
-
-	// Sum candidates: inputs whose unit matches the derived token's unit.
-	sum := decimal.Zero
-	var candidates []string
-	for _, id := range inputs {
-		inp, ok := tokensByID[id]
-		if !ok {
-			return nil, fmt.Errorf("trace: input token %s not found", id)
-		}
-		if inp.Unit == tok.Unit {
-			v, err2 := parseCanonical(inp.ValueCanonical)
-			if err2 != nil {
-				return nil, fmt.Errorf("trace: parse filter input: %w", err2)
-			}
-			sum = sum.Add(v)
-			candidates = append(candidates, id)
-		}
-	}
-
-	// If the sum of unit-matched inputs equals the derived value, use those.
-	if sum.Equal(derivedVal) {
-		for _, id := range candidates {
-			matchedSet[id] = true
-		}
-	}
-	// If no match or partial, mark all candidates as matched and accept the residual.
-	if len(matchedSet) == 0 && len(candidates) > 0 {
-		for _, id := range candidates {
-			matchedSet[id] = true
-		}
+	matchedSet := make(map[string]bool, len(matched))
+	for _, id := range matched {
+		matchedSet[id] = true
 	}
 
 	var out []LeafContribution
@@ -658,14 +610,14 @@ func filterSumWhereContribs(
 			return nil, fmt.Errorf("trace: input token %s not found", id)
 		}
 		if matchedSet[id] {
-			contribs, err := computeContributions(inp, tokensByID, readsByID, multiplier)
+			contribs, err := computeContributions(inp, tokensByID, readsByID, matchedByTokenID, multiplier)
 			if err != nil {
 				return nil, err
 			}
 			out = append(out, contribs...)
 		} else {
 			// Unmatched: contribute 0.
-			zeros, err := zeroContribs(inp, tokensByID, readsByID)
+			zeros, err := zeroContribs(inp, tokensByID, readsByID, matchedByTokenID)
 			if err != nil {
 				return nil, err
 			}
@@ -682,19 +634,21 @@ func zeroContribs(
 	tok kernel.Token,
 	tokensByID map[string]kernel.Token,
 	readsByID map[string]kernel.CapturedRead,
+	matchedByTokenID map[string][]string,
 ) ([]LeafContribution, error) {
-	return computeContributions(tok, tokensByID, readsByID, decimal.Zero)
+	return computeContributions(tok, tokensByID, readsByID, matchedByTokenID, decimal.Zero)
 }
 
-// extractTokenIDFromPayload extracts token_id from a deterministic payload
-// that may be either a token_mint or token_derive payload. We only need the
-// token_id field.
-func extractTokenIDFromPayload(det []byte) (string, error) {
+// extractDeriveMetaFromPayload extracts the token_id and (for
+// filter.sum_where derivations) the matched input-ID list from a deterministic
+// audit payload. Other ops have no matched field and the returned slice is nil.
+func extractDeriveMetaFromPayload(det []byte) (string, []string, error) {
 	var v struct {
-		TokenID string `json:"token_id"`
+		TokenID string   `json:"token_id"`
+		Matched []string `json:"matched"`
 	}
 	if err := unmarshalLoose(det, &v); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	return v.TokenID, nil
+	return v.TokenID, v.Matched, nil
 }
