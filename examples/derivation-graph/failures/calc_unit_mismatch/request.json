@@ -1,0 +1,6 @@
+{
+  "run_file": "./run.json",
+  "op": "calc.add",
+  "inputs": ["tok_usd", "tok_eur"],
+  "rounding": {"mode": "half_even", "scale": 2}
+}

@@ -443,6 +443,22 @@ func normalizeState(state State) (State, error) {
 			}
 			// No token produced; no contribution to referencedReadIDs.
 
+		case kernel.EntryKindAnswerSubmitted:
+			// answer_submitted entries do not produce a token; they reference one
+			// that must already exist earlier in the chain (strictly lower seq).
+			payload, err := decodeAnswerSubmittedPayload(deterministic)
+			if err != nil {
+				return State{}, fmt.Errorf("%w: parse answer_submitted payload at seq %d: %v", ErrTamperDetected, entry.Seq, err)
+			}
+			tokenSeq, ok := seqByTokenID[payload.TokenID]
+			if !ok {
+				return State{}, fmt.Errorf("%w: answer_submitted at seq %d references unknown token %s", ErrTamperDetected, entry.Seq, payload.TokenID)
+			}
+			if tokenSeq >= entry.Seq {
+				return State{}, fmt.Errorf("%w: answer_submitted at seq %d references token %s at seq %d (not strictly prior)", ErrTamperDetected, entry.Seq, payload.TokenID, tokenSeq)
+			}
+			// No token produced; no contribution to referencedReadIDs.
+
 		default:
 			return State{}, fmt.Errorf("%w: unsupported audit kind %s", ErrTamperDetected, entry.Kind)
 		}
@@ -669,6 +685,38 @@ func decodeTokenDerivePayload(deterministic []byte, seqByTokenID map[string]uint
 		}
 	}
 
+	return payload, nil
+}
+
+// answerSubmittedPayload is the in-memory representation of an answer_submitted
+// deterministic audit payload. It references a token that already exists in the
+// chain.
+type answerSubmittedPayload struct {
+	TokenID        string `json:"token_id"`
+	Label          string `json:"label"`
+	ValueCanonical string `json:"value_canonical"`
+	Unit           string `json:"unit,omitempty"`
+}
+
+func decodeAnswerSubmittedPayload(deterministic []byte) (answerSubmittedPayload, error) {
+	dec := json.NewDecoder(bytes.NewReader(deterministic))
+	dec.DisallowUnknownFields()
+
+	var payload answerSubmittedPayload
+	if err := dec.Decode(&payload); err != nil {
+		return answerSubmittedPayload{}, err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return answerSubmittedPayload{}, errors.New("trailing payload bytes")
+	}
+	switch {
+	case payload.TokenID == "":
+		return answerSubmittedPayload{}, errors.New("missing token_id")
+	case payload.Label == "":
+		return answerSubmittedPayload{}, errors.New("missing label")
+	case payload.ValueCanonical == "":
+		return answerSubmittedPayload{}, errors.New("missing value_canonical")
+	}
 	return payload, nil
 }
 

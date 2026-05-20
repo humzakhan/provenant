@@ -27,6 +27,12 @@ import (
 const (
 	commandReadMintBundle = "read-mint-bundle"
 	commandReconcile      = "reconcile"
+	commandRun            = "run"
+	commandReadMint       = "read-mint"
+	commandCalc           = "calc"
+	commandSubmitAnswer   = "submit-answer"
+	commandVerify         = "verify"
+	commandReplay         = "replay"
 	readerExtractJSON     = "extract.json"
 	maxRequestBytes       = 2 << 20
 	maxSourceBytes        = 1 << 20
@@ -41,6 +47,7 @@ var (
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
+	ErrTokenNotFound      = errors.New("cli: token not found in run")
 )
 
 type packetErrorCategory string
@@ -55,6 +62,8 @@ const (
 	packetErrorReportFailed         packetErrorCategory = "report_failed"
 	packetErrorOutputExists         packetErrorCategory = "output_exists"
 	packetErrorOutputWriteFailed    packetErrorCategory = "output_write_failed"
+	packetErrorTokenNotFound        packetErrorCategory = "token_not_found"
+	packetErrorConcurrentAppender   packetErrorCategory = "concurrent_appender"
 )
 
 type packetError struct {
@@ -146,7 +155,7 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
-		return fmt.Errorf("%w: expected %s", ErrUnsupportedCommand, commandReadMintBundle)
+		return fmt.Errorf("%w: expected a command", ErrUnsupportedCommand)
 	}
 
 	switch args[0] {
@@ -154,8 +163,36 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 		return r.runReadMintBundle(ctx, args[1:], stdin, stdout)
 	case commandReconcile:
 		return r.runReconcile(ctx, args[1:], stdin, stdout)
+	case commandRun:
+		return r.runRunSubcommand(ctx, args[1:], stdin, stdout)
+	case commandReadMint:
+		return r.runReadMint(ctx, args[1:], stdin, stdout)
+	case commandCalc:
+		return r.runCalc(ctx, args[1:], stdin, stdout)
+	case commandSubmitAnswer:
+		return r.runSubmitAnswer(ctx, args[1:], stdin, stdout)
+	case commandVerify:
+		return r.runVerify(ctx, args[1:], stdin, stdout)
+	case commandReplay:
+		return r.runReplay(ctx, args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedCommand, args[0])
+	}
+}
+
+func (r Runner) runRunSubcommand(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
+	if len(args) == 0 {
+		return fmt.Errorf("%w: run requires a subcommand (start, finish, fail)", ErrUnsupportedCommand)
+	}
+	switch args[0] {
+	case "start":
+		return r.runStart(ctx, args[1:], stdin, stdout)
+	case "finish":
+		return r.runFinish(ctx, args[1:], stdin, stdout)
+	case "fail":
+		return r.runFail(ctx, args[1:], stdin, stdout)
+	default:
+		return fmt.Errorf("%w: run %s (expected start, finish, or fail)", ErrUnsupportedCommand, args[0])
 	}
 }
 
