@@ -19,6 +19,7 @@ import (
 
 const (
 	commandReadMintBundle = "read-mint-bundle"
+	commandReconcile      = "reconcile"
 	readerExtractJSON     = "extract.json"
 	maxRequestBytes       = 2 << 20
 	maxSourceBytes        = 1 << 20
@@ -26,12 +27,42 @@ const (
 
 var (
 	ErrUnsupportedCommand = errors.New("cli: unsupported command")
+	ErrUsage              = errors.New("cli: usage error")
 	ErrMissingRequestPath = errors.New("cli: request path is required")
+	ErrMissingOutputPath  = errors.New("cli: output path is required")
 	ErrInvalidRequest     = errors.New("cli: invalid request")
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
 )
+
+type ErrorCategory string
+
+const (
+	ErrorCategoryUser ErrorCategory = "user"
+)
+
+type Error struct {
+	Category ErrorCategory
+	Err      error
+}
+
+func (e *Error) Error() string {
+	return e.Err.Error()
+}
+
+func (e *Error) Unwrap() error {
+	return e.Err
+}
+
+func userError(err error) error {
+	return &Error{Category: ErrorCategoryUser, Err: err}
+}
+
+func isCategory(err error, category ErrorCategory) bool {
+	var cliErr *Error
+	return errors.As(err, &cliErr) && cliErr.Category == category
+}
 
 type Runner struct {
 	Now func() time.Time
@@ -48,6 +79,9 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	runner := Runner{Now: time.Now}
 	if err := runner.Run(context.Background(), args, stdin, stdout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "provenant: %v\n", err)
+		if isCategory(err, ErrorCategoryUser) {
+			return 2
+		}
 		return 1
 	}
 	return 0
@@ -61,9 +95,103 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 	switch args[0] {
 	case commandReadMintBundle:
 		return r.runReadMintBundle(ctx, args[1:], stdin, stdout)
+	case commandReconcile:
+		return r.runReconcile(ctx, args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedCommand, args[0])
 	}
+}
+
+type reconcileFlags struct {
+	request   string
+	out       string
+	workdir   string
+	overwrite bool
+}
+
+func (r Runner) runReconcile(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
+	_, _, _ = ctx, stdin, stdout
+
+	if _, err := parseReconcileFlags(args); err != nil {
+		return userError(err)
+	}
+	return nil
+}
+
+func parseReconcileFlags(args []string) (reconcileFlags, error) {
+	var flags reconcileFlags
+	seen := map[string]bool{}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") {
+			return reconcileFlags{}, fmt.Errorf("%w: unexpected trailing argument %q", ErrUsage, arg)
+		}
+
+		name := strings.TrimPrefix(arg, "--")
+		if name == "" {
+			return reconcileFlags{}, fmt.Errorf("%w: unknown flag %q", ErrUsage, arg)
+		}
+		if strings.Contains(name, "=") {
+			parts := strings.SplitN(name, "=", 2)
+			name = parts[0]
+			value := parts[1]
+			if err := setReconcileFlag(&flags, seen, name, value, true); err != nil {
+				return reconcileFlags{}, err
+			}
+			continue
+		}
+
+		if name == "overwrite" {
+			if err := setReconcileFlag(&flags, seen, name, "true", false); err != nil {
+				return reconcileFlags{}, err
+			}
+			continue
+		}
+
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+			return reconcileFlags{}, fmt.Errorf("%w: --%s requires a value", ErrUsage, name)
+		}
+		i++
+		if err := setReconcileFlag(&flags, seen, name, args[i], false); err != nil {
+			return reconcileFlags{}, err
+		}
+	}
+
+	if flags.request == "" {
+		return reconcileFlags{}, ErrMissingRequestPath
+	}
+	if flags.out == "" {
+		return reconcileFlags{}, ErrMissingOutputPath
+	}
+	return flags, nil
+}
+
+func setReconcileFlag(flags *reconcileFlags, seen map[string]bool, name, value string, inline bool) error {
+	switch name {
+	case "request", "out", "workdir", "overwrite":
+	default:
+		return fmt.Errorf("%w: unknown flag --%s", ErrUsage, name)
+	}
+	if seen[name] {
+		return fmt.Errorf("%w: duplicate flag --%s", ErrUsage, name)
+	}
+	seen[name] = true
+
+	switch name {
+	case "request":
+		flags.request = value
+	case "out":
+		flags.out = value
+	case "workdir":
+		flags.workdir = value
+	case "overwrite":
+		if inline && value != "true" {
+			return fmt.Errorf("%w: --overwrite does not take a value", ErrUsage)
+		}
+		flags.overwrite = true
+	}
+	return nil
 }
 
 func (r Runner) runReadMintBundle(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {

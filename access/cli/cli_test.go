@@ -243,6 +243,115 @@ func TestRunnerReadMintBundleFailsClosedOnMalformedInput(t *testing.T) {
 	}
 }
 
+func TestRunnerReconcileFlagValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr error
+	}{
+		{
+			name: "valid required flags",
+			args: []string{"reconcile", "--request", "request.json", "--out", "report.json"},
+		},
+		{
+			name: "valid all flags",
+			args: []string{"reconcile", "--request=request.json", "--out=report.json", "--workdir", "work", "--overwrite"},
+		},
+		{
+			name:    "missing request",
+			args:    []string{"reconcile", "--out", "report.json"},
+			wantErr: cli.ErrMissingRequestPath,
+		},
+		{
+			name:    "missing out",
+			args:    []string{"reconcile", "--request", "request.json"},
+			wantErr: cli.ErrMissingOutputPath,
+		},
+		{
+			name:    "unknown flag",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--format", "json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "duplicate flag",
+			args:    []string{"reconcile", "--request", "request.json", "--request", "other.json", "--out", "report.json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "trailing arg",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "extra"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "missing flag value",
+			args:    []string{"reconcile", "--request", "--out", "report.json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "overwrite value rejected",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--overwrite=false"},
+			wantErr: cli.ErrUsage,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout bytes.Buffer
+			err := cli.Runner{}.Run(context.Background(), tc.args, strings.NewReader(""), &stdout)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Run() error = %v, want %v", err, tc.wantErr)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout length = %d, want 0", stdout.Len())
+			}
+		})
+	}
+}
+
+func TestMainExitCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{
+			name: "reconcile usage error exits 2",
+			args: []string{"reconcile", "--out", "report.json"},
+			want: 2,
+		},
+		{
+			name: "read mint bundle flag behavior unchanged",
+			args: []string{"read-mint-bundle", "--unknown"},
+			want: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+			if got := cli.Main(tc.args, strings.NewReader(""), &stdout, &stderr); got != tc.want {
+				t.Fatalf("Main() = %d, want %d", got, tc.want)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout length = %d, want 0", stdout.Len())
+			}
+			if stderr.Len() == 0 {
+				t.Fatal("stderr length = 0, want diagnostic")
+			}
+		})
+	}
+}
+
 type cliRequestFixture struct {
 	source kernel.SourceBytes
 	run    kernel.Run
