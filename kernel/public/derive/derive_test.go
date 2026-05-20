@@ -98,10 +98,11 @@ func mintIntoBinding(t *testing.T, b *memio.Binding, run kernel.Run, value, unit
 // deps returns a Dependencies wired to b.
 func deps(b *memio.Binding, clock kernel.Clock) derive.Dependencies {
 	return derive.Dependencies{
-		Clock:     clock,
-		Store:     b,
-		AuditSink: b,
-		Scope:     b,
+		Clock:             clock,
+		Store:             b,
+		AuditSink:         b,
+		Scope:             b,
+		CapturedReadStore: b,
 	}
 }
 
