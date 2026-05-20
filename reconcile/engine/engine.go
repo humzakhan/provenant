@@ -36,13 +36,14 @@ type ResultSet struct {
 }
 
 type Result struct {
-	ID          string       `json:"id"`
-	Outcome     Outcome      `json:"outcome"`
-	Key         []KeyValue   `json:"key,omitempty"`
-	Left        *RowRef      `json:"left,omitempty"`
-	Right       *RowRef      `json:"right,omitempty"`
-	Differences []Difference `json:"differences,omitempty"`
-	Reason      string       `json:"reason,omitempty"`
+	ID           string       `json:"id"`
+	Outcome      Outcome      `json:"outcome"`
+	Key          []KeyValue   `json:"key,omitempty"`
+	Left         *RowRef      `json:"left,omitempty"`
+	Right        *RowRef      `json:"right,omitempty"`
+	GroupRowKeys []RowRef     `json:"group_row_keys,omitempty"`
+	Differences  []Difference `json:"differences,omitempty"`
+	Reason       string       `json:"reason,omitempty"`
 }
 
 type KeyValue struct {
@@ -177,7 +178,7 @@ func reconcileOneToMany(req request.Request, files []router.NormalizedFile) (*Re
 		sortIndexedRows(rightGroup)
 		switch {
 		case !leftOK:
-			set.Results = append(set.Results, resultFor(OutcomeMissingLeft, nil, &rightGroup[0], nil, ""))
+			set.Results = append(set.Results, resultForRightGroup(OutcomeMissingLeft, nil, rightGroup, nil, ""))
 		case !rightOK:
 			set.Results = append(set.Results, resultFor(OutcomeMissingRight, &leftGroup[0], nil, nil, ""))
 		default:
@@ -186,7 +187,7 @@ func reconcileOneToMany(req request.Request, files []router.NormalizedFile) (*Re
 			if len(diffs) > 0 {
 				outcome = OutcomeMismatch
 			}
-			set.Results = append(set.Results, resultFor(outcome, &leftGroup[0], &rightGroup[0], diffs, reason))
+			set.Results = append(set.Results, resultForRightGroup(outcome, &leftGroup[0], rightGroup, diffs, reason))
 		}
 	}
 
@@ -597,6 +598,24 @@ func resultFor(outcome Outcome, left, right *indexedRow, diffs []Difference, rea
 	return result
 }
 
+func resultForRightGroup(outcome Outcome, left *indexedRow, rightGroup []indexedRow, diffs []Difference, reason string) Result {
+	var right *indexedRow
+	if len(rightGroup) > 0 {
+		right = &rightGroup[0]
+	}
+	result := resultFor(outcome, left, right, diffs, reason)
+	result.GroupRowKeys = rowRefs(rightGroup)
+	return result
+}
+
+func rowRefs(rows []indexedRow) []RowRef {
+	refs := make([]RowRef, 0, len(rows))
+	for _, row := range rows {
+		refs = append(refs, RowRef{FileID: row.fileID, RowKey: row.row.RowKey, Position: row.row.Position})
+	}
+	return refs
+}
+
 func canonicalKey(key []KeyValue) string {
 	raw, _ := json.Marshal(key)
 	return string(raw)
@@ -616,12 +635,13 @@ func resultSortKey(result Result) string {
 
 func resultID(runID string, result Result) string {
 	payload := struct {
-		RunID   string     `json:"run_id"`
-		Outcome Outcome    `json:"outcome"`
-		Key     []KeyValue `json:"key,omitempty"`
-		Left    *RowRef    `json:"left,omitempty"`
-		Right   *RowRef    `json:"right,omitempty"`
-	}{RunID: runID, Outcome: result.Outcome, Key: result.Key, Left: result.Left, Right: result.Right}
+		RunID        string     `json:"run_id"`
+		Outcome      Outcome    `json:"outcome"`
+		Key          []KeyValue `json:"key,omitempty"`
+		Left         *RowRef    `json:"left,omitempty"`
+		Right        *RowRef    `json:"right,omitempty"`
+		GroupRowKeys []RowRef   `json:"group_row_keys,omitempty"`
+	}{RunID: runID, Outcome: result.Outcome, Key: result.Key, Left: result.Left, Right: result.Right, GroupRowKeys: result.GroupRowKeys}
 	raw, _ := json.Marshal(payload)
 	sum := sha256.Sum256(raw)
 	return "res_" + hex.EncodeToString(sum[:16])

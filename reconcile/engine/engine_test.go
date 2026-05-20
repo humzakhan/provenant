@@ -482,6 +482,63 @@ func TestReconcileOneToManyShuffledInputOrdering(t *testing.T) {
 	if !reflect.DeepEqual(outcomes(ordered.Results), outcomes(shuffled.Results)) {
 		t.Fatalf("outcomes changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
 	}
+	if !reflect.DeepEqual(groupRowKeys(ordered.Results), groupRowKeys(shuffled.Results)) {
+		t.Fatalf("group row keys changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
+func TestReconcileOneToManyPreservesSortedGroupRowKeys(t *testing.T) {
+	t.Parallel()
+
+	set, err := Reconcile(context.Background(), oneToManyRequest(), files(
+		[]router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+		[]router.NormalizedRow{row("r2", "A1", "20.00", "USD"), row("r1", "A1", "10.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if len(set.Results) != 1 {
+		t.Fatalf("results = %#v, want one grouped result", set.Results)
+	}
+	result := set.Results[0]
+	if result.Right == nil || result.Right.RowKey != "r1" {
+		t.Fatalf("right ref = %#v, want first sorted child r1", result.Right)
+	}
+	if got, want := groupRowKeys(set.Results), [][]string{{"r1", "r2"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("group row keys = %#v, want %#v; result = %#v", got, want, result)
+	}
+}
+
+func TestReconcileOneToManyResultIDIncludesGroupMembership(t *testing.T) {
+	t.Parallel()
+
+	req := oneToManyRequest()
+	first, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() first error = %v", err)
+	}
+	changed, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r3", "A1", "20.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() changed error = %v", err)
+	}
+	if len(first.Results) != 1 || len(changed.Results) != 1 {
+		t.Fatalf("results = %#v and %#v, want one grouped result each", first.Results, changed.Results)
+	}
+	if first.Results[0].Right == nil || changed.Results[0].Right == nil || first.Results[0].Right.RowKey != changed.Results[0].Right.RowKey {
+		t.Fatalf("right refs = %#v and %#v, want same first child", first.Results[0].Right, changed.Results[0].Right)
+	}
+	if first.Results[0].ID == changed.Results[0].ID {
+		t.Fatalf("result ID did not change when group membership changed: %#v vs %#v", first.Results[0], changed.Results[0])
+	}
+	if got, want := groupRowKeys(changed.Results), [][]string{{"r1", "r3"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("changed group row keys = %#v, want %#v", got, want)
+	}
 }
 
 func TestReconcileExistenceOutcomes(t *testing.T) {
@@ -839,6 +896,17 @@ func resultIDs(results []Result) []string {
 	got := make([]string, len(results))
 	for i, result := range results {
 		got[i] = result.ID
+	}
+	return got
+}
+
+func groupRowKeys(results []Result) [][]string {
+	got := make([][]string, len(results))
+	for i, result := range results {
+		got[i] = make([]string, len(result.GroupRowKeys))
+		for j, ref := range result.GroupRowKeys {
+			got[i][j] = ref.RowKey
+		}
 	}
 	return got
 }
