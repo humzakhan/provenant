@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,10 +16,15 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/memio"
+	"github.com/provenant/provenant/reconcile/engine"
+	"github.com/provenant/provenant/reconcile/provenance"
+	reconrequest "github.com/provenant/provenant/reconcile/request"
+	"github.com/provenant/provenant/reconcile/router"
 )
 
 const (
 	commandReadMintBundle = "read-mint-bundle"
+	commandReconcile      = "reconcile"
 	readerExtractJSON     = "extract.json"
 	maxRequestBytes       = 2 << 20
 	maxSourceBytes        = 1 << 20
@@ -26,12 +32,85 @@ const (
 
 var (
 	ErrUnsupportedCommand = errors.New("cli: unsupported command")
+	ErrUsage              = errors.New("cli: usage error")
 	ErrMissingRequestPath = errors.New("cli: request path is required")
+	ErrMissingOutputPath  = errors.New("cli: output path is required")
 	ErrInvalidRequest     = errors.New("cli: invalid request")
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
+	errReportUnavailable  = errors.New("report writer unavailable")
 )
+
+type packetErrorCategory string
+
+const (
+	packetErrorRequestInvalid       packetErrorCategory = "request_invalid"
+	packetErrorInputNotFound        packetErrorCategory = "input_not_found"
+	packetErrorInputUnsupported     packetErrorCategory = "input_unsupported"
+	packetErrorSelectorInvalid      packetErrorCategory = "selector_invalid"
+	packetErrorReconciliationFailed packetErrorCategory = "reconciliation_failed"
+	packetErrorEvidenceFailed       packetErrorCategory = "evidence_failed"
+	packetErrorReportFailed         packetErrorCategory = "report_failed"
+	packetErrorOutputExists         packetErrorCategory = "output_exists"
+	packetErrorOutputWriteFailed    packetErrorCategory = "output_write_failed"
+)
+
+type packetError struct {
+	category packetErrorCategory
+	err      error
+}
+
+func (e packetError) Error() string {
+	if e.err == nil {
+		return string(e.category)
+	}
+	return string(e.category) + ": " + e.err.Error()
+}
+
+func (e packetError) Unwrap() error {
+	return e.err
+}
+
+func newPacketError(category packetErrorCategory, err error) error {
+	return userError(packetError{category: category, err: err})
+}
+
+type reconcileReportWriter func(context.Context, string, *provenance.ProvenancedResultSet) error
+
+var writeReconcileReport reconcileReportWriter = unavailableReconcileReportWriter
+
+func unavailableReconcileReportWriter(context.Context, string, *provenance.ProvenancedResultSet) error {
+	return errReportUnavailable
+}
+
+type ErrorCategory string
+
+const (
+	ErrorCategoryUser ErrorCategory = "user"
+)
+
+type Error struct {
+	Category ErrorCategory
+	Err      error
+}
+
+func (e *Error) Error() string {
+	return e.Err.Error()
+}
+
+func (e *Error) Unwrap() error {
+	return e.Err
+}
+
+func userError(err error) error {
+	return &Error{Category: ErrorCategoryUser, Err: err}
+}
+
+func isCategory(err error, category ErrorCategory) bool {
+	var cliErr *Error
+	return errors.As(err, &cliErr) && cliErr.Category == category
+}
 
 type Runner struct {
 	Now func() time.Time
@@ -48,6 +127,9 @@ func Main(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	runner := Runner{Now: time.Now}
 	if err := runner.Run(context.Background(), args, stdin, stdout); err != nil {
 		_, _ = fmt.Fprintf(stderr, "provenant: %v\n", err)
+		if isCategory(err, ErrorCategoryUser) {
+			return 2
+		}
 		return 1
 	}
 	return 0
@@ -61,9 +143,172 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 	switch args[0] {
 	case commandReadMintBundle:
 		return r.runReadMintBundle(ctx, args[1:], stdin, stdout)
+	case commandReconcile:
+		return r.runReconcile(ctx, args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedCommand, args[0])
 	}
+}
+
+type reconcileFlags struct {
+	request   string
+	out       string
+	workdir   string
+	overwrite bool
+}
+
+func (r Runner) runReconcile(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
+	_, _ = stdin, stdout
+
+	flags, err := parseReconcileFlags(args)
+	if err != nil {
+		return userError(err)
+	}
+	if err := ensureOutputWritable(flags.out, flags.overwrite); err != nil {
+		return err
+	}
+
+	file, err := os.Open(flags.request)
+	if err != nil {
+		return newPacketError(packetErrorRequestInvalid, err)
+	}
+	defer file.Close()
+
+	req, err := reconrequest.DecodeRequest(file)
+	if err != nil {
+		return newPacketError(packetErrorRequestInvalid, err)
+	}
+	baseDir := flags.workdir
+	if baseDir == "" {
+		baseDir = filepath.Dir(flags.request)
+	}
+
+	files, err := router.Route(ctx, *req, router.Options{BaseDir: baseDir})
+	if err != nil {
+		return normalizeRouteError(err)
+	}
+	results, err := engine.Reconcile(ctx, *req, files)
+	if err != nil {
+		return newPacketError(packetErrorReconciliationFailed, err)
+	}
+	bound, err := provenance.Bind(ctx, *req, files, results, provenance.Options{})
+	if err != nil {
+		return newPacketError(packetErrorEvidenceFailed, err)
+	}
+	if err := writeReconcileReport(ctx, flags.out, bound); err != nil {
+		return normalizeReportError(err)
+	}
+	return nil
+}
+
+func ensureOutputWritable(path string, overwrite bool) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		if !overwrite {
+			return newPacketError(packetErrorOutputExists, fmt.Errorf("%s already exists", path))
+		}
+		return nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return newPacketError(packetErrorOutputWriteFailed, err)
+}
+
+func normalizeRouteError(err error) error {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return newPacketError(packetErrorInputNotFound, err)
+	case strings.Contains(err.Error(), "unsupported format") || strings.Contains(err.Error(), "unsupported reader") || strings.Contains(err.Error(), "incompatible_reader"):
+		return newPacketError(packetErrorInputUnsupported, err)
+	case strings.Contains(err.Error(), "selector") || strings.Contains(err.Error(), "path_invalid"):
+		return newPacketError(packetErrorSelectorInvalid, err)
+	default:
+		return newPacketError(packetErrorInputUnsupported, err)
+	}
+}
+
+func normalizeReportError(err error) error {
+	if errors.Is(err, errReportUnavailable) {
+		return newPacketError(packetErrorReportFailed, errReportUnavailable)
+	}
+	return newPacketError(packetErrorOutputWriteFailed, err)
+}
+
+func parseReconcileFlags(args []string) (reconcileFlags, error) {
+	var flags reconcileFlags
+	seen := map[string]bool{}
+
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "--") {
+			return reconcileFlags{}, fmt.Errorf("%w: unexpected trailing argument %q", ErrUsage, arg)
+		}
+
+		name := strings.TrimPrefix(arg, "--")
+		if name == "" {
+			return reconcileFlags{}, fmt.Errorf("%w: unknown flag %q", ErrUsage, arg)
+		}
+		if strings.Contains(name, "=") {
+			parts := strings.SplitN(name, "=", 2)
+			name = parts[0]
+			value := parts[1]
+			if err := setReconcileFlag(&flags, seen, name, value, true); err != nil {
+				return reconcileFlags{}, err
+			}
+			continue
+		}
+
+		if name == "overwrite" {
+			if err := setReconcileFlag(&flags, seen, name, "true", false); err != nil {
+				return reconcileFlags{}, err
+			}
+			continue
+		}
+
+		if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
+			return reconcileFlags{}, fmt.Errorf("%w: --%s requires a value", ErrUsage, name)
+		}
+		i++
+		if err := setReconcileFlag(&flags, seen, name, args[i], false); err != nil {
+			return reconcileFlags{}, err
+		}
+	}
+
+	if flags.request == "" {
+		return reconcileFlags{}, ErrMissingRequestPath
+	}
+	if flags.out == "" {
+		return reconcileFlags{}, ErrMissingOutputPath
+	}
+	return flags, nil
+}
+
+func setReconcileFlag(flags *reconcileFlags, seen map[string]bool, name, value string, inline bool) error {
+	switch name {
+	case "request", "out", "workdir", "overwrite":
+	default:
+		return fmt.Errorf("%w: unknown flag --%s", ErrUsage, name)
+	}
+	if seen[name] {
+		return fmt.Errorf("%w: duplicate flag --%s", ErrUsage, name)
+	}
+	seen[name] = true
+
+	switch name {
+	case "request":
+		flags.request = value
+	case "out":
+		flags.out = value
+	case "workdir":
+		flags.workdir = value
+	case "overwrite":
+		if inline {
+			return fmt.Errorf("%w: --overwrite does not take a value", ErrUsage)
+		}
+		flags.overwrite = true
+	}
+	return nil
 }
 
 func (r Runner) runReadMintBundle(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {

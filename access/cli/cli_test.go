@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +20,7 @@ import (
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/memio"
+	reconrequest "github.com/provenant/provenant/reconcile/request"
 )
 
 func TestRunnerReadMintBundleSmoke(t *testing.T) {
@@ -243,6 +246,206 @@ func TestRunnerReadMintBundleFailsClosedOnMalformedInput(t *testing.T) {
 	}
 }
 
+func TestRunnerReconcileFlagValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		args    []string
+		wantErr error
+	}{
+		{
+			name:    "missing request",
+			args:    []string{"reconcile", "--out", "report.json"},
+			wantErr: cli.ErrMissingRequestPath,
+		},
+		{
+			name:    "missing out",
+			args:    []string{"reconcile", "--request", "request.json"},
+			wantErr: cli.ErrMissingOutputPath,
+		},
+		{
+			name:    "unknown flag",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--format", "json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "duplicate flag",
+			args:    []string{"reconcile", "--request", "request.json", "--request", "other.json", "--out", "report.json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "trailing arg",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "extra"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "missing flag value",
+			args:    []string{"reconcile", "--request", "--out", "report.json"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "overwrite value rejected",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--overwrite=false"},
+			wantErr: cli.ErrUsage,
+		},
+		{
+			name:    "overwrite true value rejected",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--overwrite=true"},
+			wantErr: cli.ErrUsage,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout bytes.Buffer
+			err := cli.Runner{}.Run(context.Background(), tc.args, strings.NewReader(""), &stdout)
+			if !errors.Is(err, tc.wantErr) {
+				t.Fatalf("Run() error = %v, want %v", err, tc.wantErr)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout length = %d, want 0", stdout.Len())
+			}
+		})
+	}
+}
+
+func TestRunnerReconcilePipelineFailures(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid JSON fails before source reads", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeTestFile(t, requestPath, []byte(`{`))
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout)
+		assertCLIErrorPrefix(t, err, "request_invalid: ")
+		assertNoOutput(t, stdout, outPath)
+	})
+
+	t.Run("request validation error", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeTestFile(t, requestPath, []byte(`{"run":{"id":"run_1","tenant_id":"tenant_1"},"files":[],"reconcile":{}}`))
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout)
+		assertCLIErrorPrefix(t, err, "request_invalid: ")
+		assertNoOutput(t, stdout, outPath)
+	})
+
+	t.Run("missing source file", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeReconcileRequest(t, requestPath, validReconcileRequest())
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath, "--workdir", dir}, strings.NewReader(""), &stdout)
+		assertCLIErrorPrefix(t, err, "input_not_found: ")
+		assertNoOutput(t, stdout, outPath)
+	})
+
+	t.Run("existing output without overwrite", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "missing-request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeTestFile(t, outPath, []byte("existing"))
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout)
+		assertCLIErrorPrefix(t, err, "output_exists: ")
+		if stdout.Len() != 0 {
+			t.Fatalf("stdout length = %d, want 0", stdout.Len())
+		}
+	})
+
+	t.Run("unavailable writer leaves no output", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeReconcileFixture(t, dir, requestPath)
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath, "--workdir", dir}, strings.NewReader(""), &stdout)
+		if err == nil || err.Error() != "report_failed: report writer unavailable" {
+			t.Fatalf("Run() error = %v, want report writer unavailable", err)
+		}
+		assertNoOutput(t, stdout, outPath)
+	})
+
+	t.Run("workdir defaults to request directory", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeReconcileFixture(t, dir, requestPath)
+
+		var stdout bytes.Buffer
+		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout)
+		if err == nil || err.Error() != "report_failed: report writer unavailable" {
+			t.Fatalf("Run() error = %v, want pipeline to reach unavailable writer", err)
+		}
+		assertNoOutput(t, stdout, outPath)
+	})
+}
+
+func TestMainExitCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		args []string
+		want int
+	}{
+		{
+			name: "reconcile usage error exits 2",
+			args: []string{"reconcile", "--out", "report.json"},
+			want: 2,
+		},
+		{
+			name: "read mint bundle flag behavior unchanged",
+			args: []string{"read-mint-bundle", "--unknown"},
+			want: 1,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var stdout, stderr bytes.Buffer
+			if got := cli.Main(tc.args, strings.NewReader(""), &stdout, &stderr); got != tc.want {
+				t.Fatalf("Main() = %d, want %d", got, tc.want)
+			}
+			if stdout.Len() != 0 {
+				t.Fatalf("stdout length = %d, want 0", stdout.Len())
+			}
+			if stderr.Len() == 0 {
+				t.Fatal("stderr length = 0, want diagnostic")
+			}
+		})
+	}
+}
+
 type cliRequestFixture struct {
 	source kernel.SourceBytes
 	run    kernel.Run
@@ -295,6 +498,88 @@ func (f cliRequestFixture) Dependencies() corepath.Dependencies {
 		Clock: fixedClock{
 			t: f.now,
 		},
+	}
+}
+
+func writeReconcileFixture(t *testing.T, dir, requestPath string) {
+	t.Helper()
+
+	writeTestFile(t, filepath.Join(dir, "left.csv"), []byte("ID,Amount,Currency\nA1,10.25,USD\n"))
+	writeTestFile(t, filepath.Join(dir, "right.csv"), []byte("ID,Amount,Currency\nA1,10.25,USD\n"))
+	writeReconcileRequest(t, requestPath, validReconcileRequest())
+}
+
+func validReconcileRequest() reconrequest.Request {
+	return reconrequest.Request{
+		Run: reconrequest.RunConfig{ID: "run_1", TenantID: "tenant_1"},
+		Files: []reconrequest.FileConfig{
+			validReconcileCSVFile("left", "left.csv"),
+			validReconcileCSVFile("right", "right.csv"),
+		},
+		Reconcile: reconrequest.ReconcileConfig{
+			Mode:    reconrequest.ModeExactMatch,
+			Left:    "left",
+			Right:   "right",
+			MatchOn: []string{"transaction_id"},
+			Compare: []string{"amount", "currency"},
+		},
+	}
+}
+
+func validReconcileCSVFile(id, path string) reconrequest.FileConfig {
+	return reconrequest.FileConfig{
+		ID:      id,
+		Purpose: id,
+		Format:  reconrequest.FormatCSV,
+		Path:    path,
+		Reader:  reconrequest.ReaderExtractCSVRows,
+		Selector: reconrequest.SelectorConfig{
+			RowWindow: "2:",
+			Encoding:  "utf-8",
+			Dialect:   "excel",
+		},
+		Columns: reconrequest.Columns{
+			"transaction_id": {Source: "ID", Role: reconrequest.RoleKey, Required: true},
+			"amount":         {Source: "Amount", Role: reconrequest.RoleAmount, Required: true, Numeric: &reconrequest.NumericConfig{Scale: 2, CurrencyField: "currency"}},
+			"currency":       {Source: "Currency", Role: reconrequest.RoleCurrency, Required: true},
+		},
+	}
+}
+
+func writeReconcileRequest(t *testing.T, path string, req reconrequest.Request) {
+	t.Helper()
+
+	data, err := json.Marshal(req)
+	if err != nil {
+		t.Fatalf("Marshal(reconcile request) error = %v", err)
+	}
+	writeTestFile(t, path, data)
+}
+
+func writeTestFile(t *testing.T, path string, data []byte) {
+	t.Helper()
+
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func assertCLIErrorPrefix(t *testing.T, err error, want string) {
+	t.Helper()
+
+	if err == nil || !strings.HasPrefix(err.Error(), want) {
+		t.Fatalf("Run() error = %v, want prefix %q", err, want)
+	}
+}
+
+func assertNoOutput(t *testing.T, stdout bytes.Buffer, outPath string) {
+	t.Helper()
+
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout length = %d, want 0", stdout.Len())
+	}
+	if _, err := os.Stat(outPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("Stat(%s) error = %v, want not exist", outPath, err)
 	}
 }
 
