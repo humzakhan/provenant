@@ -15,6 +15,7 @@ import (
 
 	"github.com/provenant/provenant/access/corepath"
 	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/provenant/provenant/kernel/public/extractcsvrows"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/memio"
 	"github.com/provenant/provenant/reconcile/engine"
@@ -36,6 +37,7 @@ const (
 	commandPack           = "pack"
 	commandTrace          = "trace"
 	readerExtractJSON     = "extract.json"
+	readerExtractCSVRows  = "extract.csv_rows"
 	maxRequestBytes       = 2 << 20
 	maxSourceBytes        = 1 << 20
 )
@@ -584,6 +586,8 @@ func sourceReader(name string) (kernel.SourceReader, error) {
 	switch name {
 	case readerExtractJSON:
 		return extractjson.Reader{}, nil
+	case readerExtractCSVRows:
+		return extractcsvrows.Reader{}, nil
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedReader, name)
 	}

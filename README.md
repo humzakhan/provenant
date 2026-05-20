@@ -256,9 +256,31 @@ cmd/provenant/           Main entry point for the CLI binary.
 examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
 ```
 
+## Example 3: Derivation Graph End-to-End Demo
+
+The derivation graph demo shows the full pipeline from raw CSV accounting data to a traced, verified operating income figure. Three committed CSV files (`revenue.csv`, `cogs.csv`, `opex.csv`) are minted row-by-row into leaf tokens, composed via `filter.sum_where`, `calc.sum`, and `calc.subtract`, and the final `operating_income` token is traced back to every source row with signed contribution amounts.
+
+The demo uses seed 42 and produces a deterministic bundle and trace:
+
+```
+operating_income = $350,000 USD
+  ← gross_margin ($550,000) − total_opex ($200,000)
+    ← gross_revenue ($950,000) − total_cogs ($400,000)
+      ← (net_revenue $1,000,000 − refunds $50,000)
+```
+
+Run the demo tests:
+
+```bash
+go test ./examples/derivation-graph/...
+```
+
+See [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) for the full walkthrough, dataset description, and golden regeneration procedure.
+
 ## Further Reading
 
 - [`docs/thesis.md`](docs/thesis.md) — design principles and invariant rationale
 - [`examples/reconciliation/README.md`](examples/reconciliation/README.md) — full reconciliation fixture walkthrough, verification guidance, and explicit non-support list
+- [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) — derivation graph end-to-end demo with operating income trace
 - [`architecture/README.md`](architecture/README.md) — repo navigation map
 - [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md) — reader contracts and selector reference
