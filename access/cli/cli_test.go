@@ -476,6 +476,75 @@ func TestRunnerReconcileExampleFixture(t *testing.T) {
 	}
 }
 
+func TestRunnerReconcileFailureFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureRoot := filepath.Join("..", "..", "examples", "reconciliation", "failures")
+	tests := []struct {
+		name       string
+		wantPrefix string
+	}{
+		{name: "missing_required_source", wantPrefix: "selector_invalid: "},
+		{name: "malformed_amount", wantPrefix: "evidence_failed: "},
+		{name: "unsupported_format", wantPrefix: "request_invalid: "},
+		{name: "invalid_selector", wantPrefix: "request_invalid: "},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtureDir := filepath.Join(fixtureRoot, tc.name)
+			outPath := filepath.Join(t.TempDir(), "report.zip")
+			var stdout bytes.Buffer
+			err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(fixtureDir, "reconcile.json"), "--out", outPath, "--workdir", fixtureDir}, strings.NewReader(""), &stdout)
+			assertCLIErrorPrefix(t, err, tc.wantPrefix)
+			assertNoOutput(t, stdout, outPath)
+		})
+	}
+}
+
+func TestRunnerReconcileOutcomeFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureRoot := filepath.Join("..", "..", "examples", "reconciliation", "failures")
+	tests := []struct {
+		name       string
+		wantCounts map[string]int
+	}{
+		{name: "duplicate_key", wantCounts: map[string]int{"duplicate_key": 2}},
+		{name: "invalid_record", wantCounts: map[string]int{"invalid_record": 1, "missing_left": 1}},
+		{name: "currency_mismatch", wantCounts: map[string]int{"mismatch": 1}},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtureDir := filepath.Join(fixtureRoot, tc.name)
+			outPath := filepath.Join(t.TempDir(), "report.zip")
+			var stdout bytes.Buffer
+			if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(fixtureDir, "reconcile.json"), "--out", outPath, "--workdir", fixtureDir}, strings.NewReader(""), &stdout); err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			assertNoStdoutAndReportExists(t, stdout, outPath)
+
+			entries := readZipEntries(t, outPath)
+			var reportPayload struct {
+				OutcomeCounts map[string]int `json:"outcome_counts"`
+			}
+			if err := json.Unmarshal(entries["report.json"], &reportPayload); err != nil {
+				t.Fatalf("Unmarshal(report.json) error = %v", err)
+			}
+			if !reflect.DeepEqual(reportPayload.OutcomeCounts, tc.wantCounts) {
+				t.Fatalf("outcome_counts = %#v, want %#v", reportPayload.OutcomeCounts, tc.wantCounts)
+			}
+		})
+	}
+}
+
 func TestMainExitCodes(t *testing.T) {
 	t.Parallel()
 
