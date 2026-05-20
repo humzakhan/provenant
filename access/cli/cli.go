@@ -186,7 +186,7 @@ func setReconcileFlag(flags *reconcileFlags, seen map[string]bool, name, value s
 	case "workdir":
 		flags.workdir = value
 	case "overwrite":
-		if inline && value != "true" {
+		if inline {
 			return fmt.Errorf("%w: --overwrite does not take a value", ErrUsage)
 		}
 		flags.overwrite = true

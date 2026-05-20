@@ -294,6 +294,11 @@ func TestRunnerReconcileFlagValidation(t *testing.T) {
 			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--overwrite=false"},
 			wantErr: cli.ErrUsage,
 		},
+		{
+			name:    "overwrite true value rejected",
+			args:    []string{"reconcile", "--request", "request.json", "--out", "report.json", "--overwrite=true"},
+			wantErr: cli.ErrUsage,
+		},
 	}
 
 	for _, tc := range tests {
