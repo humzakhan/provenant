@@ -160,7 +160,7 @@ func validateToleranceUsage(cfg ReconcileConfig, left, right *fileInfo, errs *Va
 	if cfg.Tolerance == nil {
 		return
 	}
-	if cfg.Mode != ModeAmountTolerance {
+	if cfg.Mode != ModeAmountTolerance && cfg.Mode != ModeOneToMany {
 		errs.add("reconcile.tolerance", CodeInvalidModeConfig, fmt.Sprintf("tolerance is not allowed for mode %q", cfg.Mode))
 	}
 	if left == nil || right == nil {
