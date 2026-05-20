@@ -1,0 +1,3 @@
+source,result_id,outcome,key,field,left,right,reason
+expenses,res_572bfd06dfdc9fb7e8b63b119e8e6119,mismatch,expense_id=EXP-00001,amount,3394.28,3394.29,
+payroll,res_ca1083bf4b8586fc4ed7fe916406d3a2,missing_right,employee_id=EMP-0042,,,,
