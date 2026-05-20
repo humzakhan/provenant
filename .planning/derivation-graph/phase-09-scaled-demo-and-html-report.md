@@ -230,7 +230,7 @@ func TestScaledFauxbooksOperatingIncomeValue(t *testing.T) {
     // recomputes operating income independently from CSVs; asserts exact canonical decimal
 }
 func TestScaledFauxbooksLeafCount(t *testing.T) {
-    // asserts len(trace.Leaves) == 1880 (sum of all minted rows)
+    // asserts len(trace.Leaves) == 1980 (sum of all minted rows)
 }
 func TestScaledFauxbooksReplayDeterminism(t *testing.T) {
     // runs sequence twice in separate temp dirs; asserts identical bundle bytes
@@ -322,7 +322,7 @@ Write `examples/derivation-graph/scaled/README.md` with: dataset description, de
 |---|---|---|
 | `TestScaledFauxbooksEndToEnd` | Full scaled CLI sequence runs without error; bundle bytes match golden; trace JSON matches golden; `bundle.Verify` and `bundle.Replay` pass | `examples/derivation-graph/scaled/e2e_test.go` |
 | `TestScaledFauxbooksOperatingIncomeValue` | Operating income computed independently from CSVs equals the bundle token's `ValueCanonical` | `examples/derivation-graph/scaled/e2e_test.go` |
-| `TestScaledFauxbooksLeafCount` | `len(trace.Leaves) == 1880` (total minted rows across all four CSVs) | `examples/derivation-graph/scaled/e2e_test.go` |
+| `TestScaledFauxbooksLeafCount` | `len(trace.Leaves) == 1980` (total minted rows across all four CSVs) | `examples/derivation-graph/scaled/e2e_test.go` |
 | `TestScaledFauxbooksReplayDeterminism` | Two independent runs in separate temp dirs produce identical bundle bytes | `examples/derivation-graph/scaled/e2e_test.go` |
 | `TestBrokenFauxbooksEndToEnd` | Broken bundle still passes `Verify`; row-level CSV reconciliation (happy=left, broken=right) surfaces exactly 1 `OutcomeMissingRight` for `employee_id=EMP-0042` and exactly 1 `OutcomeMismatch` with non-empty `Differences`; broken `operating_income.ValueCanonical` differs from the happy-path value (cross-run assertion); report JSON and mismatches CSV byte-equal their goldens | `examples/derivation-graph/scaled/broken/e2e_test.go` |
 | `TestBrokenFauxbooksHTMLReport` | `RenderHTML` on broken pack produces byte-equal golden HTML; HTML contains `"VIOLATED"` banner; HTML contains `"EMP-0042"` in mismatches table | `examples/derivation-graph/scaled/broken/e2e_test.go` |
@@ -335,6 +335,10 @@ Write `examples/derivation-graph/scaled/README.md` with: dataset description, de
 | `TestAuditHTMLVerbBrokenPack` | `audit-html` verb on broken pack writes HTML containing `"VIOLATED"` and byte-equals its golden | `access/cli/audithtmlverb_test.go` |
 | `TestAuditHTMLVerbMissingPack` | `audit-html` with a nonexistent `--pack` path exits with code 2 and an error message | `access/cli/audithtmlverb_test.go` |
 | `TestFauxbooksEndToEnd` (existing, phase-08) | Phase-08 demo unchanged; all existing assertions still pass after phase-09 lands | `examples/derivation-graph/e2e_test.go` |
+
+### Amendment: Leaf Count Corrected to 1980 (2026-05-20)
+
+The kernel constraint "one read-mint per (source, outputPath) pair" means that payroll's salary and bonus outputs minted from the same source rows double the payroll leaf count: 100 payroll rows × 2 outputs = 200 leaves. Leaf-count breakdown: 100 (revenue) + 100 (COGS) + 500 (opex) + 200 (payroll) = 900 leaves initially planned, but with the 6-month calculation chain: 100 + 100 + 500 + 1200 (payroll=100×2×6) = 1980 leaves total.
 
 ## Definition of Done
 
