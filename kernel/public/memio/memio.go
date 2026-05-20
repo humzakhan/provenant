@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/provenant/provenant/kernel/public/derive"
 )
 
 const substrate = "provenant.substrate/kernel.public.memio/v1"
@@ -288,6 +289,20 @@ func cloneAuditEntry(entry kernel.AuditEntry) kernel.AuditEntry {
 	cloned.Payload.NonDeterministic = append([]byte(nil), entry.Payload.NonDeterministic...)
 	cloned.Payload.HashInputCanonical = append([]byte(nil), entry.Payload.HashInputCanonical...)
 	return cloned
+}
+
+// Derive is a thin convenience wrapper that wires this Binding as the Store,
+// AuditSink, and TransactionalScope for the kernel derivation engine.
+// clock must be non-nil; it supplies the CreatedAt timestamp for the derived
+// token's audit entry.
+func (b *Binding) Derive(ctx context.Context, clock kernel.Clock, run kernel.Run, req derive.Request) (derive.Result, error) {
+	req.Run = run
+	return derive.Derive(ctx, derive.Dependencies{
+		Clock:     clock,
+		Store:     b,
+		AuditSink: b,
+		Scope:     b,
+	}, req)
 }
 
 func genesisHash(tenantID string) []byte {
