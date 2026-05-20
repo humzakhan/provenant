@@ -95,12 +95,55 @@ type entryRecord struct {
 	entry kernel.AuditEntry
 }
 
+// RunIdentity returns the kernel.Run identity for this run (ID, TenantID, Status).
+func (r *Run) RunIdentity() kernel.Run {
+	return r.opts.Run
+}
+
+// LastSeq returns the sequence number of the last appended audit entry.
+func (r *Run) LastSeq() uint64 {
+	return r.lastSeq
+}
+
+// LastHash returns the hash of the last appended audit entry. The returned
+// slice must not be modified by the caller.
+func (r *Run) LastHash() []byte {
+	return append([]byte(nil), r.lastHash...)
+}
+
+// Tokens returns a snapshot of all tokens collected in this run so far.
+func (r *Run) Tokens() []kernel.Token {
+	out := make([]kernel.Token, len(r.tokens))
+	for i, tr := range r.tokens {
+		out[i] = tr.token
+	}
+	return out
+}
+
+// CapturedReads returns a snapshot of all captured reads collected in this run so far.
+func (r *Run) CapturedReads() []kernel.CapturedRead {
+	out := make([]kernel.CapturedRead, len(r.reads))
+	for i, rr := range r.reads {
+		out[i] = rr.read
+	}
+	return out
+}
+
+// AuditEntries returns a snapshot of all audit entries collected in this run so far.
+func (r *Run) AuditEntries() []kernel.AuditEntry {
+	out := make([]kernel.AuditEntry, len(r.entries))
+	for i, er := range r.entries {
+		out[i] = er.entry
+	}
+	return out
+}
+
 // AppendEntry validates the entry against the existing chain (prev_hash, seq)
 // and appends it to the .part file together with any associated token or
 // captured read. The write is single-record-atomic: each record is built fully
 // in memory, then written with a single Write call, then fsynced.
 //
-// Allowed entry kinds: token_mint, token_derive, run_completed, run_failed.
+// Allowed entry kinds: token_mint, token_derive, answer_submitted, run_completed, run_failed.
 // run_started is written by Start only.
 func (r *Run) AppendEntry(entry kernel.AuditEntry, token *kernel.Token, read *kernel.CapturedRead) error {
 	if r.state == runStateFinalized {
@@ -125,6 +168,7 @@ func (r *Run) AppendEntry(entry kernel.AuditEntry, token *kernel.Token, read *ke
 	switch entry.Kind {
 	case kernel.EntryKindTokenMint,
 		kernel.EntryKindTokenDerive,
+		kernel.EntryKindAnswerSubmitted,
 		kernel.EntryKindRunCompleted,
 		kernel.EntryKindRunFailed:
 		// OK
@@ -225,6 +269,19 @@ func (r *Run) SetClock(clock kernel.Clock) {
 		return
 	}
 	r.opts.Clock = clock
+}
+
+// Close releases the advisory lock and closes the file handle without removing
+// the .part file. It is intended for callers that created the partfile (via
+// Start) and want to hand it off to a subsequent process or command that will
+// re-open it with Start (which replays the existing non-empty .part) or
+// Recover. After Close the Run must not be used.
+func (r *Run) Close() error {
+	if r.state != runStateOpen {
+		return nil
+	}
+	r.state = runStateAborted // prevent further use; Abort's "aborted" sentinel
+	return r.release()
 }
 
 // Abort discards the .part file and releases the lock without finalizing.

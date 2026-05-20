@@ -190,6 +190,10 @@ const (
 	EntryKindRunCompleted EntryKind = "run_completed"
 	// EntryKindRunFailed records terminal run failure.
 	EntryKindRunFailed EntryKind = "run_failed"
+	// EntryKindAnswerSubmitted records that a token was designated as a labelled
+	// answer for a run. It does not produce a new token; the referenced token
+	// must already exist in the chain at a strictly lower seq.
+	EntryKindAnswerSubmitted EntryKind = "answer_submitted"
 )
 
 // AuditEntry is the in-memory shape projected to audit bundle rows later.
