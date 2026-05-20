@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +16,10 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/extractjson"
 	"github.com/provenant/provenant/kernel/public/memio"
+	"github.com/provenant/provenant/reconcile/engine"
+	"github.com/provenant/provenant/reconcile/provenance"
+	reconrequest "github.com/provenant/provenant/reconcile/request"
+	"github.com/provenant/provenant/reconcile/router"
 )
 
 const (
@@ -34,7 +39,50 @@ var (
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
+	errReportUnavailable  = errors.New("report writer unavailable")
 )
+
+type packetErrorCategory string
+
+const (
+	packetErrorRequestInvalid       packetErrorCategory = "request_invalid"
+	packetErrorInputNotFound        packetErrorCategory = "input_not_found"
+	packetErrorInputUnsupported     packetErrorCategory = "input_unsupported"
+	packetErrorSelectorInvalid      packetErrorCategory = "selector_invalid"
+	packetErrorReconciliationFailed packetErrorCategory = "reconciliation_failed"
+	packetErrorEvidenceFailed       packetErrorCategory = "evidence_failed"
+	packetErrorReportFailed         packetErrorCategory = "report_failed"
+	packetErrorOutputExists         packetErrorCategory = "output_exists"
+	packetErrorOutputWriteFailed    packetErrorCategory = "output_write_failed"
+)
+
+type packetError struct {
+	category packetErrorCategory
+	err      error
+}
+
+func (e packetError) Error() string {
+	if e.err == nil {
+		return string(e.category)
+	}
+	return string(e.category) + ": " + e.err.Error()
+}
+
+func (e packetError) Unwrap() error {
+	return e.err
+}
+
+func newPacketError(category packetErrorCategory, err error) error {
+	return userError(packetError{category: category, err: err})
+}
+
+type reconcileReportWriter func(context.Context, string, *provenance.ProvenancedResultSet) error
+
+var writeReconcileReport reconcileReportWriter = unavailableReconcileReportWriter
+
+func unavailableReconcileReportWriter(context.Context, string, *provenance.ProvenancedResultSet) error {
+	return errReportUnavailable
+}
 
 type ErrorCategory string
 
@@ -110,12 +158,81 @@ type reconcileFlags struct {
 }
 
 func (r Runner) runReconcile(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
-	_, _, _ = ctx, stdin, stdout
+	_, _ = stdin, stdout
 
-	if _, err := parseReconcileFlags(args); err != nil {
+	flags, err := parseReconcileFlags(args)
+	if err != nil {
 		return userError(err)
 	}
+	if err := ensureOutputWritable(flags.out, flags.overwrite); err != nil {
+		return err
+	}
+
+	file, err := os.Open(flags.request)
+	if err != nil {
+		return newPacketError(packetErrorRequestInvalid, err)
+	}
+	defer file.Close()
+
+	req, err := reconrequest.DecodeRequest(file)
+	if err != nil {
+		return newPacketError(packetErrorRequestInvalid, err)
+	}
+	baseDir := flags.workdir
+	if baseDir == "" {
+		baseDir = filepath.Dir(flags.request)
+	}
+
+	files, err := router.Route(ctx, *req, router.Options{BaseDir: baseDir})
+	if err != nil {
+		return normalizeRouteError(err)
+	}
+	results, err := engine.Reconcile(ctx, *req, files)
+	if err != nil {
+		return newPacketError(packetErrorReconciliationFailed, err)
+	}
+	bound, err := provenance.Bind(ctx, *req, files, results, provenance.Options{})
+	if err != nil {
+		return newPacketError(packetErrorEvidenceFailed, err)
+	}
+	if err := writeReconcileReport(ctx, flags.out, bound); err != nil {
+		return normalizeReportError(err)
+	}
 	return nil
+}
+
+func ensureOutputWritable(path string, overwrite bool) error {
+	_, err := os.Stat(path)
+	if err == nil {
+		if !overwrite {
+			return newPacketError(packetErrorOutputExists, fmt.Errorf("%s already exists", path))
+		}
+		return nil
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return newPacketError(packetErrorOutputWriteFailed, err)
+}
+
+func normalizeRouteError(err error) error {
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		return newPacketError(packetErrorInputNotFound, err)
+	case strings.Contains(err.Error(), "unsupported format") || strings.Contains(err.Error(), "unsupported reader") || strings.Contains(err.Error(), "incompatible_reader"):
+		return newPacketError(packetErrorInputUnsupported, err)
+	case strings.Contains(err.Error(), "selector") || strings.Contains(err.Error(), "path_invalid"):
+		return newPacketError(packetErrorSelectorInvalid, err)
+	default:
+		return newPacketError(packetErrorInputUnsupported, err)
+	}
+}
+
+func normalizeReportError(err error) error {
+	if errors.Is(err, errReportUnavailable) {
+		return newPacketError(packetErrorReportFailed, errReportUnavailable)
+	}
+	return newPacketError(packetErrorOutputWriteFailed, err)
 }
 
 func parseReconcileFlags(args []string) (reconcileFlags, error) {
