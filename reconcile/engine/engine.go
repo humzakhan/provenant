@@ -11,6 +11,7 @@ import (
 
 	"github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
+	"github.com/shopspring/decimal"
 )
 
 type Outcome string
@@ -65,8 +66,12 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Reconcile.Mode != request.ModeExactMatch {
+	if req.Reconcile.Mode != request.ModeExactMatch && req.Reconcile.Mode != request.ModeAmountTolerance {
 		return nil, fmt.Errorf("unsupported_reconcile_mode: %s", req.Reconcile.Mode)
+	}
+	plan, err := comparisonPlanFor(req)
+	if err != nil {
+		return nil, err
 	}
 	left, right, err := selectedFiles(req, files)
 	if err != nil {
@@ -82,8 +87,8 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 		Compare:     append([]string(nil), req.Reconcile.Compare...),
 	}
 
-	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, req.Reconcile.Compare)
-	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, req.Reconcile.Compare)
+	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, req.Reconcile.Compare, plan)
+	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, req.Reconcile.Compare, plan)
 	set.Results = append(set.Results, leftInvalid...)
 	set.Results = append(set.Results, rightInvalid...)
 
@@ -104,12 +109,12 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 		case !rightOK:
 			set.Results = append(set.Results, resultFor(OutcomeMissingRight, &leftGroup[0], nil, nil, ""))
 		default:
-			diffs := compareRows(leftGroup[0].row, rightGroup[0].row, req.Reconcile.Compare)
+			diffs, reason := compareRows(leftGroup[0].row, rightGroup[0].row, req.Reconcile.Compare, plan)
 			outcome := OutcomeMatched
 			if len(diffs) > 0 {
 				outcome = OutcomeMismatch
 			}
-			set.Results = append(set.Results, resultFor(outcome, &leftGroup[0], &rightGroup[0], diffs, ""))
+			set.Results = append(set.Results, resultFor(outcome, &leftGroup[0], &rightGroup[0], diffs, reason))
 		}
 	}
 
@@ -149,7 +154,58 @@ type indexedRow struct {
 	keyID  string
 }
 
-func indexRows(file router.NormalizedFile, matchOn, compare []string) (map[string][]indexedRow, []Result) {
+type comparisonPlan struct {
+	mode      string
+	amounts   map[string]struct{}
+	currency  map[string]struct{}
+	tolerance decimal.Decimal
+}
+
+func comparisonPlanFor(req request.Request) (comparisonPlan, error) {
+	cfg := req.Reconcile
+	plan := comparisonPlan{mode: cfg.Mode}
+	if cfg.Mode != request.ModeAmountTolerance {
+		return plan, nil
+	}
+	if cfg.Tolerance == nil {
+		return plan, fmt.Errorf("invalid_amount_tolerance_config: missing tolerance")
+	}
+	tolerance, err := decimal.NewFromString(cfg.Tolerance.Amount)
+	if err != nil {
+		return plan, fmt.Errorf("invalid_amount_tolerance_config: invalid tolerance amount")
+	}
+	plan.tolerance = tolerance
+	plan.amounts = make(map[string]struct{})
+	plan.currency = make(map[string]struct{})
+	columns := columnsForFile(req, cfg.Left)
+	for _, field := range cfg.Compare {
+		column, ok := columns[field]
+		if !ok {
+			continue
+		}
+		switch column.Role {
+		case request.RoleAmount:
+			plan.amounts[field] = struct{}{}
+			if column.Numeric != nil && column.Numeric.CurrencyField != "" {
+				plan.currency[column.Numeric.CurrencyField] = struct{}{}
+			}
+		case request.RoleCurrency:
+			plan.currency[field] = struct{}{}
+		}
+	}
+	return plan, nil
+}
+
+func columnsForFile(req request.Request, fileID string) request.Columns {
+	for _, file := range req.Files {
+		if file.ID == fileID {
+			return file.Columns
+		}
+	}
+	return nil
+}
+
+func indexRows(file router.NormalizedFile, matchOn, compare []string, plan comparisonPlan) (map[string][]indexedRow, []Result) {
 	rows := make(map[string][]indexedRow, len(file.Rows))
 	invalid := make([]Result, 0)
 	for _, row := range file.Rows {
@@ -159,7 +215,7 @@ func indexRows(file router.NormalizedFile, matchOn, compare []string) (map[strin
 			invalid = append(invalid, resultFor(OutcomeInvalidRecord, sideRow(file.FileID, indexed), nil, nil, reason))
 			continue
 		}
-		if reason := validateCompareValues(row, compare); reason != "" {
+		if reason := validateCompareValues(row, compare, plan); reason != "" {
 			indexed := indexedRow{fileID: file.FileID, row: row, key: key, keyID: keyID}
 			invalid = append(invalid, resultFor(OutcomeInvalidRecord, sideRow(file.FileID, indexed), nil, nil, reason))
 			continue
@@ -184,11 +240,27 @@ func rowKey(row router.NormalizedRow, fields []string) ([]KeyValue, string, stri
 	return key, canonicalKey(key), "", true
 }
 
-func validateCompareValues(row router.NormalizedRow, fields []string) string {
+func validateCompareValues(row router.NormalizedRow, fields []string, plan comparisonPlan) string {
 	for _, field := range fields {
 		value, ok := row.Values[field]
 		if !ok || value.LogicalField == "" {
 			return fmt.Sprintf("missing logical field %q", field)
+		}
+		if plan.mode != request.ModeAmountTolerance {
+			continue
+		}
+		if _, ok := plan.amounts[field]; ok {
+			if value.Empty || strings.TrimSpace(value.Canonical) == "" {
+				return fmt.Sprintf("missing amount field %q", field)
+			}
+			if _, err := decimal.NewFromString(value.Canonical); err != nil {
+				return fmt.Sprintf("malformed amount field %q", field)
+			}
+		}
+		if _, ok := plan.currency[field]; ok {
+			if value.Empty || strings.TrimSpace(value.Canonical) == "" {
+				return fmt.Sprintf("missing currency field %q", field)
+			}
 		}
 	}
 	return ""
@@ -239,16 +311,48 @@ func sortedRowKeys(rows map[string][]indexedRow) []string {
 	return keys
 }
 
-func compareRows(left, right router.NormalizedRow, fields []string) []Difference {
+func compareRows(left, right router.NormalizedRow, fields []string, plan comparisonPlan) ([]Difference, string) {
 	diffs := make([]Difference, 0)
+	reasons := make([]string, 0)
 	for _, field := range fields {
 		leftValue := left.Values[field].Canonical
 		rightValue := right.Values[field].Canonical
+		if plan.mode == request.ModeAmountTolerance {
+			if _, ok := plan.amounts[field]; ok {
+				leftAmount, _ := decimal.NewFromString(leftValue)
+				rightAmount, _ := decimal.NewFromString(rightValue)
+				delta := leftAmount.Sub(rightAmount).Abs()
+				if delta.GreaterThan(plan.tolerance) {
+					scale := decimalScale(leftValue, rightValue, plan.tolerance.String())
+					deltaText := formatDecimal(delta, scale)
+					diffs = append(diffs, Difference{Field: field, Left: leftValue, Right: rightValue + " (delta " + deltaText + ")"})
+					reasons = append(reasons, fmt.Sprintf("%s delta %s exceeds tolerance %s", field, deltaText, formatDecimal(plan.tolerance, scale)))
+				}
+				continue
+			}
+		}
 		if leftValue != rightValue {
 			diffs = append(diffs, Difference{Field: field, Left: leftValue, Right: rightValue})
 		}
 	}
-	return diffs
+	return diffs, strings.Join(reasons, "; ")
+}
+
+func formatDecimal(value decimal.Decimal, scale int32) string {
+	return value.StringFixed(scale)
+}
+
+func decimalScale(values ...string) int32 {
+	var scale int32
+	for _, value := range values {
+		if dot := strings.IndexByte(value, '.'); dot >= 0 {
+			places := int32(len(value) - dot - 1)
+			if places > scale {
+				scale = places
+			}
+		}
+	}
+	return scale
 }
 
 func resultFor(outcome Outcome, left, right *indexedRow, diffs []Difference, reason string) Result {
