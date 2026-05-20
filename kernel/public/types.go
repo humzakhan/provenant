@@ -110,6 +110,7 @@ type CapturedRead struct {
 	RunID         string          `json:"run_id"`
 	SourcePath    string          `json:"source_path"`
 	Origin        string          `json:"origin,omitempty"`
+	SourceName    string          `json:"source_name,omitempty"`
 	Selector      SourceSelector  `json:"selector"`
 	ReaderName    string          `json:"reader_name"`
 	ReaderVersion string          `json:"reader_version"`
