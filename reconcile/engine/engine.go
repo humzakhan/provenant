@@ -166,22 +166,30 @@ func reconcileOneToMany(req request.Request, files []router.NormalizedFile) (*Re
 	set.Results = append(set.Results, leftInvalid...)
 	set.Results = append(set.Results, rightInvalid...)
 
-	duplicateKeys := map[string]struct{}{}
-	set.Results = append(set.Results, duplicateResults(leftRows, &duplicateKeys, true)...)
-
 	keys := allKeys(leftRows, rightRows)
 	for _, key := range keys {
-		if _, duplicate := duplicateKeys[key]; duplicate {
-			continue
-		}
 		leftGroup, leftOK := leftRows[key]
 		rightGroup, rightOK := rightRows[key]
+		sortIndexedRows(leftGroup)
 		sortIndexedRows(rightGroup)
 		switch {
 		case !leftOK:
 			set.Results = append(set.Results, resultForRightGroup(OutcomeMissingLeft, nil, rightGroup, nil, ""))
 		case !rightOK:
+			if len(leftGroup) > 1 {
+				set.Results = append(set.Results, resultForLeftGroup(OutcomeMissingRight, leftGroup, nil, nil, ""))
+				continue
+			}
 			set.Results = append(set.Results, resultFor(OutcomeMissingRight, &leftGroup[0], nil, nil, ""))
+		case len(leftGroup) > 1 && len(rightGroup) > 1:
+			set.Results = append(set.Results, duplicateGroupResults(rightGroup, false)...)
+		case len(leftGroup) > 1:
+			diffs, reason := compareManyToOne(leftGroup, rightGroup[0].row, req.Reconcile.Compare, plan)
+			outcome := OutcomeMatched
+			if len(diffs) > 0 {
+				outcome = OutcomeMismatch
+			}
+			set.Results = append(set.Results, resultForLeftGroup(outcome, leftGroup, &rightGroup[0], diffs, reason))
 		default:
 			diffs, reason := compareOneToMany(leftGroup[0].row, rightGroup, req.Reconcile.Compare, plan)
 			outcome := OutcomeMatched
@@ -486,6 +494,18 @@ func duplicateResults(rows map[string][]indexedRow, duplicateKeys *map[string]st
 	return results
 }
 
+func duplicateGroupResults(group []indexedRow, leftSide bool) []Result {
+	results := make([]Result, 0, len(group))
+	for _, row := range group {
+		if leftSide {
+			results = append(results, resultFor(OutcomeDuplicateKey, &row, nil, nil, "ambiguous grouped parent"))
+			continue
+		}
+		results = append(results, resultFor(OutcomeDuplicateKey, nil, &row, nil, "ambiguous grouped parent"))
+	}
+	return results
+}
+
 func allKeys(left, right map[string][]indexedRow) []string {
 	seen := make(map[string]struct{}, len(left)+len(right))
 	for key := range left {
@@ -582,6 +602,50 @@ func compareOneToMany(left router.NormalizedRow, rightGroup []indexedRow, fields
 	return diffs, strings.Join(reasons, "; ")
 }
 
+func compareManyToOne(leftGroup []indexedRow, right router.NormalizedRow, fields []string, plan comparisonPlan) ([]Difference, string) {
+	diffs := make([]Difference, 0)
+	reasons := make([]string, 0)
+	for _, field := range fields {
+		rightValue := right.Values[field].Canonical
+		if _, ok := plan.amounts[field]; ok {
+			leftTotal := decimal.Zero
+			for _, left := range leftGroup {
+				leftAmount, _ := decimal.NewFromString(left.row.Values[field].Canonical)
+				leftTotal = leftTotal.Add(leftAmount)
+			}
+			rightAmount, _ := decimal.NewFromString(rightValue)
+			delta := leftTotal.Sub(rightAmount).Abs()
+			if delta.GreaterThan(plan.tolerance) {
+				scale := decimalScale(leftTotal.String(), rightValue, plan.tolerance.String())
+				deltaText := formatDecimal(delta, scale)
+				leftText := formatDecimal(leftTotal, scale) + " (delta " + deltaText + ")"
+				diffs = append(diffs, Difference{Field: field, Left: leftText, Right: rightValue})
+				reasons = append(reasons, fmt.Sprintf("%s sum delta %s exceeds tolerance %s", field, deltaText, formatDecimal(plan.tolerance, scale)))
+			}
+			continue
+		}
+		if _, ok := plan.currency[field]; ok {
+			for _, left := range leftGroup {
+				leftValue := left.row.Values[field].Canonical
+				if leftValue != rightValue {
+					diffs = append(diffs, Difference{Field: field, Left: leftValue, Right: rightValue})
+					reasons = append(reasons, fmt.Sprintf("%s mismatch for child row %s", field, left.row.RowKey))
+					break
+				}
+			}
+			continue
+		}
+		for _, left := range leftGroup {
+			leftValue := left.row.Values[field].Canonical
+			if leftValue != rightValue {
+				diffs = append(diffs, Difference{Field: field, Left: leftValue, Right: rightValue})
+				break
+			}
+		}
+	}
+	return diffs, strings.Join(reasons, "; ")
+}
+
 func formatDecimal(value decimal.Decimal, scale int32) string {
 	return value.StringFixed(scale)
 }
@@ -621,6 +685,16 @@ func resultForRightGroup(outcome Outcome, left *indexedRow, rightGroup []indexed
 	}
 	result := resultFor(outcome, left, right, diffs, reason)
 	result.GroupRowKeys = rowRefs(rightGroup)
+	return result
+}
+
+func resultForLeftGroup(outcome Outcome, leftGroup []indexedRow, right *indexedRow, diffs []Difference, reason string) Result {
+	var left *indexedRow
+	if len(leftGroup) > 0 {
+		left = &leftGroup[0]
+	}
+	result := resultFor(outcome, left, right, diffs, reason)
+	result.GroupRowKeys = rowRefs(leftGroup)
 	return result
 }
 

@@ -541,6 +541,151 @@ func TestReconcileOneToManyResultIDIncludesGroupMembership(t *testing.T) {
 	}
 }
 
+func TestReconcileManyToOneOutcomes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		left     []router.NormalizedRow
+		right    []router.NormalizedRow
+		outcomes []Outcome
+	}{
+		{
+			name:     "exact sum matched",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeMatched},
+		},
+		{
+			name:     "sum mismatch",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.02", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeMismatch},
+		},
+		{
+			name:     "missing parent and children",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A2", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeMissingRight, OutcomeMissingLeft},
+		},
+		{
+			name:     "duplicate ambiguous parent",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "30.00", "USD"), row("r2", "A1", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeDuplicateKey, OutcomeDuplicateKey},
+		},
+		{
+			name:     "malformed parent amount invalid record",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "bad", "USD")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMissingRight},
+		},
+		{
+			name:     "currency mismatch",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "EUR")},
+			right:    []router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeMismatch},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			set, err := Reconcile(context.Background(), oneToManyRequest(), files(tt.left, tt.right))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if got := outcomes(set.Results); !reflect.DeepEqual(got, tt.outcomes) {
+				t.Fatalf("outcomes = %#v, want %#v; results = %#v", got, tt.outcomes, set.Results)
+			}
+		})
+	}
+}
+
+func TestReconcileManyToOneShuffledInputOrdering(t *testing.T) {
+	t.Parallel()
+
+	req := oneToManyRequest()
+	ordered, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD"), row("l3", "A2", "15.01", "USD"), row("l4", "A4", "40.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "30.00", "USD"), row("r2", "A2", "15.00", "USD"), row("r3", "A3", "40.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() ordered error = %v", err)
+	}
+	shuffled, err := Reconcile(context.Background(), req, []router.NormalizedFile{
+		{FileID: "right", Rows: []router.NormalizedRow{row("r3", "A3", "40.00", "USD"), row("r2", "A2", "15.00", "USD"), row("r1", "A1", "30.00", "USD")}},
+		{FileID: "left", Rows: []router.NormalizedRow{row("l4", "A4", "40.00", "USD"), row("l2", "A1", "20.00", "USD"), row("l3", "A2", "15.01", "USD"), row("l1", "A1", "10.00", "USD")}},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() shuffled error = %v", err)
+	}
+	if !reflect.DeepEqual(resultIDs(ordered.Results), resultIDs(shuffled.Results)) {
+		t.Fatalf("result IDs changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(outcomes(ordered.Results), outcomes(shuffled.Results)) {
+		t.Fatalf("outcomes changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(groupRowKeys(ordered.Results), groupRowKeys(shuffled.Results)) {
+		t.Fatalf("group row keys changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
+func TestReconcileManyToOnePreservesSortedGroupRowKeys(t *testing.T) {
+	t.Parallel()
+
+	set, err := Reconcile(context.Background(), oneToManyRequest(), files(
+		[]router.NormalizedRow{row("l2", "A1", "20.00", "USD"), row("l1", "A1", "10.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if len(set.Results) != 1 {
+		t.Fatalf("results = %#v, want one grouped result", set.Results)
+	}
+	result := set.Results[0]
+	if result.Left == nil || result.Left.RowKey != "l1" {
+		t.Fatalf("left ref = %#v, want first sorted child l1", result.Left)
+	}
+	if got, want := groupRowKeys(set.Results), [][]string{{"l1", "l2"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("group row keys = %#v, want %#v; result = %#v", got, want, result)
+	}
+}
+
+func TestReconcileManyToOneResultIDIncludesGroupMembership(t *testing.T) {
+	t.Parallel()
+
+	req := oneToManyRequest()
+	first, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "20.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() first error = %v", err)
+	}
+	changed, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l3", "A1", "20.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "30.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() changed error = %v", err)
+	}
+	if len(first.Results) != 1 || len(changed.Results) != 1 {
+		t.Fatalf("results = %#v and %#v, want one grouped result each", first.Results, changed.Results)
+	}
+	if first.Results[0].Left == nil || changed.Results[0].Left == nil || first.Results[0].Left.RowKey != changed.Results[0].Left.RowKey {
+		t.Fatalf("left refs = %#v and %#v, want same first child", first.Results[0].Left, changed.Results[0].Left)
+	}
+	if first.Results[0].ID == changed.Results[0].ID {
+		t.Fatalf("result ID did not change when group membership changed: %#v vs %#v", first.Results[0], changed.Results[0])
+	}
+	if got, want := groupRowKeys(changed.Results), [][]string{{"l1", "l3"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("changed group row keys = %#v, want %#v", got, want)
+	}
+}
+
 func TestReconcileExistenceOutcomes(t *testing.T) {
 	t.Parallel()
 
