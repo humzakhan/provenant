@@ -433,6 +433,49 @@ func TestRunnerReconcileWritesReportPackage(t *testing.T) {
 	}
 }
 
+func TestRunnerReconcileExampleFixture(t *testing.T) {
+	fixtureDir := filepath.Join("..", "..", "examples", "reconciliation")
+	workdir := t.TempDir()
+	copyFixtureFiles(t, fixtureDir, workdir, "reconcile.json", "bank.csv", "ledger.xlsx", "invoices.csv")
+
+	outPath := filepath.Join(workdir, "report.zip")
+	var stdout bytes.Buffer
+	if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(workdir, "reconcile.json"), "--out", outPath, "--workdir", workdir}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	assertNoStdoutAndReportExists(t, stdout, outPath)
+
+	entries := readZipEntries(t, outPath)
+	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+	if got := orderedReportNames(entries); !reflect.DeepEqual(got, wantNames) {
+		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
+	}
+
+	var reportPayload struct {
+		ResultCount   int            `json:"result_count"`
+		OutcomeCounts map[string]int `json:"outcome_counts"`
+	}
+	if err := json.Unmarshal(entries["report.json"], &reportPayload); err != nil {
+		t.Fatalf("Unmarshal(report.json) error = %v", err)
+	}
+	if reportPayload.ResultCount != 4 {
+		t.Fatalf("result_count = %d, want 4", reportPayload.ResultCount)
+	}
+	for outcome, want := range map[string]int{"matched": 1, "mismatch": 1, "missing_left": 1, "missing_right": 1} {
+		if got := reportPayload.OutcomeCounts[outcome]; got != want {
+			t.Fatalf("outcome_counts[%s] = %d, want %d", outcome, got, want)
+		}
+	}
+
+	assertManifestHashes(t, entries)
+	if err := bundle.Verify(entries["bundle.json"]); err != nil {
+		t.Fatalf("bundle.Verify(bundle.json) error = %v", err)
+	}
+	if _, err := bundle.Replay(entries["bundle.json"]); err != nil {
+		t.Fatalf("bundle.Replay(bundle.json) error = %v", err)
+	}
+}
+
 func TestMainExitCodes(t *testing.T) {
 	t.Parallel()
 
@@ -587,6 +630,52 @@ func writeTestFile(t *testing.T, path string, data []byte) {
 
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatalf("WriteFile(%s) error = %v", path, err)
+	}
+}
+
+func copyFixtureFiles(t *testing.T, srcDir, dstDir string, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(srcDir, name))
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", name, err)
+		}
+		writeTestFile(t, filepath.Join(dstDir, name), data)
+	}
+}
+
+func assertManifestHashes(t *testing.T, entries map[string][]byte) {
+	t.Helper()
+
+	var manifest struct {
+		BundleHash string `json:"bundle_hash"`
+		Artifacts  []struct {
+			Name   string `json:"name"`
+			Size   int    `json:"size"`
+			SHA256 string `json:"sha256"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(entries["manifest.json"], &manifest); err != nil {
+		t.Fatalf("Unmarshal(manifest.json) error = %v", err)
+	}
+	if got, want := manifest.BundleHash, sha256Hex(entries["bundle.json"]); got != want {
+		t.Fatalf("manifest bundle_hash = %s, want %s", got, want)
+	}
+	if len(manifest.Artifacts) == 0 {
+		t.Fatal("manifest artifacts empty")
+	}
+	for _, artifact := range manifest.Artifacts {
+		data, ok := entries[artifact.Name]
+		if !ok {
+			t.Fatalf("manifest artifact %q missing from zip", artifact.Name)
+		}
+		if got := len(data); got != artifact.Size {
+			t.Fatalf("manifest artifact %q size = %d, want %d", artifact.Name, got, artifact.Size)
+		}
+		if got := sha256Hex(data); got != artifact.SHA256 {
+			t.Fatalf("manifest artifact %q sha256 = %s, want %s", artifact.Name, got, artifact.SHA256)
+		}
 	}
 }
 

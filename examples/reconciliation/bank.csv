@@ -1,0 +1,4 @@
+transaction_id,amount,currency,description
+DEP-001,100.00,USD,Customer payment
+WIRE-003,70.00,USD,Outgoing wire
+ONLY-BANK,15.00,USD,Bank-only fee

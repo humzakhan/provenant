@@ -1,0 +1,3 @@
+invoice_id,transaction_id,amount,currency,status
+INV-1001,DEP-001,100.00,USD,paid
+INV-1002,ONLY-BANK,15.00,USD,open
