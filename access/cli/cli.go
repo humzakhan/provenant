@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"github.com/provenant/provenant/kernel/public/memio"
 	"github.com/provenant/provenant/reconcile/engine"
 	"github.com/provenant/provenant/reconcile/provenance"
+	"github.com/provenant/provenant/reconcile/report"
 	reconrequest "github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
 )
@@ -39,7 +41,6 @@ var (
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
-	errReportUnavailable  = errors.New("report writer unavailable")
 )
 
 type packetErrorCategory string
@@ -76,13 +77,13 @@ func newPacketError(category packetErrorCategory, err error) error {
 	return userError(packetError{category: category, err: err})
 }
 
-type reconcileReportWriter func(context.Context, string, *provenance.ProvenancedResultSet) error
-
-var writeReconcileReport reconcileReportWriter = unavailableReconcileReportWriter
-
-func unavailableReconcileReportWriter(context.Context, string, *provenance.ProvenancedResultSet) error {
-	return errReportUnavailable
+type outputWriteError struct {
+	err error
 }
+
+func (e outputWriteError) Error() string { return e.err.Error() }
+
+func (e outputWriteError) Unwrap() error { return e.err }
 
 type ErrorCategory string
 
@@ -195,7 +196,7 @@ func (r Runner) runReconcile(ctx context.Context, args []string, stdin io.Reader
 	if err != nil {
 		return newPacketError(packetErrorEvidenceFailed, err)
 	}
-	if err := writeReconcileReport(ctx, flags.out, bound); err != nil {
+	if err := writeReconcileReportFile(ctx, flags.out, bound); err != nil {
 		return normalizeReportError(err)
 	}
 	return nil
@@ -229,10 +230,47 @@ func normalizeRouteError(err error) error {
 }
 
 func normalizeReportError(err error) error {
-	if errors.Is(err, errReportUnavailable) {
-		return newPacketError(packetErrorReportFailed, errReportUnavailable)
+	var writeErr outputWriteError
+	if errors.As(err, &writeErr) {
+		return newPacketError(packetErrorOutputWriteFailed, err)
+	}
+	if strings.Contains(err.Error(), "reconcile_report_failed") {
+		return newPacketError(packetErrorReportFailed, err)
 	}
 	return newPacketError(packetErrorOutputWriteFailed, err)
+}
+
+func writeReconcileReportFile(ctx context.Context, path string, result *provenance.ProvenancedResultSet) error {
+	var buf bytes.Buffer
+	if err := report.Write(ctx, &buf, result); err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return outputWriteError{err: fmt.Errorf("create temp report: %w", err)}
+	}
+	tmpPath := tmp.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		return outputWriteError{err: fmt.Errorf("write temp report: %w", err)}
+	}
+	if err := tmp.Close(); err != nil {
+		return outputWriteError{err: fmt.Errorf("close temp report: %w", err)}
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return outputWriteError{err: fmt.Errorf("rename temp report: %w", err)}
+	}
+	ok = true
+	return nil
 }
 
 func parseReconcileFlags(args []string) (reconcileFlags, error) {
