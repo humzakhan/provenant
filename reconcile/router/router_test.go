@@ -128,6 +128,39 @@ func TestRouteSupportedFormats(t *testing.T) {
 	}
 }
 
+func TestRouteCSVInferredHeaderAllowsMixedHeaderAndIndexSources(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	writeFile(t, dir, "bank.csv", []byte("Transaction ID,Amount,Currency\nA1,10.25,USD\nA2,20.50,USD\n"))
+
+	req := request.Request{
+		Run: request.RunConfig{ID: "run_1", TenantID: "tenant_1"},
+		Files: []request.FileConfig{
+			mixedCSVFile("left", "bank.csv"),
+			mixedCSVFile("right", "bank.csv"),
+		},
+		Reconcile: request.ReconcileConfig{Mode: request.ModeExactMatch, Left: "left", Right: "right", MatchOn: []string{"transaction_id"}, Compare: []string{"amount", "currency"}},
+	}
+
+	files, err := Route(context.Background(), req, Options{BaseDir: dir})
+	if err != nil {
+		returnError(t, err)
+	}
+	if files[0].EffectiveSelector.HeaderRow != 1 {
+		t.Fatalf("HeaderRow = %d, want inferred header row 1", files[0].EffectiveSelector.HeaderRow)
+	}
+	if files[0].EffectiveSelector.ColumnProjection != "" {
+		t.Fatalf("ColumnProjection = %q, want empty projection for mixed header/index sources", files[0].EffectiveSelector.ColumnProjection)
+	}
+	if got := files[0].Rows[0].Values["transaction_id"].Canonical; got != "A1" {
+		t.Fatalf("transaction_id canonical = %q, want A1", got)
+	}
+	if got := files[0].Rows[0].Values["amount"].Canonical; got != "10.25" {
+		t.Fatalf("amount canonical = %q, want 10.25", got)
+	}
+}
+
 func TestRouteFailures(t *testing.T) {
 	t.Parallel()
 
@@ -445,6 +478,12 @@ func validCSVFile(id, path string) request.FileConfig {
 			"currency":       {Source: "Currency", Role: request.RoleCurrency, Required: true},
 		},
 	}
+}
+
+func mixedCSVFile(id, path string) request.FileConfig {
+	file := validCSVFile(id, path)
+	file.Columns["amount"] = request.ColumnConfig{Source: "2", Role: request.RoleAmount, Required: true, Numeric: &request.NumericConfig{Scale: 2, CurrencyField: "currency"}}
+	return file
 }
 
 func writeFile(t *testing.T, dir, name string, data []byte) {

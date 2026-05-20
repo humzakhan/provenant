@@ -29,7 +29,7 @@ func resolveSelector(file request.FileConfig, source []byte) (kernel.SourceSelec
 			Dialect:   file.Selector.Dialect,
 			Encoding:  file.Selector.Encoding,
 		}
-		if headerRow > 0 {
+		if headerRow > 0 && columnsUseOnlyNamedSources(file.Columns) {
 			selector.ColumnProjection = joinSorted(uniqueColumnSources(file.Columns))
 		}
 		return selector, nil
@@ -167,6 +167,15 @@ func columnsUseNamedSources(columns request.Columns) bool {
 		}
 	}
 	return false
+}
+
+func columnsUseOnlyNamedSources(columns request.Columns) bool {
+	for _, column := range columns {
+		if _, err := strconv.Atoi(column.Source); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func spreadsheetProjection(columns request.Columns) (string, bool) {

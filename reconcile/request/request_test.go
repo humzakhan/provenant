@@ -52,6 +52,30 @@ func TestDecodeRequestValidModes(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestJSONLAllowsLineWindowWithJSONPointer(t *testing.T) {
+	t.Parallel()
+
+	req := validRequest(ModeExactMatch)
+	for index := range req.Files {
+		req.Files[index].Format = FormatJSONL
+		req.Files[index].Reader = ReaderExtractJSONL
+		req.Files[index].Selector = SelectorConfig{LineWindow: "1:", JSONPointer: "/events"}
+		req.Files[index].Columns = Columns{
+			"transaction_id": {Source: "transaction_id", Role: RoleKey, Required: true, Unique: true},
+			"amount":         {Source: "amount", Role: RoleAmount, Required: true, Numeric: &NumericConfig{Scale: 2, CurrencyField: "currency"}},
+			"currency":       {Source: "currency", Role: RoleCurrency, Required: true},
+		}
+	}
+
+	got, err := DecodeRequest(bytes.NewReader(mustJSON(t, req)))
+	if err != nil {
+		t.Fatalf("DecodeRequest() error = %v", err)
+	}
+	if got.Files[0].Selector.JSONPointer != "/events" {
+		t.Fatalf("JSONPointer = %q, want /events", got.Files[0].Selector.JSONPointer)
+	}
+}
+
 func TestDecodeRequestFailures(t *testing.T) {
 	t.Parallel()
 
