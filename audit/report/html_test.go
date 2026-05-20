@@ -352,14 +352,70 @@ func TestRenderHTMLNoExternalAssets(t *testing.T) {
 	}
 	html := string(out)
 
-	if strings.Contains(html, "<script") {
-		t.Error("rendered HTML contains <script> tag")
+	// Inline <script> blocks are allowed (tab switching, slide-over JS).
+	// External <script src=...> tags are not.
+	if strings.Contains(html, `<script src`) {
+		t.Error("rendered HTML contains external <script src=...> tag")
+	}
+	if strings.Contains(html, `<link href`) {
+		t.Error("rendered HTML contains external <link href=...> tag")
 	}
 	if strings.Contains(html, "http://") {
 		t.Error("rendered HTML contains http:// URL")
 	}
 	if strings.Contains(html, "https://") {
 		t.Error("rendered HTML contains https:// URL")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// TestRenderHTMLTabsPresent
+// ---------------------------------------------------------------------------
+
+func TestRenderHTMLTabsPresent(t *testing.T) {
+	doc := minimalDoc(t)
+	out, err := report.RenderHTML(doc)
+	if err != nil {
+		t.Fatalf("RenderHTML() error = %v", err)
+	}
+	html := string(out)
+
+	// Both tab labels must be present.
+	if !strings.Contains(html, "Plain view") {
+		t.Error("expected 'Plain view' tab label in output")
+	}
+	if !strings.Contains(html, "Technical detail") {
+		t.Error("expected 'Technical detail' tab label in output")
+	}
+
+	// Inline JS for tab switching must be present.
+	if !strings.Contains(html, "showTab") {
+		t.Error("expected 'showTab' JS function in output")
+	}
+	if !strings.Contains(html, "openSlideOver") {
+		t.Error("expected 'openSlideOver' JS function in output")
+	}
+
+	// The page must contain a <script> block (inline JS, no src=).
+	if !strings.Contains(html, "<script>") {
+		t.Error("expected inline <script> block in output")
+	}
+
+	// Source cards grid must appear when captured reads are present.
+	if !strings.Contains(html, "src-grid") {
+		t.Error("expected source card grid in output")
+	}
+
+	// Hero answer callout must appear for docs with submitted answers.
+	if !strings.Contains(html, "hero-answer") {
+		t.Error("expected hero answer callout in output")
+	}
+
+	// The minimalDoc uses "fixture://data.json" as source path, which is not
+	// an absolute path, so file:// links should NOT appear for that fixture.
+	// Confirm no https/http sneaked in.
+	if strings.Contains(html, "http://") || strings.Contains(html, "https://") {
+		t.Error("rendered HTML must not contain external http(s):// URLs")
 	}
 }
 
