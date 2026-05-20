@@ -37,6 +37,59 @@ func TestWriteIncludesRequiredEntriesAndExactBundle(t *testing.T) {
 	}
 }
 
+func TestWriteSidecarsMatchVerifiedBundle(t *testing.T) {
+	in := testProvenancedResultSet(t, true)
+	var buf bytes.Buffer
+	if err := Write(context.Background(), &buf, in); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	entries := readZip(t, buf.Bytes())
+
+	state, err := bundle.Replay(in.Bundle.Bytes)
+	if err != nil {
+		t.Fatalf("bundle.Replay() error = %v", err)
+	}
+	var gotTokens []kernel.Token
+	if err := json.Unmarshal(entries["tokens.json"], &gotTokens); err != nil {
+		t.Fatalf("tokens.json unmarshal error = %v", err)
+	}
+	if !reflect.DeepEqual(gotTokens, state.Tokens) {
+		t.Fatalf("tokens.json = %#v, want replayed %#v", gotTokens, state.Tokens)
+	}
+
+	wantAudit, err := buildAuditJSONL(state.AuditEntries)
+	if err != nil {
+		t.Fatalf("buildAuditJSONL() error = %v", err)
+	}
+	if !bytes.Equal(entries["audit.jsonl"], wantAudit) {
+		t.Fatalf("audit.jsonl = %s, want %s", entries["audit.jsonl"], wantAudit)
+	}
+	if !bytes.Equal(entries["bundle.json"], in.Bundle.Bytes) {
+		t.Fatal("bundle.json differs from provided bundle bytes")
+	}
+}
+
+func TestWriteSidecarDivergenceFailsClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*provenance.ProvenancedResultSet)
+	}{
+		{name: "token", mutate: func(in *provenance.ProvenancedResultSet) { in.Tokens[0].ValueCanonical = "11.00" }},
+		{name: "captured read", mutate: func(in *provenance.ProvenancedResultSet) { in.CapturedReads[0].SourceHash = strings.Repeat("b", 64) }},
+		{name: "audit", mutate: func(in *provenance.ProvenancedResultSet) { in.AuditEntries[0].Seq++ }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := testProvenancedResultSet(t, true)
+			tt.mutate(in)
+			var buf bytes.Buffer
+			if err := Write(context.Background(), &buf, in); err == nil {
+				t.Fatal("Write() error = nil, want fail-closed sidecar mismatch")
+			}
+		})
+	}
+}
+
 func TestWriteManifestHashes(t *testing.T) {
 	in := testProvenancedResultSet(t, true)
 	var buf bytes.Buffer

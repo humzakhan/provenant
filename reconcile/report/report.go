@@ -79,8 +79,12 @@ func Write(ctx context.Context, w io.Writer, in *provenance.ProvenancedResultSet
 	if got := sha256Hex(in.Bundle.Bytes); in.Bundle.SHA256 != "" && in.Bundle.SHA256 != got {
 		return fmt.Errorf("reconcile_report_failed: bundle hash mismatch")
 	}
-	if err := bundle.Verify(in.Bundle.Bytes); err != nil {
+	bundleState, err := bundle.Replay(in.Bundle.Bytes)
+	if err != nil {
 		return fmt.Errorf("reconcile_report_failed: verify bundle: %w", err)
+	}
+	if err := validateSidecars(in, bundleState); err != nil {
+		return err
 	}
 
 	artifacts := make([]artifact, 0, 8)
@@ -100,11 +104,11 @@ func Write(ctx context.Context, w io.Writer, in *provenance.ProvenancedResultSet
 	if err != nil {
 		return fmt.Errorf("reconcile_report_failed: captured reads: %w", err)
 	}
-	tokens, err := marshalJSON(in.Tokens)
+	tokens, err := marshalJSON(bundleState.Tokens)
 	if err != nil {
 		return fmt.Errorf("reconcile_report_failed: tokens: %w", err)
 	}
-	audit, err := buildAuditJSONL(in.AuditEntries)
+	audit, err := buildAuditJSONL(bundleState.AuditEntries)
 	if err != nil {
 		return err
 	}
@@ -123,6 +127,86 @@ func Write(ctx context.Context, w io.Writer, in *provenance.ProvenancedResultSet
 	add("manifest.json", manifestData)
 
 	return writeZip(w, artifacts)
+}
+
+func validateSidecars(in *provenance.ProvenancedResultSet, bundleState bundle.State) error {
+	if !sameTokens(in.Tokens, bundleState.Tokens) {
+		return fmt.Errorf("reconcile_report_failed: tokens diverge from verified bundle")
+	}
+	inAudit, err := buildAuditJSONL(in.AuditEntries)
+	if err != nil {
+		return err
+	}
+	bundleAudit, err := buildAuditJSONL(bundleState.AuditEntries)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(inAudit, bundleAudit) {
+		return fmt.Errorf("reconcile_report_failed: audit entries diverge from verified bundle")
+	}
+	if err := validateCapturedReadRefs(in.CapturedReads, bundleState.CapturedReads); err != nil {
+		return err
+	}
+	return nil
+}
+
+func sameTokens(left, right []kernel.Token) bool {
+	if len(left) != len(right) {
+		return false
+	}
+	left = append([]kernel.Token(nil), left...)
+	right = append([]kernel.Token(nil), right...)
+	sort.Slice(left, func(i, j int) bool { return left[i].ID < left[j].ID })
+	sort.Slice(right, func(i, j int) bool { return right[i].ID < right[j].ID })
+	for i := range left {
+		if !sameToken(left[i], right[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+func sameToken(left, right kernel.Token) bool {
+	return left.ID == right.ID &&
+		left.RunID == right.RunID &&
+		left.TenantID == right.TenantID &&
+		left.ValueCanonical == right.ValueCanonical &&
+		left.Unit == right.Unit &&
+		left.Source == right.Source
+}
+
+func validateCapturedReadRefs(refs []provenance.CapturedReadRef, reads []kernel.CapturedRead) error {
+	if len(refs) != len(reads) {
+		return fmt.Errorf("reconcile_report_failed: captured reads diverge from verified bundle")
+	}
+	readsByID := make(map[string]kernel.CapturedRead, len(reads))
+	for _, read := range reads {
+		readsByID[read.ID] = read
+	}
+	seen := make(map[string]struct{}, len(refs))
+	for _, ref := range refs {
+		if _, exists := seen[ref.CapturedReadID]; exists {
+			return fmt.Errorf("reconcile_report_failed: duplicate captured read %q", ref.CapturedReadID)
+		}
+		seen[ref.CapturedReadID] = struct{}{}
+		read, ok := readsByID[ref.CapturedReadID]
+		if !ok {
+			return fmt.Errorf("reconcile_report_failed: captured read %q missing from verified bundle", ref.CapturedReadID)
+		}
+		switch {
+		case ref.SourcePath != read.SourcePath:
+			return fmt.Errorf("reconcile_report_failed: captured read %q source path diverges from verified bundle", ref.CapturedReadID)
+		case ref.SourceHash != read.SourceSHA256:
+			return fmt.Errorf("reconcile_report_failed: captured read %q source hash diverges from verified bundle", ref.CapturedReadID)
+		case ref.Selector != read.Selector:
+			return fmt.Errorf("reconcile_report_failed: captured read %q selector diverges from verified bundle", ref.CapturedReadID)
+		case ref.Reader != read.ReaderName:
+			return fmt.Errorf("reconcile_report_failed: captured read %q reader diverges from verified bundle", ref.CapturedReadID)
+		case ref.ReaderVersion != read.ReaderVersion:
+			return fmt.Errorf("reconcile_report_failed: captured read %q reader version diverges from verified bundle", ref.CapturedReadID)
+		}
+	}
+	return nil
 }
 
 type artifact struct {
