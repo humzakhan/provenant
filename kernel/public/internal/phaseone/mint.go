@@ -50,10 +50,31 @@ func ReconstructMintEvidence(runID, capturedReadID string, output []byte, output
 }
 
 func ExtractMintValue(output []byte, outputPath string) (string, error) {
-	if outputPath != "$.value" {
+	if outputPath == "$.value" {
+		return extractTopLevelMintValue(output, outputPath)
+	}
+	if !strings.HasPrefix(outputPath, "/") {
 		return "", fmt.Errorf("%w: %s", ErrUnsupportedOutputPath, outputPath)
 	}
 
+	dec := json.NewDecoder(bytes.NewReader(output))
+	dec.UseNumber()
+	var payload any
+	if err := dec.Decode(&payload); err != nil {
+		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
+	}
+	value, ok := valueAtJSONPointer(payload, outputPath)
+	if !ok {
+		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
+	}
+	return mintValueString(value, outputPath, "")
+
+}
+
+func extractTopLevelMintValue(output []byte, outputPath string) (string, error) {
 	dec := json.NewDecoder(bytes.NewReader(output))
 	dec.UseNumber()
 
@@ -68,12 +89,66 @@ func ExtractMintValue(output []byte, outputPath string) (string, error) {
 		return "", fmt.Errorf("%w: %s", ErrOutputPathNotFound, outputPath)
 	}
 
-	switch value := payload.Value.(type) {
+	return mintValueString(payload.Value, outputPath, payload.RawValue)
+}
+
+func valueAtJSONPointer(value any, pointer string) (any, bool) {
+	current := value
+	for _, token := range strings.Split(pointer[1:], "/") {
+		decoded, ok := decodeJSONPointerToken(token)
+		if !ok {
+			return nil, false
+		}
+		switch typed := current.(type) {
+		case map[string]any:
+			next, ok := typed[decoded]
+			if !ok {
+				return nil, false
+			}
+			current = next
+		case []any:
+			index, err := strconv.Atoi(decoded)
+			if err != nil || index < 0 || index >= len(typed) || (len(decoded) > 1 && decoded[0] == '0') {
+				return nil, false
+			}
+			current = typed[index]
+		default:
+			return nil, false
+		}
+	}
+	return current, true
+}
+
+func decodeJSONPointerToken(token string) (string, bool) {
+	var builder strings.Builder
+	for i := 0; i < len(token); i++ {
+		if token[i] != '~' {
+			builder.WriteByte(token[i])
+			continue
+		}
+		if i+1 >= len(token) {
+			return "", false
+		}
+		switch token[i+1] {
+		case '0':
+			builder.WriteByte('~')
+		case '1':
+			builder.WriteByte('/')
+		default:
+			return "", false
+		}
+		i++
+	}
+	return builder.String(), true
+}
+
+func mintValueString(value any, outputPath, rawValue string) (string, error) {
+	switch value := value.(type) {
 	case string:
 		return value, nil
 	case json.Number:
-		if payload.RawValue != "" {
-			return payload.RawValue, nil
+		if rawValue != "" {
+			return rawValue, nil
 		}
 		return value.String(), nil
 	default:

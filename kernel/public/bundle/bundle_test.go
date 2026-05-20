@@ -180,6 +180,28 @@ func TestVerifyFailsWhenAuditedTokenDivergesFromCapturedReadOutput(t *testing.T)
 	}
 }
 
+func TestVerifyAllowsMultipleTokensFromOneCapturedRead(t *testing.T) {
+	t.Parallel()
+
+	doc := multipleTokensOneCapturedReadDocument(t)
+	doc.CapturedReads = []kernel.CapturedRead{capturedReadByID(t, doc.CapturedReads, doc.Tokens[0].Source.CapturedReadID)}
+
+	if err := bundle.Verify(encodeDocument(t, doc)); err != nil {
+		t.Fatalf("Verify() error = %v", err)
+	}
+}
+
+func TestVerifyRejectsUnreferencedCapturedRead(t *testing.T) {
+	t.Parallel()
+
+	doc := multipleTokensOneCapturedReadDocument(t)
+
+	err := bundle.Verify(encodeDocument(t, doc))
+	if !errors.Is(err, bundle.ErrTamperDetected) {
+		t.Fatalf("Verify() error = %v, want %v", err, bundle.ErrTamperDetected)
+	}
+}
+
 func TestReplayIgnoresUnauditedTokenFields(t *testing.T) {
 	t.Parallel()
 
@@ -539,6 +561,67 @@ func buildSingleMintState(t *testing.T) (kernel.Run, *memio.Binding) {
 	})
 }
 
+func multipleTokensOneCapturedReadDocument(t *testing.T) bundleDocument {
+	t.Helper()
+
+	run, binding := buildStateForRequests(t, []kernel.ReadAndMintRequest{
+		{
+			SourcePath: "fixture://invoice.json",
+			Selector:   kernel.SourceSelector{JSONPointer: "/invoice/items/0/amount"},
+			OutputPath: "$.value",
+		},
+		{
+			SourcePath: "fixture://invoice.json",
+			Selector:   kernel.SourceSelector{JSONPointer: "/invoice/items/1/amount"},
+			OutputPath: "/normalized_value",
+		},
+	})
+	doc := decodeDocument(t, mustEmitState(t, snapshotState(t, binding, run)))
+	if len(doc.CapturedReads) != 2 || len(doc.Tokens) != 2 {
+		t.Fatalf("baseline captured reads/tokens = %d/%d, want 2/2", len(doc.CapturedReads), len(doc.Tokens))
+	}
+
+	read := capturedReadByID(t, doc.CapturedReads, doc.Tokens[0].Source.CapturedReadID)
+	evidence, err := phaseone.ReconstructMintEvidence(run.ID, read.ID, read.Output, "/normalized_value", "")
+	if err != nil {
+		t.Fatalf("ReconstructMintEvidence() error = %v", err)
+	}
+	doc.Tokens[1].ID = evidence.TokenID
+	doc.Tokens[1].Source.CapturedReadID = read.ID
+	doc.Tokens[1].Source.SourceSelector = read.Selector
+	doc.Tokens[1].Source.Origin = read.Origin
+	doc.Tokens[1].ValueCanonical = evidence.ValueCanonical
+	mutateAuditPayload(t, &doc, 1, func(payload map[string]any) {
+		payload["token_id"] = evidence.TokenID
+		payload["captured_read_id"] = read.ID
+		payload["source_path"] = read.SourcePath
+		payload["source_selector"] = read.Selector
+		payload["origin"] = read.Origin
+		payload["reader_name"] = read.ReaderName
+		payload["reader_version"] = read.ReaderVersion
+		payload["reader_options"] = json.RawMessage(read.ReaderOptions)
+		payload["locator"] = json.RawMessage(read.Locator)
+		payload["source_sha256"] = read.SourceSHA256
+		payload["output_sha256"] = read.OutputSHA256
+		payload["source_value_raw"] = evidence.SourceValueRaw
+		payload["value_canonical"] = evidence.ValueCanonical
+	})
+
+	return doc
+}
+
+func capturedReadByID(t *testing.T, reads []kernel.CapturedRead, id string) kernel.CapturedRead {
+	t.Helper()
+
+	for _, read := range reads {
+		if read.ID == id {
+			return read
+		}
+	}
+	t.Fatalf("captured read %s not found", id)
+	return kernel.CapturedRead{}
+}
+
 func buildStateForRequests(t *testing.T, requests []kernel.ReadAndMintRequest) (kernel.Run, *memio.Binding) {
 	t.Helper()
 
@@ -671,13 +754,18 @@ func encodeDocument(t *testing.T, doc bundleDocument) []byte {
 
 func mutateFirstAuditPayload(t *testing.T, doc *bundleDocument, mutate func(payload map[string]any)) {
 	t.Helper()
+	mutateAuditPayload(t, doc, 0, mutate)
+}
+
+func mutateAuditPayload(t *testing.T, doc *bundleDocument, index int, mutate func(payload map[string]any)) {
+	t.Helper()
 
 	lines := strings.Split(strings.TrimSuffix(doc.AuditJSONL, "\n"), "\n")
-	if len(lines) == 0 || lines[0] == "" {
-		t.Fatal("AuditJSONL has no lines")
+	if index < 0 || index >= len(lines) || lines[index] == "" {
+		t.Fatalf("AuditJSONL has no line %d", index)
 	}
 
-	line := decodeAuditLine(t, lines[0])
+	line := decodeAuditLine(t, lines[index])
 
 	var payload map[string]any
 	if err := json.Unmarshal(line.PayloadDeterministic, &payload); err != nil {
@@ -703,7 +791,7 @@ func mutateFirstAuditPayload(t *testing.T, doc *bundleDocument, mutate func(payl
 	if err != nil {
 		t.Fatalf("jcs.Transform(line) error = %v", err)
 	}
-	lines[0] = string(canonicalLine)
+	lines[index] = string(canonicalLine)
 	doc.AuditJSONL = strings.Join(lines, "\n") + "\n"
 }
 
