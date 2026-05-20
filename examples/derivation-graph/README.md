@@ -70,6 +70,20 @@ go run ./gen/gen.go --out ./data --seed 42
 After regenerating, delete the golden files and re-run the tests to produce
 new goldens. Commit all changed files together in one commit.
 
+## Scaled demo (Phase 09)
+
+The `scaled/` subdirectory scales the fauxbooks demo to enterprise size: 100
+payroll rows, 500 expense rows, 1 200 revenue rows, and 80 refund rows — 1 980
+leaf tokens in total — all flowing into a deterministic `operating_income` value.
+A companion `scaled/broken/` dataset introduces two deliberate breakages (a
+dropped payroll row and a tampered expense amount) to demonstrate that
+`bundle.Verify` is unaffected by semantic errors while row-level CSV
+reconciliation and cross-run value comparison surface the anomalies precisely.
+The suite also covers the `provenant audit-html` CLI verb, which renders any
+audit pack as a self-contained HTML report (no JavaScript, no network access).
+
+See [scaled/README.md](scaled/README.md) for the full walkthrough.
+
 ## Inspecting the Trace
 
 After running the tests, inspect the operating income trace:
