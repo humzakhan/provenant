@@ -5,9 +5,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -73,6 +73,7 @@ type ValueEvidenceRef struct {
 	CapturedReadID string `json:"captured_read_id"`
 	SourceHash     string `json:"source_hash"`
 	Selector       string `json:"selector"`
+	OutputPath     string `json:"output_path,omitempty"`
 	TokenID        string `json:"token_id,omitempty"`
 }
 
@@ -133,18 +134,13 @@ func mintAmountEvidence(ctx context.Context, req request.Request, bound *Provena
 				continue
 			}
 
-			read, ok, err := capturedReadForValueRef(*ref, idx)
+			read, outputPath, err := capturedReadOutputPathForValueRef(*ref, idx)
 			if err != nil {
 				return err
 			}
-			if !ok {
-				continue
-			}
-			if !capturedReadValueMatchesRef(read.Output, *ref) {
-				return fmt.Errorf("provenance_bind_failed: captured read value mismatch for file %q row %q field %q", ref.FileID, ref.RowKey, ref.LogicalField)
-			}
+			ref.OutputPath = outputPath
 
-			key := read.ID + "\x00$.value"
+			key := read.ID + "\x00" + outputPath
 			mintedResult, exists := minted[key]
 			if !exists {
 				result, err := kernel.MintFromCapturedRead(
@@ -157,13 +153,10 @@ func mintAmountEvidence(ctx context.Context, req request.Request, bound *Provena
 					kernel.MintFromCapturedReadRequest{
 						CapturedRead: read,
 						Source:       kernel.Source{Path: read.SourcePath, SHA256: read.SourceSHA256},
-						OutputPath:   "$.value",
+						OutputPath:   outputPath,
 					},
 				)
 				if err != nil {
-					if nonMintableAmountError(err) {
-						continue
-					}
 					return fmt.Errorf("provenance_bind_failed: mint amount token for file %q row %q field %q: %w", ref.FileID, ref.RowKey, ref.LogicalField, err)
 				}
 				minted[key] = result
@@ -202,54 +195,158 @@ func mintAmountEvidence(ctx context.Context, req request.Request, bound *Provena
 	return nil
 }
 
-func capturedReadForValueRef(ref ValueEvidenceRef, idx fileIndex) (kernel.CapturedRead, bool, error) {
+func capturedReadOutputPathForValueRef(ref ValueEvidenceRef, idx fileIndex) (kernel.CapturedRead, string, error) {
 	file, ok := idx.files[ref.FileID]
 	if !ok {
-		return kernel.CapturedRead{}, false, fmt.Errorf("provenance_bind_failed: missing file provenance for %q", ref.FileID)
+		return kernel.CapturedRead{}, "", fmt.Errorf("provenance_bind_failed: missing file provenance for %q", ref.FileID)
 	}
 	read := file.file.CapturedRead
 	if read.ID != ref.CapturedReadID {
-		return kernel.CapturedRead{}, false, fmt.Errorf("provenance_bind_failed: captured read mismatch for file %q", ref.FileID)
+		return kernel.CapturedRead{}, "", fmt.Errorf("provenance_bind_failed: captured read mismatch for file %q", ref.FileID)
 	}
-	if !hasTopLevelValue(read.Output) {
-		return kernel.CapturedRead{}, false, nil
+	if capturedReadValueMatchesRef(read.Output, "$.value", ref) {
+		return cloneCapturedRead(read), "$.value", nil
 	}
-	return cloneCapturedRead(read), true, nil
+	row, ok := file.rows[ref.RowKey]
+	if !ok {
+		return kernel.CapturedRead{}, "", fmt.Errorf("provenance_bind_failed: file %q missing row %q provenance", ref.FileID, ref.RowKey)
+	}
+	outputPath, ok := outputPathForCSVOrSpreadsheetValue(read.Output, row, ref)
+	if !ok {
+		return kernel.CapturedRead{}, "", fmt.Errorf("provenance_bind_failed: cannot map captured read output path for file %q row %q field %q", ref.FileID, ref.RowKey, ref.LogicalField)
+	}
+	if !capturedReadValueMatchesRef(read.Output, outputPath, ref) {
+		return kernel.CapturedRead{}, "", fmt.Errorf("provenance_bind_failed: captured read value mismatch for file %q row %q field %q", ref.FileID, ref.RowKey, ref.LogicalField)
+	}
+	return cloneCapturedRead(read), outputPath, nil
 }
 
-func hasTopLevelValue(output json.RawMessage) bool {
-	var payload map[string]json.RawMessage
-	if err := json.Unmarshal(output, &payload); err != nil {
-		return false
-	}
-	_, ok := payload["value"]
-	return ok
-}
-
-func capturedReadValueMatchesRef(output json.RawMessage, ref ValueEvidenceRef) bool {
-	var payload struct {
-		Value any `json:"value"`
-	}
-	dec := json.NewDecoder(strings.NewReader(string(output)))
-	dec.UseNumber()
-	if err := dec.Decode(&payload); err != nil {
-		return false
-	}
-
-	var value string
-	switch typed := payload.Value.(type) {
-	case string:
-		value = typed
-	case json.Number:
-		value = typed.String()
-	default:
+func capturedReadValueMatchesRef(output json.RawMessage, outputPath string, ref ValueEvidenceRef) bool {
+	value, ok := capturedOutputValue(output, outputPath)
+	if !ok {
 		return false
 	}
 	return value == ref.Canonical || value == ref.Raw
 }
 
-func nonMintableAmountError(err error) bool {
-	return errors.Is(err, kernel.ErrOutputPathNotFound) || errors.Is(err, kernel.ErrMintValueNotNumeric) || errors.Is(err, kernel.ErrUnsupportedOutputPath)
+func capturedOutputValue(output json.RawMessage, outputPath string) (string, bool) {
+	dec := json.NewDecoder(strings.NewReader(string(output)))
+	dec.UseNumber()
+	var payload any
+	if err := dec.Decode(&payload); err != nil {
+		return "", false
+	}
+	if outputPath == "$.value" {
+		object, ok := payload.(map[string]any)
+		if !ok {
+			return "", false
+		}
+		payload, ok = object["value"]
+		if !ok {
+			return "", false
+		}
+	} else {
+		var ok bool
+		payload, ok = jsonPointerValue(payload, outputPath)
+		if !ok {
+			return "", false
+		}
+	}
+	switch typed := payload.(type) {
+	case string:
+		return typed, true
+	case json.Number:
+		return typed.String(), true
+	default:
+		return "", false
+	}
+}
+
+func outputPathForCSVOrSpreadsheetValue(output json.RawMessage, row router.NormalizedRow, ref ValueEvidenceRef) (string, bool) {
+	var payload struct {
+		Rows []struct {
+			Row         int `json:"row"`
+			WindowIndex int `json:"window_index"`
+			Cells       []struct {
+				Column int    `json:"column"`
+				Header string `json:"header"`
+				A1     string `json:"a1"`
+				Value  any    `json:"value"`
+			} `json:"cells"`
+		} `json:"rows"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(output)))
+	dec.UseNumber()
+	if err := dec.Decode(&payload); err != nil {
+		return "", false
+	}
+	for rowIndex, outputRow := range payload.Rows {
+		if row.Position.Row != 0 && outputRow.Row != row.Position.Row {
+			continue
+		}
+		if row.Position.Row == 0 && outputRow.WindowIndex != row.Position.Index {
+			continue
+		}
+		for cellIndex, cell := range outputRow.Cells {
+			if !cellMatchesRef(cell.Header, cell.A1, cell.Column, ref.SourceField) {
+				continue
+			}
+			path := fmt.Sprintf("/rows/%d/cells/%d/value", rowIndex, cellIndex)
+			if value, ok := capturedValueString(cell.Value); ok && (value == ref.Canonical || value == ref.Raw) {
+				return path, true
+			}
+		}
+	}
+	return "", false
+}
+
+func cellMatchesRef(header, a1 string, column int, source string) bool {
+	if header != "" && header == source {
+		return true
+	}
+	if a1 != "" && strings.TrimRight(a1, "0123456789") == source {
+		return true
+	}
+	parsed, err := strconv.Atoi(source)
+	return err == nil && parsed == column
+}
+
+func capturedValueString(value any) (string, bool) {
+	switch typed := value.(type) {
+	case string:
+		return typed, true
+	case json.Number:
+		return typed.String(), true
+	default:
+		return "", false
+	}
+}
+
+func jsonPointerValue(value any, pointer string) (any, bool) {
+	if !strings.HasPrefix(pointer, "/") {
+		return nil, false
+	}
+	current := value
+	for _, token := range strings.Split(pointer[1:], "/") {
+		decoded := strings.ReplaceAll(strings.ReplaceAll(token, "~1", "/"), "~0", "~")
+		switch typed := current.(type) {
+		case map[string]any:
+			next, ok := typed[decoded]
+			if !ok {
+				return nil, false
+			}
+			current = next
+		case []any:
+			index, err := strconv.Atoi(decoded)
+			if err != nil || index < 0 || index >= len(typed) {
+				return nil, false
+			}
+			current = typed[index]
+		default:
+			return nil, false
+		}
+	}
+	return current, true
 }
 
 func mintedState(ctx context.Context, binding *memio.Binding, run kernel.Run) ([]kernel.Token, []kernel.AuditEntry, error) {

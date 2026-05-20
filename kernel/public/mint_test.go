@@ -369,6 +369,125 @@ func TestMintFromCapturedReadSuccess(t *testing.T) {
 	}
 }
 
+func TestMintFromCapturedReadJSONPointerOutputPath(t *testing.T) {
+	t.Parallel()
+
+	source := sourceWithHash("fixture://bank.csv", []byte("id,amount\na,10.00\nb,20.00\n"))
+	run := kernel.Run{ID: "run_1", TenantID: "tenant_1", Status: kernel.RunRunning}
+	read := readResultWithCapturedRead(
+		run,
+		source,
+		kernel.SourceSelector{RowWindow: "2:3", HeaderRow: 1},
+		[]byte(`{"rows":[{"row":2,"cells":[{"column":1,"header":"id","value":"a"},{"column":2,"header":"amount","value":"10.00"}]},{"row":3,"cells":[{"column":1,"header":"id","value":"b"},{"column":2,"header":"amount","value":"20.00"}]}]}`),
+		json.RawMessage(`{"selector_mode":"row_window"}`),
+		json.RawMessage(`{"row_window":"2:3"}`),
+	).CapturedRead
+	binding := memio.NewBinding(source)
+
+	result, err := kernel.MintFromCapturedRead(
+		context.Background(),
+		binding,
+		binding,
+		binding,
+		&sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)}},
+		run,
+		kernel.MintFromCapturedReadRequest{CapturedRead: read, Source: source.Source, OutputPath: "/rows/1/cells/1/value"},
+	)
+	if err != nil {
+		t.Fatalf("MintFromCapturedRead() error = %v", err)
+	}
+	if result.Token.ValueCanonical != "20.000000000" {
+		t.Fatalf("Token.ValueCanonical = %s, want 20.000000000", result.Token.ValueCanonical)
+	}
+	if result.Token.Source.OutputPath != "/rows/1/cells/1/value" {
+		t.Fatalf("Token.Source.OutputPath = %s", result.Token.Source.OutputPath)
+	}
+}
+
+func TestMintFromCapturedReadJSONPointerFailures(t *testing.T) {
+	t.Parallel()
+
+	source := sourceWithHash("fixture://bank.csv", []byte("id,amount\na,10.00\n"))
+	run := kernel.Run{ID: "run_1", TenantID: "tenant_1", Status: kernel.RunRunning}
+	read := readResultWithCapturedRead(
+		run,
+		source,
+		kernel.SourceSelector{RowWindow: "2:2", HeaderRow: 1},
+		[]byte(`{"rows":[{"row":2,"cells":[{"column":1,"header":"id","value":"a"},{"column":2,"header":"amount","value":"10.00"}]}]}`),
+		json.RawMessage(`{"selector_mode":"row_window"}`),
+		json.RawMessage(`{"row_window":"2:2"}`),
+	).CapturedRead
+
+	tests := []struct {
+		name       string
+		outputPath string
+		wantErr    error
+	}{
+		{name: "missing", outputPath: "/rows/1/cells/1/value", wantErr: kernel.ErrOutputPathNotFound},
+		{name: "non numeric", outputPath: "/rows/0/cells/0/value", wantErr: kernel.ErrMintValueNotNumeric},
+		{name: "unsupported", outputPath: "$.rows[0].cells[1].value", wantErr: kernel.ErrUnsupportedOutputPath},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			binding := memio.NewBinding(source)
+			_, err := kernel.MintFromCapturedRead(
+				context.Background(),
+				binding,
+				binding,
+				binding,
+				&sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)}},
+				run,
+				kernel.MintFromCapturedReadRequest{CapturedRead: read, Source: source.Source, OutputPath: tt.outputPath},
+			)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("MintFromCapturedRead() error = %v, want %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestMintFromCapturedReadTokenIDIncludesOutputPath(t *testing.T) {
+	t.Parallel()
+
+	source := sourceWithHash("fixture://bank.csv", []byte("id,amount,fee\na,10.00,10.00\n"))
+	run := kernel.Run{ID: "run_1", TenantID: "tenant_1", Status: kernel.RunRunning}
+	read := readResultWithCapturedRead(
+		run,
+		source,
+		kernel.SourceSelector{RowWindow: "2:2", HeaderRow: 1},
+		[]byte(`{"rows":[{"row":2,"cells":[{"column":2,"header":"amount","value":"10.00"},{"column":3,"header":"fee","value":"10.00"}]}]}`),
+		json.RawMessage(`{"selector_mode":"row_window"}`),
+		json.RawMessage(`{"row_window":"2:2"}`),
+	).CapturedRead
+
+	mint := func(outputPath string) kernel.MintFromCapturedReadResult {
+		binding := memio.NewBinding(source)
+		result, err := kernel.MintFromCapturedRead(
+			context.Background(),
+			binding,
+			binding,
+			binding,
+			&sequenceClock{times: []time.Time{time.Date(2026, 5, 18, 12, 0, 0, 0, time.UTC)}},
+			run,
+			kernel.MintFromCapturedReadRequest{CapturedRead: read, Source: source.Source, OutputPath: outputPath},
+		)
+		if err != nil {
+			t.Fatalf("MintFromCapturedRead(%s) error = %v", outputPath, err)
+		}
+		return result
+	}
+
+	amount := mint("/rows/0/cells/0/value")
+	fee := mint("/rows/0/cells/1/value")
+	if amount.Token.ID == fee.Token.ID {
+		t.Fatalf("Token.ID should differ by output path: %s", amount.Token.ID)
+	}
+}
+
 func TestMintFromCapturedReadAuditDeterministic(t *testing.T) {
 	t.Parallel()
 

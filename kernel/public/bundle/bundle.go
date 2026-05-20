@@ -296,8 +296,8 @@ func normalizeState(state State) (State, error) {
 	if state.Run.ID == "" || state.Run.TenantID == "" {
 		return State{}, fmt.Errorf("%w: missing run identity", ErrTamperDetected)
 	}
-	if len(state.AuditEntries) != len(state.Tokens) || len(state.AuditEntries) != len(state.CapturedReads) {
-		return State{}, fmt.Errorf("%w: expected matching token, captured read, and audit counts", ErrTamperDetected)
+	if len(state.AuditEntries) != len(state.Tokens) || len(state.CapturedReads) == 0 || len(state.CapturedReads) > len(state.Tokens) {
+		return State{}, fmt.Errorf("%w: expected one audit per token and captured reads referenced by tokens", ErrTamperDetected)
 	}
 
 	readsByID := make(map[string]kernel.CapturedRead, len(state.CapturedReads))

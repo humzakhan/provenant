@@ -6,10 +6,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/gowebpki/jcs"
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/reconcile/engine"
@@ -249,6 +252,58 @@ func TestBindMintsAmountTokenFromCapturedReadAndVerifiesBundle(t *testing.T) {
 	}
 }
 
+func TestBindMintsAmountTokensFromRoutedCSVOutput(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(dir+"/left.csv", []byte("ID,Description,Amount,Currency\na,coffee,10.00,USD\nb,tea,20.00,USD\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(left) error = %v", err)
+	}
+	if err := os.WriteFile(dir+"/right.csv", []byte("ID,Description,Amount,Currency\na,coffee,10.00,USD\nb,tea,20.00,USD\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile(right) error = %v", err)
+	}
+
+	req := csvRouteRequest()
+	files, err := router.Route(context.Background(), req, router.Options{BaseDir: dir})
+	if err != nil {
+		t.Fatalf("Route() error = %v", err)
+	}
+	results, err := engine.Reconcile(context.Background(), req, files)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	bound, err := Bind(context.Background(), req, files, results, Options{})
+	if err != nil {
+		t.Fatalf("Bind() error = %v", err)
+	}
+	if err := bundle.Verify(bound.Bundle.Bytes); err != nil {
+		t.Fatalf("bundle.Verify() error = %v", err)
+	}
+
+	amountRefs := 0
+	for _, evidence := range bound.Evidence {
+		for _, ref := range evidence.ValueRefs {
+			if ref.Role != request.RoleAmount {
+				if ref.TokenID != "" || ref.OutputPath != "" {
+					t.Fatalf("non-amount ref received mint evidence: %#v", ref)
+				}
+				continue
+			}
+			amountRefs++
+			if ref.TokenID == "" {
+				t.Fatalf("amount ref missing token id: %#v", ref)
+			}
+			if ref.OutputPath != "/rows/0/cells/1/value" && ref.OutputPath != "/rows/1/cells/1/value" {
+				t.Fatalf("amount ref output path = %q", ref.OutputPath)
+			}
+		}
+	}
+	if amountRefs != 4 {
+		t.Fatalf("amount refs = %d, want 4", amountRefs)
+	}
+	if got, want := len(bound.Tokens), 4; got != want {
+		t.Fatalf("tokens = %d, want %d: %#v", got, want, bound.Tokens)
+	}
+}
+
 func TestBindBundleHashStableAcrossRepeatedBind(t *testing.T) {
 	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
 		ID:      "res_stable",
@@ -312,7 +367,7 @@ func TestBindMintEvidenceTamperFailsClosed(t *testing.T) {
 			}}}
 
 			_, err := Bind(context.Background(), testRequest(), files, set, Options{})
-			if err == nil || (!strings.Contains(err.Error(), "mint amount token") && !strings.Contains(err.Error(), "captured read value mismatch")) {
+			if err == nil || (!strings.Contains(err.Error(), "mint amount token") && !strings.Contains(err.Error(), "captured read value mismatch") && !strings.Contains(err.Error(), "cannot map captured read output path")) {
 				t.Fatalf("Bind error = %v, want fail-closed mint evidence failure", err)
 			}
 		})
@@ -320,6 +375,9 @@ func TestBindMintEvidenceTamperFailsClosed(t *testing.T) {
 }
 
 func TestBindNonMintableFieldsRemainCapturedReadOnly(t *testing.T) {
+	req := testRequest()
+	req.Reconcile.Mode = request.ModeExistence
+	req.Reconcile.Compare = nil
 	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
 		ID:      "res_non_mintable",
 		Outcome: engine.OutcomeMatched,
@@ -327,7 +385,7 @@ func TestBindNonMintableFieldsRemainCapturedReadOnly(t *testing.T) {
 		Right:   rowRef("right", "row:1"),
 	}}}
 
-	bound, err := Bind(context.Background(), testRequest(), testFiles(), set, Options{})
+	bound, err := Bind(context.Background(), req, testFiles(), set, Options{})
 	if err != nil {
 		t.Fatalf("Bind returned error: %v", err)
 	}
@@ -411,6 +469,44 @@ func testRequest() request.Request {
 	}
 }
 
+func csvRouteRequest() request.Request {
+	return request.Request{
+		Run: request.RunConfig{ID: "run-1", TenantID: "tenant-1"},
+		Files: []request.FileConfig{
+			csvRouteFile("left", "left.csv"),
+			csvRouteFile("right", "right.csv"),
+		},
+		Reconcile: request.ReconcileConfig{
+			Mode:    request.ModeExactMatch,
+			Left:    "left",
+			Right:   "right",
+			MatchOn: []string{"id"},
+			Compare: []string{"amount", "currency"},
+		},
+	}
+}
+
+func csvRouteFile(id, path string) request.FileConfig {
+	return request.FileConfig{
+		ID:      id,
+		Purpose: id,
+		Format:  request.FormatCSV,
+		Path:    path,
+		Reader:  request.ReaderExtractCSVRows,
+		Selector: request.SelectorConfig{
+			RowWindow: "2-3",
+			HeaderRow: 1,
+			Encoding:  "utf-8",
+			Dialect:   "excel",
+		},
+		Columns: request.Columns{
+			"id":       {Source: "ID", Role: request.RoleKey, Required: true},
+			"amount":   {Source: "Amount", Role: request.RoleAmount, Required: true, Numeric: &request.NumericConfig{Scale: 2, CurrencyField: "currency"}},
+			"currency": {Source: "Currency", Role: request.RoleCurrency, Required: true},
+		},
+	}
+}
+
 func testFiles() []router.NormalizedFile {
 	return []router.NormalizedFile{
 		testFile("left", "cr-left", []router.NormalizedRow{
@@ -442,6 +538,7 @@ func testMintableFiles(leftAmount, rightAmount string) []router.NormalizedFile {
 }
 
 func testFile(fileID, capturedReadID string, rows []router.NormalizedRow) router.NormalizedFile {
+	output := testRowsOutput(rows)
 	return router.NormalizedFile{
 		FileID:     fileID,
 		SourcePath: fileID + ".csv",
@@ -454,15 +551,58 @@ func testFile(fileID, capturedReadID string, rows []router.NormalizedRow) router
 			Selector:      kernel.SourceSelector{RowWindow: "2:"},
 			ReaderName:    request.ReaderExtractCSVRows,
 			ReaderVersion: "test",
+			Output:        output,
+			OutputSHA256:  sha256HexForTest(output),
 		},
 		Rows: rows,
 	}
 }
 
+func testRowsOutput(rows []router.NormalizedRow) json.RawMessage {
+	type cell struct {
+		Column int    `json:"column"`
+		Header string `json:"header"`
+		Value  string `json:"value"`
+	}
+	type row struct {
+		Row         int    `json:"row"`
+		WindowIndex int    `json:"window_index"`
+		Cells       []cell `json:"cells"`
+	}
+	payload := struct {
+		Rows []row `json:"rows"`
+	}{Rows: make([]row, 0, len(rows))}
+	for index, normalized := range rows {
+		payload.Rows = append(payload.Rows, row{
+			Row:         normalized.Position.Row,
+			WindowIndex: index,
+			Cells: []cell{
+				{Column: 1, Header: "ID", Value: normalized.Values["id"].Canonical},
+				{Column: 2, Header: "Amount", Value: normalized.Values["amount"].Canonical},
+			},
+		})
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		panic(err)
+	}
+	canonical, err := jcs.Transform(raw)
+	if err != nil {
+		panic(err)
+	}
+	return canonical
+}
+
 func testRow(rowKey, id, amount string) router.NormalizedRow {
+	rowNumber := 1
+	if suffix, ok := strings.CutPrefix(rowKey, "row:"); ok {
+		if parsed, err := strconv.Atoi(suffix); err == nil {
+			rowNumber = parsed
+		}
+	}
 	return router.NormalizedRow{
 		RowKey:   rowKey,
-		Position: router.RowPosition{Row: 1},
+		Position: router.RowPosition{Row: rowNumber},
 		Values: map[string]router.NormalizedValue{
 			"id":     testValue("id", request.RoleKey, "ID", id),
 			"amount": testValue("amount", request.RoleAmount, "Amount", amount),
