@@ -1,0 +1,8 @@
+{
+  "run": {
+    "id": "derivation_graph_scaled_run_1",
+    "tenant_id": "tenant_demo",
+    "status": "running"
+  },
+  "run_file": "<path-to-bundle-file>"
+}

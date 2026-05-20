@@ -23,11 +23,8 @@ package derivationgraph_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +38,7 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/kernel/public/trace"
+	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
 )
 
 // fixedDemoTime is the deterministic clock used for all CLI invocations.
@@ -55,21 +53,6 @@ var demoRun = kernel.Run{
 
 // dataDir is the path to the committed CSV source files.
 const dataDir = "data"
-
-// csvSelector builds a SourceSelector for one data row in a CSV file.
-// Row numbers are 1-indexed; header is at row 1, data rows start at row 2.
-// For a file with N data rows, dataRow ranges from 1..N, mapping to CSV row dataRow+1.
-// The CSV schema is: account(col 0), amount(col 1).
-// OutputPath "/rows/0/cells/1/value" extracts the amount column.
-func csvSelector(dataRow int) kernel.SourceSelector {
-	row := dataRow + 1 // skip header
-	return kernel.SourceSelector{
-		RowWindow: fmt.Sprintf("%d-%d", row, row),
-		HeaderRow: 1,
-		Dialect:   "excel",
-		Encoding:  "utf-8",
-	}
-}
 
 // csvOutputPath for the amount column (index 1: account=0, amount=1).
 const csvAmountOutputPath = "/rows/0/cells/1/value"
@@ -366,7 +349,7 @@ func runDemo(t *testing.T, runner cli.Runner, bundlePath string) tokenIDs {
 	t.Helper()
 
 	// 1. run start
-	runCLIInTest(t, runner, []string{"run", "start", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"run", "start", "--request", "-"}, map[string]any{
 		"run":      demoRun,
 		"run_file": bundlePath,
 	})
@@ -402,14 +385,14 @@ func runDemo(t *testing.T, runner cli.Runner, bundlePath string) tokenIDs {
 	operatingIncomeID := calcSubtract(t, runner, bundlePath, grossMarginID, totalOpexID)
 
 	// 12. submit-answer: label the operating_income token.
-	runCLIInTest(t, runner, []string{"submit-answer", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"submit-answer", "--request", "-"}, map[string]any{
 		"run_file": bundlePath,
 		"token_id": operatingIncomeID,
 		"label":    "operating_income",
 	})
 
 	// 13. run finish
-	runCLIInTest(t, runner, []string{"run", "finish", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"run", "finish", "--request", "-"}, map[string]any{
 		"run_file": bundlePath,
 	})
 
@@ -436,40 +419,14 @@ func mintCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath, filename stri
 	if err != nil {
 		t.Fatalf("ReadFile(%s): %v", path, err)
 	}
-	src := sourceWithHash("fixture://"+filename, data)
-
-	ids := make([]string, rowCount)
-	for i := 1; i <= rowCount; i++ {
-		out := runCLIInTest(t, runner, []string{"read-mint", "--request", "-"}, map[string]any{
-			"run_file": bundlePath,
-			"reader":   "extract.csv_rows",
-			"source":   src,
-			"run":      demoRun,
-			"read": kernel.ReadAndMintRequest{
-				SourcePath: src.Source.Path,
-				Selector:   csvSelector(i),
-				OutputPath: csvAmountOutputPath,
-				Unit:       "USD",
-			},
-		})
-		var resp struct {
-			Token kernel.Token `json:"token"`
-		}
-		if err := json.Unmarshal(out, &resp); err != nil {
-			t.Fatalf("unmarshal read-mint response (row %d of %s): %v", i, filename, err)
-		}
-		if resp.Token.ID == "" {
-			t.Fatalf("read-mint %s row %d: empty token ID", filename, i)
-		}
-		ids[i-1] = resp.Token.ID
-	}
-	return ids
+	src := testsupport.SourceWithHash("fixture://"+filename, data)
+	return testsupport.MintCSVRowTokens(t, runner, bundlePath, src, demoRun, rowCount, "", csvAmountOutputPath)
 }
 
 // calcFilterSumWhere calls filter.sum_where on the given input IDs.
 func calcFilterSumWhere(t *testing.T, runner cli.Runner, bundlePath string, inputs []string, field, op, value string) string {
 	t.Helper()
-	out := runCLIInTest(t, runner, []string{"calc", "--request", "-"}, map[string]any{
+	out := testsupport.RunCLIInTest(t, runner, []string{"calc", "--request", "-"}, map[string]any{
 		"run_file": bundlePath,
 		"op":       "filter.sum_where",
 		"inputs":   inputs,
@@ -479,70 +436,17 @@ func calcFilterSumWhere(t *testing.T, runner cli.Runner, bundlePath string, inpu
 			Value: value,
 		},
 	})
-	return extractTokenID(t, out)
+	return testsupport.ExtractTokenID(t, out)
 }
 
 // calcSubtract calls calc.subtract(a, b) and returns the derived token ID.
 func calcSubtract(t *testing.T, runner cli.Runner, bundlePath, aID, bID string) string {
 	t.Helper()
-	out := runCLIInTest(t, runner, []string{"calc", "--request", "-"}, map[string]any{
-		"run_file": bundlePath,
-		"op":       "calc.subtract",
-		"inputs":   []string{aID, bID},
-	})
-	return extractTokenID(t, out)
+	return testsupport.CalcSubtract(t, runner, bundlePath, aID, bID)
 }
 
 // calcSum calls calc.sum on the given input IDs.
 func calcSum(t *testing.T, runner cli.Runner, bundlePath string, inputs []string) string {
 	t.Helper()
-	out := runCLIInTest(t, runner, []string{"calc", "--request", "-"}, map[string]any{
-		"run_file": bundlePath,
-		"op":       "calc.sum",
-		"inputs":   inputs,
-	})
-	return extractTokenID(t, out)
-}
-
-// runCLIInTest invokes runner.Run with JSON body on stdin.
-// It uses the runner's injected clock for deterministic timestamps.
-// It fails the test if the call returns an error.
-func runCLIInTest(t *testing.T, runner cli.Runner, args []string, body any) []byte {
-	t.Helper()
-	reqBytes, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("Marshal(request): %v", err)
-	}
-	var stdout bytes.Buffer
-	if err := runner.Run(context.Background(), args, bytes.NewReader(reqBytes), &stdout); err != nil {
-		t.Fatalf("CLI %v error: %v\nbody: %s", args, err, reqBytes)
-	}
-	return stdout.Bytes()
-}
-
-// extractTokenID parses a calc or read-mint JSON response and returns the token ID.
-func extractTokenID(t *testing.T, data []byte) string {
-	t.Helper()
-	var resp struct {
-		Token kernel.Token `json:"token"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		t.Fatalf("unmarshal token response: %v\ndata: %s", err, data)
-	}
-	if resp.Token.ID == "" {
-		t.Fatalf("empty token ID in response: %s", data)
-	}
-	return resp.Token.ID
-}
-
-// sourceWithHash builds a kernel.SourceBytes with the computed SHA256.
-func sourceWithHash(path string, data []byte) kernel.SourceBytes {
-	sum := sha256.Sum256(data)
-	return kernel.SourceBytes{
-		Source: kernel.Source{
-			Path:   path,
-			SHA256: hex.EncodeToString(sum[:]),
-		},
-		Bytes: append([]byte(nil), data...),
-	}
+	return testsupport.CalcSum(t, runner, bundlePath, inputs)
 }

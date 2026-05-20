@@ -1,0 +1,5 @@
+{
+  "run_file": "<path-to-bundle-file>",
+  "op": "calc.subtract",
+  "inputs": ["<gross-revenue-token-id>", "<total-refunds-token-id>"]
+}

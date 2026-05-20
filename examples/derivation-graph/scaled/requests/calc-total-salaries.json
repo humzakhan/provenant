@@ -1,0 +1,5 @@
+{
+  "run_file": "<path-to-bundle-file>",
+  "op": "calc.sum",
+  "inputs": ["<payroll-salary-token-id-1>", "...", "<payroll-salary-token-id-100>"]
+}
