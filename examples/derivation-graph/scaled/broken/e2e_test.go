@@ -39,6 +39,8 @@ import (
 	"github.com/provenant/provenant/reconcile/engine"
 	"github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
+	"github.com/provenant/provenant/audit/pack"
+	"github.com/provenant/provenant/audit/report"
 
 	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
 )
@@ -735,4 +737,56 @@ func loadBrokenCSVSource(t *testing.T, filename string) kernel.SourceBytes {
 func mintBrokenCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath string, src kernel.SourceBytes, rowCount int, columnName string) []string {
 	t.Helper()
 	return testsupport.MintCSVRowTokens(t, runner, bundlePath, src, brokenRun, rowCount, columnName, csvProjectedOutputPath)
+}
+
+// ---------------------------------------------------------------------------
+// TestBrokenFauxbooksArtifact: produce the committed artifact directory
+// ---------------------------------------------------------------------------
+
+// TestBrokenFauxbooksArtifact builds the pack and writes report.html (with
+// absolute file:// paths) plus the four source CSVs into the broken artifact
+// directory. Gated by BUILD_ARTIFACT=1 so it does not run on every CI
+// invocation. This test does NOT diff against a golden.
+func TestBrokenFauxbooksArtifact(t *testing.T) {
+	if os.Getenv("BUILD_ARTIFACT") != "1" {
+		t.Skip("set BUILD_ARTIFACT=1 to regenerate the artifact directory")
+	}
+
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "broken.bundle.json")
+	packPath := filepath.Join(dir, "broken.pack.json")
+
+	runner := cli.Runner{Now: func() time.Time { return fixedBrokenTime }}
+	runBrokenDemo(t, runner, bundlePath)
+
+	// Build the pack.
+	testsupport.RunCLIFileArgs(t, runner, []string{"pack", "--bundle", bundlePath, "--out", packPath})
+
+	// Decode the pack into a Document.
+	packFile, err := os.Open(packPath)
+	if err != nil {
+		t.Fatalf("Open(pack): %v", err)
+	}
+	doc, err := pack.Decode(packFile)
+	packFile.Close()
+	if err != nil {
+		t.Fatalf("pack.Decode: %v", err)
+	}
+
+	// Artifact directory (committed to source).
+	artifactDir := filepath.Join(".", "artifact")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(artifact): %v", err)
+	}
+
+	// Copy the four source CSVs into the artifact directory.
+	csvFiles := []string{"expenses.csv", "payroll.csv", "refunds.csv", "revenue.csv"}
+	testsupport.CopyDataDirToArtifact(t, brokenDataDir, artifactDir, csvFiles...)
+
+	// Write report.html with absolute file:// paths.
+	if err := report.WriteArtifactReport(artifactDir, &doc); err != nil {
+		t.Fatalf("WriteArtifactReport: %v", err)
+	}
+
+	t.Logf("artifact written to %s", artifactDir)
 }

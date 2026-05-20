@@ -60,6 +60,8 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/kernel/public/trace"
+	"github.com/provenant/provenant/audit/pack"
+	"github.com/provenant/provenant/audit/report"
 	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
 )
 
@@ -519,4 +521,56 @@ const csvProjectedOutputPath = "/rows/0/cells/0/value"
 func mintScaledCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath string, src kernel.SourceBytes, rowCount int, columnName string) []string {
 	t.Helper()
 	return testsupport.MintCSVRowTokens(t, runner, bundlePath, src, scaledRun, rowCount, columnName, csvProjectedOutputPath)
+}
+
+// ---------------------------------------------------------------------------
+// TestScaledFauxbooksArtifact: produce the committed artifact directory
+// ---------------------------------------------------------------------------
+
+// TestScaledFauxbooksArtifact builds the pack and writes report.html (with
+// absolute file:// paths) plus the four source CSVs into the artifact directory.
+// Gated by BUILD_ARTIFACT=1 so it does not run on every CI invocation.
+// This test does NOT diff against a golden — it just writes the artifact directory.
+func TestScaledFauxbooksArtifact(t *testing.T) {
+	if os.Getenv("BUILD_ARTIFACT") != "1" {
+		t.Skip("set BUILD_ARTIFACT=1 to regenerate the artifact directory")
+	}
+
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "scaled.bundle.json")
+	packPath := filepath.Join(dir, "scaled.pack.json")
+
+	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
+	runScaledDemo(t, runner, bundlePath)
+
+	// Build the pack.
+	testsupport.RunCLIFileArgs(t, runner, []string{"pack", "--bundle", bundlePath, "--out", packPath})
+
+	// Decode the pack into a Document.
+	packFile, err := os.Open(packPath)
+	if err != nil {
+		t.Fatalf("Open(pack): %v", err)
+	}
+	doc, err := pack.Decode(packFile)
+	packFile.Close()
+	if err != nil {
+		t.Fatalf("pack.Decode: %v", err)
+	}
+
+	// Artifact directory (committed to source).
+	artifactDir := filepath.Join(".", "artifact")
+	if err := os.MkdirAll(artifactDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(artifact): %v", err)
+	}
+
+	// Copy the four source CSVs into the artifact directory.
+	csvFiles := []string{"expenses.csv", "payroll.csv", "refunds.csv", "revenue.csv"}
+	testsupport.CopyDataDirToArtifact(t, dataDir, artifactDir, csvFiles...)
+
+	// Write report.html with absolute file:// paths.
+	if err := report.WriteArtifactReport(artifactDir, &doc); err != nil {
+		t.Fatalf("WriteArtifactReport: %v", err)
+	}
+
+	t.Logf("artifact written to %s", artifactDir)
 }

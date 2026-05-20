@@ -14,6 +14,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -134,6 +137,41 @@ func CalcAdd(t *testing.T, runner cli.Runner, bundlePath, aID, bID string) strin
 		"inputs":   []string{aID, bID},
 	})
 	return ExtractTokenID(t, out)
+}
+
+// CopyDataDirToArtifact copies the named files from srcDir into dstDir.
+// It fails the test immediately if any file cannot be read or written.
+// Use this to place source CSVs beside a report.html in an artifact directory.
+func CopyDataDirToArtifact(t *testing.T, srcDir, dstDir string, files ...string) {
+	t.Helper()
+	if err := os.MkdirAll(dstDir, 0o755); err != nil {
+		t.Fatalf("CopyDataDirToArtifact: mkdir %q: %v", dstDir, err)
+	}
+	for _, name := range files {
+		src := filepath.Join(srcDir, name)
+		dst := filepath.Join(dstDir, name)
+		if err := copyFile(src, dst); err != nil {
+			t.Fatalf("CopyDataDirToArtifact: copy %q → %q: %v", src, dst, err)
+		}
+	}
+}
+
+// copyFile copies a single file from src to dst, creating dst with mode 0o644.
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Close()
 }
 
 // MintCSVRowTokens mints one token per data row from the given source.
