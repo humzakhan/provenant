@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -8,8 +9,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -374,22 +377,6 @@ func TestRunnerReconcilePipelineFailures(t *testing.T) {
 		}
 	})
 
-	t.Run("unavailable writer leaves no output", func(t *testing.T) {
-		t.Parallel()
-
-		dir := t.TempDir()
-		requestPath := filepath.Join(dir, "request.json")
-		outPath := filepath.Join(dir, "report.zip")
-		writeReconcileFixture(t, dir, requestPath)
-
-		var stdout bytes.Buffer
-		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath, "--workdir", dir}, strings.NewReader(""), &stdout)
-		if err == nil || err.Error() != "report_failed: report writer unavailable" {
-			t.Fatalf("Run() error = %v, want report writer unavailable", err)
-		}
-		assertNoOutput(t, stdout, outPath)
-	})
-
 	t.Run("workdir defaults to request directory", func(t *testing.T) {
 		t.Parallel()
 
@@ -399,12 +386,51 @@ func TestRunnerReconcilePipelineFailures(t *testing.T) {
 		writeReconcileFixture(t, dir, requestPath)
 
 		var stdout bytes.Buffer
-		err := cli.Runner{}.Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout)
-		if err == nil || err.Error() != "report_failed: report writer unavailable" {
-			t.Fatalf("Run() error = %v, want pipeline to reach unavailable writer", err)
+		if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath}, strings.NewReader(""), &stdout); err != nil {
+			t.Fatalf("Run() error = %v", err)
 		}
-		assertNoOutput(t, stdout, outPath)
+		assertNoStdoutAndReportExists(t, stdout, outPath)
 	})
+
+	t.Run("overwrite replaces existing output", func(t *testing.T) {
+		t.Parallel()
+
+		dir := t.TempDir()
+		requestPath := filepath.Join(dir, "request.json")
+		outPath := filepath.Join(dir, "report.zip")
+		writeReconcileFixture(t, dir, requestPath)
+		writeTestFile(t, outPath, []byte("existing"))
+
+		var stdout bytes.Buffer
+		if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath, "--workdir", dir, "--overwrite"}, strings.NewReader(""), &stdout); err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+		assertNoStdoutAndReportExists(t, stdout, outPath)
+	})
+}
+
+func TestRunnerReconcileWritesReportPackage(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	requestPath := filepath.Join(dir, "request.json")
+	outPath := filepath.Join(dir, "report.zip")
+	writeReconcileFixture(t, dir, requestPath)
+
+	var stdout bytes.Buffer
+	if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", requestPath, "--out", outPath, "--workdir", dir}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	assertNoStdoutAndReportExists(t, stdout, outPath)
+
+	entries := readZipEntries(t, outPath)
+	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+	if got := orderedReportNames(entries); !reflect.DeepEqual(got, wantNames) {
+		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
+	}
+	if len(entries["manifest.json"]) == 0 {
+		t.Fatal("manifest.json is empty")
+	}
 }
 
 func TestMainExitCodes(t *testing.T) {
@@ -581,6 +607,55 @@ func assertNoOutput(t *testing.T, stdout bytes.Buffer, outPath string) {
 	if _, err := os.Stat(outPath); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Stat(%s) error = %v, want not exist", outPath, err)
 	}
+}
+
+func assertNoStdoutAndReportExists(t *testing.T, stdout bytes.Buffer, outPath string) {
+	t.Helper()
+
+	if stdout.Len() != 0 {
+		t.Fatalf("stdout length = %d, want 0", stdout.Len())
+	}
+	if info, err := os.Stat(outPath); err != nil {
+		t.Fatalf("Stat(%s) error = %v", outPath, err)
+	} else if info.Size() == 0 {
+		t.Fatalf("Stat(%s).Size = 0, want non-empty report", outPath)
+	}
+}
+
+func readZipEntries(t *testing.T, path string) map[string][]byte {
+	t.Helper()
+
+	reader, err := zip.OpenReader(path)
+	if err != nil {
+		t.Fatalf("zip.OpenReader(%s) error = %v", path, err)
+	}
+	defer reader.Close()
+
+	entries := map[string][]byte{}
+	for _, file := range reader.File {
+		body, err := file.Open()
+		if err != nil {
+			t.Fatalf("open %s error = %v", file.Name, err)
+		}
+		data, err := io.ReadAll(body)
+		_ = body.Close()
+		if err != nil {
+			t.Fatalf("read %s error = %v", file.Name, err)
+		}
+		entries[file.Name] = data
+	}
+	return entries
+}
+
+func orderedReportNames(entries map[string][]byte) []string {
+	ordered := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+	got := make([]string, 0, len(entries))
+	for _, name := range ordered {
+		if _, ok := entries[name]; ok {
+			got = append(got, name)
+		}
+	}
+	return got
 }
 
 func mustMarshalRequest(v any) string {

@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -18,6 +19,7 @@ import (
 	"github.com/provenant/provenant/kernel/public/memio"
 	"github.com/provenant/provenant/reconcile/engine"
 	"github.com/provenant/provenant/reconcile/provenance"
+	"github.com/provenant/provenant/reconcile/report"
 	reconrequest "github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
 )
@@ -39,7 +41,6 @@ var (
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
-	errReportUnavailable  = errors.New("report writer unavailable")
 )
 
 type packetErrorCategory string
@@ -76,13 +77,21 @@ func newPacketError(category packetErrorCategory, err error) error {
 	return userError(packetError{category: category, err: err})
 }
 
-type reconcileReportWriter func(context.Context, string, *provenance.ProvenancedResultSet) error
-
-var writeReconcileReport reconcileReportWriter = unavailableReconcileReportWriter
-
-func unavailableReconcileReportWriter(context.Context, string, *provenance.ProvenancedResultSet) error {
-	return errReportUnavailable
+type outputWriteError struct {
+	err error
 }
+
+func (e outputWriteError) Error() string { return e.err.Error() }
+
+func (e outputWriteError) Unwrap() error { return e.err }
+
+type outputExistsError struct {
+	err error
+}
+
+func (e outputExistsError) Error() string { return e.err.Error() }
+
+func (e outputExistsError) Unwrap() error { return e.err }
 
 type ErrorCategory string
 
@@ -195,7 +204,7 @@ func (r Runner) runReconcile(ctx context.Context, args []string, stdin io.Reader
 	if err != nil {
 		return newPacketError(packetErrorEvidenceFailed, err)
 	}
-	if err := writeReconcileReport(ctx, flags.out, bound); err != nil {
+	if err := writeReconcileReportFile(ctx, flags.out, flags.overwrite, bound); err != nil {
 		return normalizeReportError(err)
 	}
 	return nil
@@ -229,10 +238,90 @@ func normalizeRouteError(err error) error {
 }
 
 func normalizeReportError(err error) error {
-	if errors.Is(err, errReportUnavailable) {
-		return newPacketError(packetErrorReportFailed, errReportUnavailable)
+	var existsErr outputExistsError
+	if errors.As(err, &existsErr) {
+		return newPacketError(packetErrorOutputExists, err)
+	}
+	var writeErr outputWriteError
+	if errors.As(err, &writeErr) {
+		return newPacketError(packetErrorOutputWriteFailed, err)
+	}
+	if strings.Contains(err.Error(), "reconcile_report_failed") {
+		return newPacketError(packetErrorReportFailed, err)
 	}
 	return newPacketError(packetErrorOutputWriteFailed, err)
+}
+
+func writeReconcileReportFile(ctx context.Context, path string, overwrite bool, result *provenance.ProvenancedResultSet) error {
+	var buf bytes.Buffer
+	if err := report.Write(ctx, &buf, result); err != nil {
+		return err
+	}
+
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return outputWriteError{err: fmt.Errorf("create temp report: %w", err)}
+	}
+	tmpPath := tmp.Name()
+	ok := false
+	defer func() {
+		if !ok {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmp.Write(buf.Bytes()); err != nil {
+		_ = tmp.Close()
+		return outputWriteError{err: fmt.Errorf("write temp report: %w", err)}
+	}
+	if err := tmp.Close(); err != nil {
+		return outputWriteError{err: fmt.Errorf("close temp report: %w", err)}
+	}
+	if err := finalizeReconcileReportFile(tmpPath, path, overwrite); err != nil {
+		return err
+	}
+	ok = true
+	return nil
+}
+
+func finalizeReconcileReportFile(tmpPath, path string, overwrite bool) error {
+	if overwrite {
+		if err := os.Rename(tmpPath, path); err != nil {
+			return outputWriteError{err: fmt.Errorf("rename temp report: %w", err)}
+		}
+		return nil
+	}
+
+	in, err := os.Open(tmpPath)
+	if err != nil {
+		return outputWriteError{err: fmt.Errorf("open temp report: %w", err)}
+	}
+	defer in.Close()
+
+	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return outputExistsError{err: fmt.Errorf("%s already exists", path)}
+		}
+		return outputWriteError{err: fmt.Errorf("create report: %w", err)}
+	}
+	removeOut := true
+	defer func() {
+		if removeOut {
+			_ = os.Remove(path)
+		}
+	}()
+
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return outputWriteError{err: fmt.Errorf("write report: %w", err)}
+	}
+	if err := out.Close(); err != nil {
+		return outputWriteError{err: fmt.Errorf("close report: %w", err)}
+	}
+	removeOut = false
+	return nil
 }
 
 func parseReconcileFlags(args []string) (reconcileFlags, error) {
