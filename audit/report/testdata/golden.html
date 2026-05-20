@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Provenant Audit Report</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;font-size:14px;color:#1a1a1a;background:#f8f8f8;padding:24px}
+h1{font-size:20px;margin-bottom:4px}
+h2{font-size:15px;margin:20px 0 8px;border-bottom:1px solid #ddd;padding-bottom:4px}
+.meta{color:#555;font-size:12px;margin-bottom:20px}
+.tiles{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px}
+.tile{background:#fff;border:1px solid #ddd;border-radius:6px;padding:12px 16px;min-width:120px}
+.tile-label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.04em}
+.tile-value{font-size:22px;font-weight:600;margin-top:4px}
+.tile-ok .tile-value{color:#2a7a2a}
+.tile-warn .tile-value{color:#b87a00}
+.tile-error .tile-value{color:#b00020}
+.banner-ok{background:#e6f4e6;border:1px solid #2a7a2a;color:#2a7a2a;padding:8px 14px;border-radius:4px;margin-bottom:12px;font-weight:600}
+.banner-violated{background:#fde8e8;border:1px solid #b00020;color:#b00020;padding:8px 14px;border-radius:4px;margin-bottom:12px;font-weight:600}
+.table-plain{width:100%;border-collapse:collapse;font-size:13px}
+.table-plain th{background:#f0f0f0;text-align:left;padding:6px 10px;border:1px solid #ddd;font-weight:600}
+.table-plain td{padding:5px 10px;border:1px solid #e0e0e0;vertical-align:top;word-break:break-all}
+.table-plain tr:nth-child(even) td{background:#fafafa}
+.mono{font-family:ui-monospace,monospace;font-size:12px}
+.kv{display:grid;grid-template-columns:160px 1fr;gap:4px 12px;margin-bottom:12px}
+.kv-label{color:#555;font-size:12px}
+.kv-value{font-family:ui-monospace,monospace;font-size:12px;word-break:break-all}
+.status-ok{color:#2a7a2a;font-weight:600}
+.status-broken{color:#b00020;font-weight:600}
+</style>
+</head>
+<body>
+
+<h1>Provenant Audit Report</h1>
+<div class="meta">
+  <span class="mono">aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</span>
+  &mdash; schema <span class="mono">provenant.audit.pack/v1</span>
+</div>
+
+<div class="kv">
+  <span class="kv-label">Run ID</span><span class="kv-value">test-run-1</span>
+  <span class="kv-label">Tenant ID</span><span class="kv-value">tenant-test</span>
+</div>
+
+<h2>Summary</h2>
+<div class="tiles">
+  <div class="tile">
+    <div class="tile-label">Tokens</div>
+    <div class="tile-value">3</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Captured Reads</div>
+    <div class="tile-value">2</div>
+  </div>
+  <div class="tile">
+    <div class="tile-label">Audit Entries</div>
+    <div class="tile-value">4</div>
+  </div>
+  
+  
+  <div class="tile tile-ok">
+    <div class="tile-label">Submitted Answer</div>
+    <div class="tile-value">300.000000000</div>
+    <div class="tile-label">USD</div>
+  </div>
+  
+</div>
+
+
+<h2>Submitted Answer</h2>
+<div class="kv">
+  <span class="kv-label">Token ID</span><span class="kv-value">tok-derived-1</span>
+  <span class="kv-label">Value</span><span class="kv-value">300.000000000</span>
+  <span class="kv-label">Unit</span><span class="kv-value">USD</span>
+  <span class="kv-label">Provenance</span><span class="kv-value">grounded — no literal value in request</span>
+</div>
+
+
+
+
+<h2>Derivation Graph</h2>
+
+  
+  <div class="banner-ok">Contribution invariant: OK</div>
+  
+
+
+<table class="table-plain">
+  <thead><tr><th>Token ID</th><th>Kind</th><th>Operation</th><th>Value</th><th>Unit</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td class="mono" style="padding-left:0px">tok-derived-1</td>
+    <td>derived</td>
+    <td class="mono">calc.add</td>
+    <td class="mono">300.000000000</td>
+    <td>USD</td>
+  </tr>
+  
+  <tr>
+    <td class="mono" style="padding-left:24px">tok-leaf-1</td>
+    <td>leaf</td>
+    <td class="mono"></td>
+    <td class="mono">100.000000000</td>
+    <td>USD</td>
+  </tr>
+  
+  <tr>
+    <td class="mono" style="padding-left:24px">tok-leaf-2</td>
+    <td>leaf</td>
+    <td class="mono"></td>
+    <td class="mono">200.000000000</td>
+    <td>USD</td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Captured Reads</h2>
+
+<table class="table-plain">
+  <thead><tr><th>Source Name</th><th>Selector</th><th>SHA256</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>data.json</td>
+    <td class="mono">ptr=/a</td>
+    <td class="mono">aaaa000000000000…</td>
+  </tr>
+  
+  <tr>
+    <td>data.json</td>
+    <td class="mono">ptr=/b</td>
+    <td class="mono">bbbb000000000000…</td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Audit Chain</h2>
+<p>Entries: 4 &mdash; Prev-hash continuity:
+  
+  <span class="status-ok">OK</span>
+  
+</p>
+
+<table class="table-plain" style="margin-top:8px;max-width:500px">
+  <thead><tr><th>Seq</th><th>Kind</th></tr></thead>
+  <tbody>
+  
+  <tr><td class="mono">1</td><td class="mono">run_started</td></tr>
+  
+  <tr><td class="mono">2</td><td class="mono">token_mint</td></tr>
+  
+  <tr><td class="mono">3</td><td class="mono">answer_submitted</td></tr>
+  
+  <tr><td class="mono">4</td><td class="mono">run_completed</td></tr>
+  
+  </tbody>
+</table>
+
+
+<h2>Manifest</h2>
+
+<table class="table-plain">
+  <thead><tr><th>Artifact</th><th>SHA256</th></tr></thead>
+  <tbody>
+  
+  <tr>
+    <td>bundle</td>
+    <td class="mono">aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</td>
+  </tr>
+  
+  </tbody>
+</table>
+
+
+</body>
+</html>
