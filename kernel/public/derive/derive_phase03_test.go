@@ -162,9 +162,9 @@ func TestRoundHalfEvenBoundaryViaDeriveEngine(t *testing.T) {
 		scale int
 		want  string
 	}{
-		{"2.5", 0, "0.000000000"},   // 2.5 → 2 at scale 0, then FormatCanonical pads to 9
-		{"3.5", 0, "4.000000000"},   // 3.5 → 4
-		{"-2.5", 0, "0.000000000"},  // -2.5 → -2 (canonical drops the sign on zero)
+		{"2.5", 0, "2.000000000"},  // banker's: 2.5 → 2 (even neighbor), padded by FormatCanonical
+		{"3.5", 0, "4.000000000"},  // banker's: 3.5 → 4 (even neighbor)
+		{"-2.5", 0, "-2.000000000"}, // banker's: -2.5 → -2 (even neighbor)
 	}
 
 	for _, tt := range tests {
@@ -192,7 +192,9 @@ func TestRoundHalfEvenBoundaryViaDeriveEngine(t *testing.T) {
 			if res.Token.Unit != "USD" {
 				t.Errorf("Unit = %q, want USD", res.Token.Unit)
 			}
-			_ = res
+			if res.Token.ValueCanonical != tt.want {
+				t.Errorf("ValueCanonical = %q, want %q", res.Token.ValueCanonical, tt.want)
+			}
 		})
 	}
 }
