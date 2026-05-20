@@ -274,6 +274,129 @@ func TestReconcileAmountToleranceShuffledInputOrdering(t *testing.T) {
 	}
 }
 
+func TestReconcileOneToManyOutcomes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		left     []router.NormalizedRow
+		right    []router.NormalizedRow
+		outcomes []Outcome
+	}{
+		{
+			name:     "exact sum matched",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "USD")},
+			outcomes: []Outcome{OutcomeMatched},
+		},
+		{
+			name:     "sum mismatch",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.02", "USD")},
+			outcomes: []Outcome{OutcomeMismatch},
+		},
+		{
+			name:     "missing parent and children",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A2", "30.00", "USD")},
+			outcomes: []Outcome{OutcomeMissingRight, OutcomeMissingLeft},
+		},
+		{
+			name:     "duplicate parent group key",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD"), row("l2", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "USD")},
+			outcomes: []Outcome{OutcomeDuplicateKey, OutcomeDuplicateKey},
+		},
+		{
+			name:     "malformed child amount invalid record",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "bad", "USD")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMissingRight},
+		},
+		{
+			name:     "currency mismatch",
+			left:     []router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "EUR")},
+			outcomes: []Outcome{OutcomeMismatch},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			set, err := Reconcile(context.Background(), oneToManyRequest(), files(tt.left, tt.right))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if got := outcomes(set.Results); !reflect.DeepEqual(got, tt.outcomes) {
+				t.Fatalf("outcomes = %#v, want %#v; results = %#v", got, tt.outcomes, set.Results)
+			}
+		})
+	}
+}
+
+func TestReconcileOneToManyMalformedAmountReason(t *testing.T) {
+	t.Parallel()
+
+	set, err := Reconcile(context.Background(), oneToManyRequest(), files(
+		[]router.NormalizedRow{row("l1", "A1", "30.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "bad", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	for _, result := range set.Results {
+		if result.Outcome == OutcomeInvalidRecord && strings.Contains(result.Reason, "malformed amount field") {
+			return
+		}
+	}
+	t.Fatalf("results = %#v, want invalid_record with malformed amount reason", set.Results)
+}
+
+func TestReconcileOneToManyUsesConfiguredTolerance(t *testing.T) {
+	t.Parallel()
+
+	req := oneToManyRequest()
+	req.Reconcile.Tolerance = &request.ToleranceConfig{Amount: "0.01"}
+	set, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "30.01", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if got := outcomes(set.Results); !reflect.DeepEqual(got, []Outcome{OutcomeMatched}) {
+		t.Fatalf("outcomes = %#v, want matched; results = %#v", got, set.Results)
+	}
+}
+
+func TestReconcileOneToManyShuffledInputOrdering(t *testing.T) {
+	t.Parallel()
+
+	req := oneToManyRequest()
+	ordered, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "30.00", "USD"), row("l2", "A2", "15.00", "USD"), row("l3", "A3", "40.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "10.00", "USD"), row("r2", "A1", "20.00", "USD"), row("r3", "A2", "14.99", "USD"), row("r4", "A4", "40.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() ordered error = %v", err)
+	}
+	shuffled, err := Reconcile(context.Background(), req, []router.NormalizedFile{
+		{FileID: "right", Rows: []router.NormalizedRow{row("r4", "A4", "40.00", "USD"), row("r2", "A1", "20.00", "USD"), row("r3", "A2", "14.99", "USD"), row("r1", "A1", "10.00", "USD")}},
+		{FileID: "left", Rows: []router.NormalizedRow{row("l3", "A3", "40.00", "USD"), row("l1", "A1", "30.00", "USD"), row("l2", "A2", "15.00", "USD")}},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() shuffled error = %v", err)
+	}
+	if !reflect.DeepEqual(resultIDs(ordered.Results), resultIDs(shuffled.Results)) {
+		t.Fatalf("result IDs changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(outcomes(ordered.Results), outcomes(shuffled.Results)) {
+		t.Fatalf("outcomes changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
 func TestReconcileExistenceOutcomes(t *testing.T) {
 	t.Parallel()
 
@@ -515,6 +638,17 @@ func existenceRequest() request.Request {
 	req := exactRequest()
 	req.Reconcile.Mode = request.ModeExistence
 	req.Reconcile.Compare = nil
+	return req
+}
+
+func oneToManyRequest() request.Request {
+	req := exactRequest()
+	req.Files = []request.FileConfig{
+		{ID: "left", Columns: columns()},
+		{ID: "right", Columns: columns()},
+	}
+	req.Reconcile.Mode = request.ModeOneToMany
+	req.Reconcile.Group = &request.GroupConfig{LeftKey: []string{"transaction_id"}, RightKey: []string{"transaction_id"}}
 	return req
 }
 
