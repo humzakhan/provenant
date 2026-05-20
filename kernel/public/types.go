@@ -211,6 +211,16 @@ type PayloadEnvelope struct {
 	HashInputCanonical []byte          `json:"hash_input_canonical,omitempty"`
 }
 
+// RowPredicate is a fixed-shape predicate tested against row-shaped source
+// metadata. It is honored only by the filter.sum_where op; all other ops
+// ignore it. Op must be one of "eq" or "in".
+type RowPredicate struct {
+	Field  string   `json:"field"`            // e.g. "row.account", "row.region"
+	Op     string   `json:"op"`               // "eq" or "in"
+	Value  string   `json:"value,omitempty"`  // used when Op == "eq"
+	Values []string `json:"values,omitempty"` // used when Op == "in"
+}
+
 // ReadResult is the source-reader output plus replay evidence from one read.
 type ReadResult struct {
 	Output       json.RawMessage `json:"output"`
