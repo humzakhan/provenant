@@ -238,6 +238,23 @@ func TestDerivedTokenNegativeCases(t *testing.T) {
 			},
 		},
 		{
+			name: "mixed Source and Derivation: leaf token has non-nil Derivation",
+			mutate: func(t *testing.T, doc *bundleDocument) {
+				// The first token in the deterministic-sorted slice is the leaf.
+				// Attach a Derivation to it so the leaf-mint validator rejects.
+				for i, tok := range doc.Tokens {
+					if tok.Derivation == nil {
+						doc.Tokens[i].Derivation = &kernel.Derivation{
+							Operation: "calc.add",
+							Inputs:    []string{tok.ID},
+							Evaluated: tok.ValueCanonical,
+						}
+						break
+					}
+				}
+			},
+		},
+		{
 			name: "mixed Source and Derivation: derived token has non-zero Source",
 			mutate: func(t *testing.T, doc *bundleDocument) {
 				for i, tok := range doc.Tokens {

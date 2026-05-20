@@ -202,6 +202,12 @@ func TestVerifyRejectsUnreferencedCapturedRead(t *testing.T) {
 	}
 }
 
+// TestReplayIgnoresUnauditedTokenFields asserts that unaudited but
+// invariant-safe token fields (such as CreatedAt) are not trusted across the
+// bundle boundary: Replay reconstructs them deterministically from audit
+// payloads. Fields that would violate the Token leaf-vs-derived invariant
+// (Derivation set on a token whose audit kind is token_mint) are rejected
+// outright — see TestReplayRejectsLeafTokenWithDerivation.
 func TestReplayIgnoresUnauditedTokenFields(t *testing.T) {
 	t.Parallel()
 
@@ -209,11 +215,6 @@ func TestReplayIgnoresUnauditedTokenFields(t *testing.T) {
 	doc := decodeDocument(t, mustEmitState(t, snapshotState(t, binding, run)))
 
 	doc.Tokens[0].CreatedAt = time.Date(2030, 1, 2, 3, 4, 5, 0, time.UTC)
-	doc.Tokens[0].Derivation = &kernel.Derivation{
-		Operation: "sum",
-		Inputs:    []string{"tok_a", "tok_b"},
-		FormulaID: "arith.sum",
-	}
 
 	bundleBytes := encodeDocument(t, doc)
 	if err := bundle.Verify(bundleBytes); err != nil {
@@ -227,8 +228,27 @@ func TestReplayIgnoresUnauditedTokenFields(t *testing.T) {
 	if !replayed.Tokens[0].CreatedAt.IsZero() {
 		t.Fatalf("Replay() token CreatedAt = %s, want zero", replayed.Tokens[0].CreatedAt)
 	}
-	if replayed.Tokens[0].Derivation != nil {
-		t.Fatalf("Replay() token Derivation = %#v, want nil", replayed.Tokens[0].Derivation)
+}
+
+// TestReplayRejectsLeafTokenWithDerivation asserts the Phase 01 invariant
+// that a token minted via token_mint must not also carry a Derivation
+// (the leaf-vs-derived invariant documented on kernel.Token).
+func TestReplayRejectsLeafTokenWithDerivation(t *testing.T) {
+	t.Parallel()
+
+	run, binding := buildSingleMintState(t)
+	doc := decodeDocument(t, mustEmitState(t, snapshotState(t, binding, run)))
+
+	doc.Tokens[0].Derivation = &kernel.Derivation{
+		Operation: "sum",
+		Inputs:    []string{"tok_a", "tok_b"},
+		FormulaID: "arith.sum",
+		Evaluated: doc.Tokens[0].ValueCanonical,
+	}
+
+	err := bundle.Verify(encodeDocument(t, doc))
+	if !errors.Is(err, bundle.ErrTamperDetected) {
+		t.Fatalf("Verify() error = %v, want %v", err, bundle.ErrTamperDetected)
 	}
 }
 

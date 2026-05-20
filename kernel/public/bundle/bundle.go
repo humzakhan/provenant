@@ -439,6 +439,11 @@ func normalizeState(state State) (State, error) {
 func validateTokenAgainstPayload(token kernel.Token, payload tokenMintPayload, run kernel.Run, read kernel.CapturedRead, evidence phaseone.MintEvidence) error {
 	want := deterministicToken(run, read, payload, evidence)
 	switch {
+	case token.Derivation != nil:
+		// Leaf tokens minted from a captured read must not carry a Derivation.
+		// This enforces the Token-shape invariant documented on kernel.Token:
+		// exactly one of Source.CapturedReadID or Derivation must be set.
+		return fmt.Errorf("%w: leaf token %s must not carry Derivation", ErrTamperDetected, token.ID)
 	case token.ID != want.ID:
 		return fmt.Errorf("%w: token id mismatch for %s", ErrTamperDetected, token.ID)
 	case token.RunID != want.RunID:
