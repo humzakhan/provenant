@@ -66,12 +66,16 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Reconcile.Mode != request.ModeExactMatch && req.Reconcile.Mode != request.ModeAmountTolerance {
+	if req.Reconcile.Mode != request.ModeExactMatch && req.Reconcile.Mode != request.ModeAmountTolerance && req.Reconcile.Mode != request.ModeExistence {
 		return nil, fmt.Errorf("unsupported_reconcile_mode: %s", req.Reconcile.Mode)
 	}
 	plan, err := comparisonPlanFor(req)
 	if err != nil {
 		return nil, err
+	}
+	compare := append([]string(nil), req.Reconcile.Compare...)
+	if req.Reconcile.Mode == request.ModeExistence {
+		compare = nil
 	}
 	left, right, err := selectedFiles(req, files)
 	if err != nil {
@@ -84,11 +88,11 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 		LeftFileID:  left.FileID,
 		RightFileID: right.FileID,
 		MatchOn:     append([]string(nil), req.Reconcile.MatchOn...),
-		Compare:     append([]string(nil), req.Reconcile.Compare...),
+		Compare:     compare,
 	}
 
-	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, req.Reconcile.Compare, plan)
-	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, req.Reconcile.Compare, plan)
+	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, compare, plan)
+	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, compare, plan)
 	set.Results = append(set.Results, leftInvalid...)
 	set.Results = append(set.Results, rightInvalid...)
 
@@ -108,6 +112,8 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 			set.Results = append(set.Results, resultFor(OutcomeMissingLeft, nil, &rightGroup[0], nil, ""))
 		case !rightOK:
 			set.Results = append(set.Results, resultFor(OutcomeMissingRight, &leftGroup[0], nil, nil, ""))
+		case req.Reconcile.Mode == request.ModeExistence:
+			set.Results = append(set.Results, resultFor(OutcomeMatched, &leftGroup[0], &rightGroup[0], nil, ""))
 		default:
 			diffs, reason := compareRows(leftGroup[0].row, rightGroup[0].row, req.Reconcile.Compare, plan)
 			outcome := OutcomeMatched

@@ -274,6 +274,105 @@ func TestReconcileAmountToleranceShuffledInputOrdering(t *testing.T) {
 	}
 }
 
+func TestReconcileExistenceOutcomes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		left     []router.NormalizedRow
+		right    []router.NormalizedRow
+		outcomes []Outcome
+	}{
+		{
+			name:     "exists both sides",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "11.00", "EUR")},
+			outcomes: []Outcome{OutcomeMatched},
+		},
+		{
+			name:     "missing left and right",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A2", "10.00", "USD")},
+			outcomes: []Outcome{OutcomeMissingRight, OutcomeMissingLeft},
+		},
+		{
+			name:     "duplicate key",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A1", "11.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A1", "12.00", "USD")},
+			outcomes: []Outcome{OutcomeDuplicateKey, OutcomeDuplicateKey},
+		},
+		{
+			name:     "invalid empty key",
+			left:     []router.NormalizedRow{emptyKeyRow("l1")},
+			right:    []router.NormalizedRow{row("r1", "A1", "10.00", "USD")},
+			outcomes: []Outcome{OutcomeMissingLeft, OutcomeInvalidRecord},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			set, err := Reconcile(context.Background(), existenceRequest(), files(tt.left, tt.right))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if got := outcomes(set.Results); !reflect.DeepEqual(got, tt.outcomes) {
+				t.Fatalf("outcomes = %#v, want %#v; results = %#v", got, tt.outcomes, set.Results)
+			}
+			for _, result := range set.Results {
+				if result.Outcome == OutcomeMismatch {
+					t.Fatalf("existence result included mismatch: %#v", set.Results)
+				}
+			}
+		})
+	}
+}
+
+func TestReconcileExistenceInvalidEmptyMatchField(t *testing.T) {
+	t.Parallel()
+
+	set, err := Reconcile(context.Background(), existenceRequest(), files(
+		[]router.NormalizedRow{emptyKeyRow("l1")},
+		[]router.NormalizedRow{row("r1", "A1", "10.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	for _, result := range set.Results {
+		if result.Outcome == OutcomeInvalidRecord && strings.Contains(result.Reason, "empty match field") {
+			return
+		}
+	}
+	t.Fatalf("results = %#v, want invalid_record with empty match field reason", set.Results)
+}
+
+func TestReconcileExistenceShuffledInputOrdering(t *testing.T) {
+	t.Parallel()
+
+	req := existenceRequest()
+	ordered, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "A2", "20.00", "USD"), row("l3", "A3", "30.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A1", "11.00", "EUR"), row("r2", "A2", "21.00", "USD"), row("r4", "A4", "40.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() ordered error = %v", err)
+	}
+	shuffled, err := Reconcile(context.Background(), req, []router.NormalizedFile{
+		{FileID: "right", Rows: []router.NormalizedRow{row("r4", "A4", "40.00", "USD"), row("r2", "A2", "21.00", "USD"), row("r1", "A1", "11.00", "EUR")}},
+		{FileID: "left", Rows: []router.NormalizedRow{row("l3", "A3", "30.00", "USD"), row("l1", "A1", "10.00", "USD"), row("l2", "A2", "20.00", "USD")}},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() shuffled error = %v", err)
+	}
+	if !reflect.DeepEqual(resultIDs(ordered.Results), resultIDs(shuffled.Results)) {
+		t.Fatalf("result IDs changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(outcomes(ordered.Results), outcomes(shuffled.Results)) {
+		t.Fatalf("outcomes changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
 func TestReconcilePreflightReferences(t *testing.T) {
 	t.Parallel()
 
@@ -304,6 +403,13 @@ func amountToleranceRequest() request.Request {
 	}
 	req.Reconcile.Mode = request.ModeAmountTolerance
 	req.Reconcile.Tolerance = &request.ToleranceConfig{Amount: "0.01"}
+	return req
+}
+
+func existenceRequest() request.Request {
+	req := exactRequest()
+	req.Reconcile.Mode = request.ModeExistence
+	req.Reconcile.Compare = nil
 	return req
 }
 
