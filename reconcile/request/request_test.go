@@ -52,6 +52,30 @@ func TestDecodeRequestValidModes(t *testing.T) {
 	}
 }
 
+func TestDecodeRequestJSONLAllowsLineWindowWithJSONPointer(t *testing.T) {
+	t.Parallel()
+
+	req := validRequest(ModeExactMatch)
+	for index := range req.Files {
+		req.Files[index].Format = FormatJSONL
+		req.Files[index].Reader = ReaderExtractJSONL
+		req.Files[index].Selector = SelectorConfig{LineWindow: "1:", JSONPointer: "/events"}
+		req.Files[index].Columns = Columns{
+			"transaction_id": {Source: "transaction_id", Role: RoleKey, Required: true, Unique: true},
+			"amount":         {Source: "amount", Role: RoleAmount, Required: true, Numeric: &NumericConfig{Scale: 2, CurrencyField: "currency"}},
+			"currency":       {Source: "currency", Role: RoleCurrency, Required: true},
+		}
+	}
+
+	got, err := DecodeRequest(bytes.NewReader(mustJSON(t, req)))
+	if err != nil {
+		t.Fatalf("DecodeRequest() error = %v", err)
+	}
+	if got.Files[0].Selector.JSONPointer != "/events" {
+		t.Fatalf("JSONPointer = %q, want /events", got.Files[0].Selector.JSONPointer)
+	}
+}
+
 func TestDecodeRequestFailures(t *testing.T) {
 	t.Parallel()
 
@@ -147,6 +171,26 @@ func TestDecodeRequestFailures(t *testing.T) {
 			wantValCode: CodeMissingRequired,
 		},
 		{
+			name: "jsonl requires line window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatJSONL
+				req.Files[0].Reader = ReaderExtractJSONL
+				req.Files[0].Selector = SelectorConfig{RowWindow: "1:"}
+			}),
+			wantField:   "files[0].selector.line_window",
+			wantValCode: CodeMissingRequired,
+		},
+		{
+			name: "jsonl rejects row window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatJSONL
+				req.Files[0].Reader = ReaderExtractJSONL
+				req.Files[0].Selector = SelectorConfig{LineWindow: "1:", RowWindow: "1:"}
+			}),
+			wantField:   "files[0].selector",
+			wantValCode: CodeInvalidModeConfig,
+		},
+		{
 			name: "missing selector for xlsx",
 			payload: mutateJSON(t, base, func(req *Request) {
 				req.Files[0].Format = FormatXLSX
@@ -155,6 +199,26 @@ func TestDecodeRequestFailures(t *testing.T) {
 			}),
 			wantField:   "files[0].selector",
 			wantValCode: CodeMissingRequired,
+		},
+		{
+			name: "xlsx rejects header row",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatXLSX
+				req.Files[0].Reader = ReaderExtractSpreadsheet
+				req.Files[0].Selector = SelectorConfig{Sheet: "TrialBalance", HeaderRow: 1}
+			}),
+			wantField:   "files[0].selector",
+			wantValCode: CodeInvalidModeConfig,
+		},
+		{
+			name: "xlsx rejects open ended row window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatXLSX
+				req.Files[0].Reader = ReaderExtractSpreadsheet
+				req.Files[0].Selector = SelectorConfig{Sheet: "TrialBalance", RowWindow: "2:"}
+			}),
+			wantField:   "files[0].selector.row_window",
+			wantValCode: CodeInvalidModeConfig,
 		},
 		{
 			name:        "unsupported column role",
