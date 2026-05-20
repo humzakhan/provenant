@@ -185,7 +185,7 @@ func validateReadMintVerbRequest(req readMintRequest) error {
 	if req.Reader == "" {
 		return newPacketError(packetErrorRequestInvalid, fmt.Errorf("reader is required"))
 	}
-	if req.Reader != readerExtractJSON {
+	if req.Reader != readerExtractJSON && req.Reader != readerExtractCSVRows {
 		return fmt.Errorf("%w: %s", ErrUnsupportedReader, req.Reader)
 	}
 	if req.Run.ID == "" || req.Run.TenantID == "" {
