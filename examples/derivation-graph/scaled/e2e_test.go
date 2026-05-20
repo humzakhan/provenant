@@ -46,11 +46,7 @@ package scaledderivationgraph_test
 
 import (
 	"bytes"
-	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -64,6 +60,7 @@ import (
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/kernel/public/trace"
+	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
 )
 
 // fixedScaledTime is the deterministic clock used for all CLI invocations.
@@ -380,7 +377,7 @@ func runScaledDemo(t *testing.T, runner cli.Runner, bundlePath string) scaledTok
 	t.Helper()
 
 	// 1. run start
-	runScaledCLI(t, runner, []string{"run", "start", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"run", "start", "--request", "-"}, map[string]any{
 		"run":      scaledRun,
 		"run_file": bundlePath,
 	})
@@ -405,45 +402,45 @@ func runScaledDemo(t *testing.T, runner cli.Runner, bundlePath string) scaledTok
 	refundsTokenIDs := mintScaledCSVRowTokens(t, runner, bundlePath, refundsSrc, 80, "amount")
 
 	// 7. calc.sum: total_salaries = sum(100 salary tokens)
-	totalSalariesID := scaledCalcSum(t, runner, bundlePath, salaryTokenIDs)
+	totalSalariesID := testsupport.CalcSum(t, runner, bundlePath, salaryTokenIDs)
 
 	// 8. calc.sum: total_bonuses = sum(100 bonus tokens)
-	totalBonusesID := scaledCalcSum(t, runner, bundlePath, bonusTokenIDs)
+	totalBonusesID := testsupport.CalcSum(t, runner, bundlePath, bonusTokenIDs)
 
 	// 9. calc.add: total_payroll = total_salaries + total_bonuses
-	totalPayrollID := scaledCalcAdd(t, runner, bundlePath, totalSalariesID, totalBonusesID)
+	totalPayrollID := testsupport.CalcAdd(t, runner, bundlePath, totalSalariesID, totalBonusesID)
 
 	// 10. calc.sum: total_expenses = sum(500 expense tokens)
-	totalExpensesID := scaledCalcSum(t, runner, bundlePath, expensesTokenIDs)
+	totalExpensesID := testsupport.CalcSum(t, runner, bundlePath, expensesTokenIDs)
 
 	// 11. calc.add: total_opex = total_payroll + total_expenses
-	totalOpexID := scaledCalcAdd(t, runner, bundlePath, totalPayrollID, totalExpensesID)
+	totalOpexID := testsupport.CalcAdd(t, runner, bundlePath, totalPayrollID, totalExpensesID)
 
 	// 12. calc.sum: gross_revenue (batched — revenue has 1200 rows, exceeds maxCalcInputs=1000).
 	// Batch 1: revenue rows 1..1000
 	// Batch 2: revenue rows 1001..1200
-	grossRevenueBatch1ID := scaledCalcSum(t, runner, bundlePath, revenueTokenIDs[:1000])
-	grossRevenueBatch2ID := scaledCalcSum(t, runner, bundlePath, revenueTokenIDs[1000:])
-	grossRevenueID := scaledCalcAdd(t, runner, bundlePath, grossRevenueBatch1ID, grossRevenueBatch2ID)
+	grossRevenueBatch1ID := testsupport.CalcSum(t, runner, bundlePath, revenueTokenIDs[:1000])
+	grossRevenueBatch2ID := testsupport.CalcSum(t, runner, bundlePath, revenueTokenIDs[1000:])
+	grossRevenueID := testsupport.CalcAdd(t, runner, bundlePath, grossRevenueBatch1ID, grossRevenueBatch2ID)
 
 	// 13. calc.sum: total_refunds = sum(80 refund tokens)
-	totalRefundsID := scaledCalcSum(t, runner, bundlePath, refundsTokenIDs)
+	totalRefundsID := testsupport.CalcSum(t, runner, bundlePath, refundsTokenIDs)
 
 	// 14. calc.subtract: net_revenue = gross_revenue - total_refunds
-	netRevenueID := scaledCalcSubtract(t, runner, bundlePath, grossRevenueID, totalRefundsID)
+	netRevenueID := testsupport.CalcSubtract(t, runner, bundlePath, grossRevenueID, totalRefundsID)
 
 	// 15. calc.subtract: operating_income = net_revenue - total_opex
-	operatingIncomeID := scaledCalcSubtract(t, runner, bundlePath, netRevenueID, totalOpexID)
+	operatingIncomeID := testsupport.CalcSubtract(t, runner, bundlePath, netRevenueID, totalOpexID)
 
 	// 16. submit-answer: label the operating_income token.
-	runScaledCLI(t, runner, []string{"submit-answer", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"submit-answer", "--request", "-"}, map[string]any{
 		"run_file": bundlePath,
 		"token_id": operatingIncomeID,
 		"label":    "operating_income",
 	})
 
 	// 17. run finish
-	runScaledCLI(t, runner, []string{"run", "finish", "--request", "-"}, map[string]any{
+	testsupport.RunCLIInTest(t, runner, []string{"run", "finish", "--request", "-"}, map[string]any{
 		"run_file": bundlePath,
 	})
 
@@ -462,11 +459,6 @@ func runScaledDemo(t *testing.T, runner cli.Runner, bundlePath string) scaledTok
 	}
 }
 
-// csvSourceKey is the fixture:// URI for a CSV file name.
-func csvSourceKey(filename string) string {
-	return "fixture://" + filename
-}
-
 // loadCSVSource reads a CSV data file and returns a kernel.SourceBytes for it.
 func loadCSVSource(t *testing.T, filename string) kernel.SourceBytes {
 	t.Helper()
@@ -475,31 +467,7 @@ func loadCSVSource(t *testing.T, filename string) kernel.SourceBytes {
 	if err != nil {
 		t.Fatalf("ReadFile(%s): %v", path, err)
 	}
-	sum := sha256.Sum256(data)
-	return kernel.SourceBytes{
-		Source: kernel.Source{
-			Path:   csvSourceKey(filename),
-			SHA256: hex.EncodeToString(sum[:]),
-		},
-		Bytes: append([]byte(nil), data...),
-	}
-}
-
-// scaledCSVSelector builds a SourceSelector for one data row in a CSV file
-// using a ColumnProjection to select a specific column.
-// Row numbers are 1-indexed; header is at row 1, data rows start at row 2.
-// For data row i (1-indexed), the CSV row is i+1.
-// The column name (e.g. "salary", "amount") is used as the ColumnProjection so
-// the minted token's value is the cell at the projected column.
-func scaledCSVSelector(dataRow int, columnName string) kernel.SourceSelector {
-	row := dataRow + 1 // skip header
-	return kernel.SourceSelector{
-		RowWindow:        fmt.Sprintf("%d-%d", row, row),
-		HeaderRow:        1,
-		Dialect:          "excel",
-		Encoding:         "utf-8",
-		ColumnProjection: columnName,
-	}
+	return testsupport.SourceWithHash("fixture://"+filename, data)
 }
 
 // csvProjectedOutputPath for a single-column projection: the projected column
@@ -510,92 +478,5 @@ const csvProjectedOutputPath = "/rows/0/cells/0/value"
 // projecting a single column.  Returns token IDs in row order.
 func mintScaledCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath string, src kernel.SourceBytes, rowCount int, columnName string) []string {
 	t.Helper()
-	ids := make([]string, rowCount)
-	for i := 1; i <= rowCount; i++ {
-		out := runScaledCLI(t, runner, []string{"read-mint", "--request", "-"}, map[string]any{
-			"run_file": bundlePath,
-			"reader":   "extract.csv_rows",
-			"source":   src,
-			"run":      scaledRun,
-			"read": kernel.ReadAndMintRequest{
-				SourcePath: src.Source.Path,
-				Selector:   scaledCSVSelector(i, columnName),
-				OutputPath: csvProjectedOutputPath,
-				Unit:       "USD",
-			},
-		})
-		var resp struct {
-			Token kernel.Token `json:"token"`
-		}
-		if err := json.Unmarshal(out, &resp); err != nil {
-			t.Fatalf("unmarshal read-mint response (row %d col %s): %v", i, columnName, err)
-		}
-		if resp.Token.ID == "" {
-			t.Fatalf("read-mint %s row %d col %s: empty token ID", src.Source.Path, i, columnName)
-		}
-		ids[i-1] = resp.Token.ID
-	}
-	return ids
-}
-
-// scaledCalcSum calls calc.sum on the given input IDs.
-func scaledCalcSum(t *testing.T, runner cli.Runner, bundlePath string, inputs []string) string {
-	t.Helper()
-	out := runScaledCLI(t, runner, []string{"calc", "--request", "-"}, map[string]any{
-		"run_file": bundlePath,
-		"op":       "calc.sum",
-		"inputs":   inputs,
-	})
-	return extractScaledTokenID(t, out)
-}
-
-// scaledCalcAdd calls calc.add(a, b) and returns the derived token ID.
-func scaledCalcAdd(t *testing.T, runner cli.Runner, bundlePath, aID, bID string) string {
-	t.Helper()
-	out := runScaledCLI(t, runner, []string{"calc", "--request", "-"}, map[string]any{
-		"run_file": bundlePath,
-		"op":       "calc.add",
-		"inputs":   []string{aID, bID},
-	})
-	return extractScaledTokenID(t, out)
-}
-
-// scaledCalcSubtract calls calc.subtract(a, b) and returns the derived token ID.
-func scaledCalcSubtract(t *testing.T, runner cli.Runner, bundlePath, aID, bID string) string {
-	t.Helper()
-	out := runScaledCLI(t, runner, []string{"calc", "--request", "-"}, map[string]any{
-		"run_file": bundlePath,
-		"op":       "calc.subtract",
-		"inputs":   []string{aID, bID},
-	})
-	return extractScaledTokenID(t, out)
-}
-
-// runScaledCLI invokes runner.Run with JSON body on stdin and returns stdout bytes.
-func runScaledCLI(t *testing.T, runner cli.Runner, args []string, body any) []byte {
-	t.Helper()
-	reqBytes, err := json.Marshal(body)
-	if err != nil {
-		t.Fatalf("Marshal(request): %v", err)
-	}
-	var stdout bytes.Buffer
-	if err := runner.Run(context.Background(), args, bytes.NewReader(reqBytes), &stdout); err != nil {
-		t.Fatalf("CLI %v error: %v\nbody: %s", args, err, reqBytes)
-	}
-	return stdout.Bytes()
-}
-
-// extractScaledTokenID parses a calc or read-mint JSON response and returns the token ID.
-func extractScaledTokenID(t *testing.T, data []byte) string {
-	t.Helper()
-	var resp struct {
-		Token kernel.Token `json:"token"`
-	}
-	if err := json.Unmarshal(data, &resp); err != nil {
-		t.Fatalf("unmarshal token response: %v\ndata: %s", err, data)
-	}
-	if resp.Token.ID == "" {
-		t.Fatalf("empty token ID in response: %s", data)
-	}
-	return resp.Token.ID
+	return testsupport.MintCSVRowTokens(t, runner, bundlePath, src, scaledRun, rowCount, columnName, csvProjectedOutputPath)
 }
