@@ -15,24 +15,32 @@ import (
 
 // Errors returned by Decode and Encode when the payload is malformed.
 var (
-	ErrMissingTokenID   = errors.New("derivation: missing token_id")
-	ErrMissingOperation = errors.New("derivation: missing operation")
-	ErrMissingEvaluated = errors.New("derivation: missing evaluated")
-	ErrEmptyInputs      = errors.New("derivation: inputs must be non-empty")
-	ErrInvalidRounding  = errors.New("derivation: invalid rounding")
+	ErrMissingTokenID     = errors.New("derivation: missing token_id")
+	ErrMissingOperation   = errors.New("derivation: missing operation")
+	ErrMissingEvaluated   = errors.New("derivation: missing evaluated")
+	ErrEmptyInputs        = errors.New("derivation: inputs must be non-empty")
+	ErrInvalidRounding    = errors.New("derivation: invalid rounding")
+	ErrMatchedNotSubset   = errors.New("derivation: matched must be a subset of inputs in original order")
+	ErrPredicateFieldOnly = errors.New("derivation: predicate and matched fields are only valid for filter.sum_where")
 )
 
 // Payload is the deterministic token_derive audit entry payload. It is the
 // canonical source of truth for what was computed; the corresponding Token
 // fields are derived from it during bundle verification.
+//
+// Matched and Predicate are set only for filter.sum_where; they must be absent
+// for all other ops. Matched is sorted by input-position (not lexicographically)
+// so replay produces identical bytes.
 type Payload struct {
-	TokenID   string              `json:"token_id"`
-	Operation string              `json:"operation"`
-	Inputs    []string            `json:"inputs"`
-	FormulaID string              `json:"formula_id,omitempty"`
+	TokenID   string                `json:"token_id"`
+	Operation string                `json:"operation"`
+	Inputs    []string              `json:"inputs"`
+	Matched   []string              `json:"matched,omitempty"`
+	Predicate *kernel.RowPredicate  `json:"predicate,omitempty"`
+	FormulaID string                `json:"formula_id,omitempty"`
 	Rounding  kernel.RoundingPolicy `json:"rounding,omitempty"`
-	Evaluated string              `json:"evaluated"`
-	Unit      string              `json:"unit,omitempty"`
+	Evaluated string                `json:"evaluated"`
+	Unit      string                `json:"unit,omitempty"`
 }
 
 // validRoundingModes is the closed set of allowed rounding mode strings.
@@ -99,7 +107,40 @@ func validate(p Payload) error {
 		return fmt.Errorf("%w: mode %q not in {half_even, half_up, down}", ErrInvalidRounding, p.Rounding.Mode)
 	case p.Rounding.Scale < 0 || p.Rounding.Scale > 18:
 		return fmt.Errorf("%w: scale %d out of range [0, 18]", ErrInvalidRounding, p.Rounding.Scale)
-	default:
-		return nil
 	}
+
+	// filter.sum_where-specific validation.
+	isFilter := p.Operation == "filter.sum_where"
+	if !isFilter && (len(p.Matched) > 0 || p.Predicate != nil) {
+		return fmt.Errorf("%w: operation is %q", ErrPredicateFieldOnly, p.Operation)
+	}
+	if isFilter && len(p.Matched) > 0 {
+		if err := validateMatchedSubset(p.Inputs, p.Matched); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateMatchedSubset checks that matched is a subsequence of inputs
+// (every element in matched appears in inputs, and the relative order is
+// preserved). This mirrors the spec requirement: "matched is canonical: sorted
+// by input position so replay produces identical bytes."
+func validateMatchedSubset(inputs, matched []string) error {
+	inputIdx := make(map[string]int, len(inputs))
+	for i, id := range inputs {
+		inputIdx[id] = i
+	}
+	prev := -1
+	for _, id := range matched {
+		pos, ok := inputIdx[id]
+		if !ok {
+			return fmt.Errorf("%w: %q not in inputs", ErrMatchedNotSubset, id)
+		}
+		if pos <= prev {
+			return fmt.Errorf("%w: order violation at %q", ErrMatchedNotSubset, id)
+		}
+		prev = pos
+	}
+	return nil
 }

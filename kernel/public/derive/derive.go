@@ -15,11 +15,13 @@ import (
 // Request is the input to a derivation. Op identifies the op catalog entry.
 // Inputs is ordered; ordering is part of the deterministic identity.
 // Rounding is honoured only by ops that round (all Phase 02 ops do).
+// Predicate is honoured only by filter.sum_where; it is ignored by all other ops.
 type Request struct {
-	Run      kernel.Run
-	Op       string
-	Inputs   []kernel.Token
-	Rounding kernel.RoundingPolicy
+	Run       kernel.Run
+	Op        string
+	Inputs    []kernel.Token
+	Rounding  kernel.RoundingPolicy
+	Predicate *kernel.RowPredicate
 }
 
 // Result is the derived token plus the audit entry the caller must append.
@@ -30,11 +32,14 @@ type Result struct {
 
 // Dependencies carries the injected dependencies for the derivation engine.
 // It mirrors the existing kernel injection style used by ReadAndMint.
+// CapturedReadStore is required only by filter.sum_where; it may be nil for
+// all other ops.
 type Dependencies struct {
-	Clock     kernel.Clock
-	Store     kernel.Store
-	AuditSink kernel.AuditSink
-	Scope     kernel.TransactionalScope
+	Clock              kernel.Clock
+	Store              kernel.Store
+	AuditSink          kernel.AuditSink
+	Scope              kernel.TransactionalScope
+	CapturedReadStore  kernel.CapturedReadStore
 }
 
 // Derive evaluates Op over Inputs and returns the derived Token plus the
@@ -76,19 +81,70 @@ func Derive(ctx context.Context, deps Dependencies, req Request) (Result, error)
 
 	var result Result
 	if err := deps.Scope.WithTx(ctx, func(ctx context.Context, tx kernel.Tx) error {
-		// Load and validate input tokens from the store.
-		resolvedInputs, err := resolveInputTokens(ctx, tx, deps.Store, req.Run, req.Inputs)
+		// Load all tokens for this run (used both for input resolution and for
+		// lineage traversal by filter.sum_where).
+		allTokens, err := deps.Store.Tokens(ctx, tx, req.Run.ID)
 		if err != nil {
-			return err
+			return fmt.Errorf("derive: list tokens: %w", err)
+		}
+		tokensByID := make(map[string]kernel.Token, len(allTokens))
+		for _, tok := range allTokens {
+			tokensByID[tok.ID] = tok
 		}
 
-		// Evaluate the op.
-		ev, err := op.Evaluate(resolvedInputs, req.Rounding)
-		if err != nil {
-			return err
+		// Validate and resolve the input tokens.
+		resolvedInputs := make([]kernel.Token, len(req.Inputs))
+		for i, reqTok := range req.Inputs {
+			tok, ok := tokensByID[reqTok.ID]
+			if !ok {
+				return fmt.Errorf("%w: %s", ErrInputNotInStore, reqTok.ID)
+			}
+			resolvedInputs[i] = tok
 		}
 
-		valueCanonical := ops.FormatCanonical(ev.Value)
+		var (
+			evalValue evaluation
+			matched   []string // non-nil only for filter.sum_where
+		)
+
+		if req.Op == "filter.sum_where" {
+			// filter.sum_where requires a predicate and captured-read access.
+			if req.Predicate == nil {
+				return fmt.Errorf("derive: filter.sum_where requires a non-nil Predicate")
+			}
+			if deps.CapturedReadStore == nil {
+				return fmt.Errorf("derive: filter.sum_where requires CapturedReadStore in Dependencies")
+			}
+			allReads, err := deps.CapturedReadStore.CapturedReads(ctx, tx, req.Run.ID)
+			if err != nil {
+				return fmt.Errorf("derive: list captured reads: %w", err)
+			}
+			readsByID := make(map[string]kernel.CapturedRead, len(allReads))
+			for _, r := range allReads {
+				readsByID[r.ID] = r
+			}
+			fev, ferr := ops.FilterSumWhere{}.EvaluateFilter(
+				resolvedInputs,
+				req.Rounding,
+				*req.Predicate,
+				tokensByID,
+				readsByID,
+			)
+			if ferr != nil {
+				return mapOpsErr(ferr)
+			}
+			evalValue = evaluation{Value: fev.Value, Unit: fev.Unit}
+			matched = fev.Matched
+		} else {
+			// Standard op evaluation path.
+			ev, err := op.Evaluate(resolvedInputs, req.Rounding)
+			if err != nil {
+				return mapOpsErr(err)
+			}
+			evalValue = ev
+		}
+
+		valueCanonical := ops.FormatCanonical(evalValue.Value)
 
 		// Compute deterministic token ID.
 		inputIDs := make([]string, len(req.Inputs))
@@ -101,7 +157,7 @@ func Derive(ctx context.Context, deps Dependencies, req Request) (Result, error)
 			req.Op,
 			inputIDs,
 			valueCanonical,
-			ev.Unit,
+			evalValue.Unit,
 		)
 
 		now := deps.Clock.Now().UTC()
@@ -112,7 +168,7 @@ func Derive(ctx context.Context, deps Dependencies, req Request) (Result, error)
 			RunID:          req.Run.ID,
 			TenantID:       req.Run.TenantID,
 			ValueCanonical: valueCanonical,
-			Unit:           ev.Unit,
+			Unit:           evalValue.Unit,
 			Derivation: &kernel.Derivation{
 				Operation: req.Op,
 				Inputs:    append([]string(nil), inputIDs...),
@@ -131,7 +187,11 @@ func Derive(ctx context.Context, deps Dependencies, req Request) (Result, error)
 			FormulaID: req.Op,
 			Rounding:  req.Rounding,
 			Evaluated: valueCanonical,
-			Unit:      ev.Unit,
+			Unit:      evalValue.Unit,
+		}
+		if req.Op == "filter.sum_where" {
+			auditPayload.Matched = append([]string(nil), matched...)
+			auditPayload.Predicate = req.Predicate
 		}
 		det, err := derivation.Encode(auditPayload)
 		if err != nil {
@@ -184,29 +244,6 @@ func Derive(ctx context.Context, deps Dependencies, req Request) (Result, error)
 	return result, nil
 }
 
-// resolveInputTokens loads and validates all input tokens from the store.
-// Returns ErrInputNotInStore if any input ID is not found.
-func resolveInputTokens(ctx context.Context, tx kernel.Tx, store kernel.Store, run kernel.Run, inputs []kernel.Token) ([]kernel.Token, error) {
-	stored, err := store.Tokens(ctx, tx, run.ID)
-	if err != nil {
-		return nil, fmt.Errorf("derive: list tokens: %w", err)
-	}
-	byID := make(map[string]kernel.Token, len(stored))
-	for _, tok := range stored {
-		byID[tok.ID] = tok
-	}
-
-	resolved := make([]kernel.Token, len(inputs))
-	for i, req := range inputs {
-		tok, ok := byID[req.ID]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrInputNotInStore, req.ID)
-		}
-		resolved[i] = tok
-	}
-	return resolved, nil
-}
-
 // mapOpsErr rewraps internal ops-package errors to the public derive error sentinels.
 func mapOpsErr(err error) error {
 	switch {
@@ -218,6 +255,20 @@ func mapOpsErr(err error) error {
 		return fmt.Errorf("%w: %v", ErrArity, err)
 	case errors.Is(err, ops.ErrDecimalParse):
 		return fmt.Errorf("%w: %v", ErrDecimalParse, err)
+	case errors.Is(err, ops.ErrDivisionByZero):
+		return ErrDivisionByZero
+	case errors.Is(err, ops.ErrRoundingRequired):
+		return fmt.Errorf("%w: %v", ErrRoundingRequired, err)
+	case errors.Is(err, ops.ErrRoundingMode):
+		return fmt.Errorf("%w: %v", ErrRoundingMode, err)
+	case errors.Is(err, ops.ErrAmbiguousLineage):
+		return fmt.Errorf("%w: %v", ErrAmbiguousLineage, err)
+	case errors.Is(err, ops.ErrPredicateNotRowShaped):
+		return fmt.Errorf("%w: %v", ErrPredicateNotRowShaped, err)
+	case errors.Is(err, ops.ErrPredicateOp):
+		return fmt.Errorf("%w: %v", ErrPredicateOp, err)
+	case errors.Is(err, ops.ErrNoMatchingInputs):
+		return ErrNoMatchingInputs
 	default:
 		return err
 	}

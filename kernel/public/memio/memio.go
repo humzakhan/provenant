@@ -298,10 +298,11 @@ func cloneAuditEntry(entry kernel.AuditEntry) kernel.AuditEntry {
 func (b *Binding) Derive(ctx context.Context, clock kernel.Clock, run kernel.Run, req derive.Request) (derive.Result, error) {
 	req.Run = run
 	return derive.Derive(ctx, derive.Dependencies{
-		Clock:     clock,
-		Store:     b,
-		AuditSink: b,
-		Scope:     b,
+		Clock:             clock,
+		Store:             b,
+		AuditSink:         b,
+		Scope:             b,
+		CapturedReadStore: b,
 	}, req)
 }
 
