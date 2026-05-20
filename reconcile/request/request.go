@@ -63,6 +63,7 @@ type FileConfig struct {
 
 type SelectorConfig struct {
 	JSONPointer string `json:"json_pointer,omitempty"`
+	LineWindow  string `json:"line_window,omitempty"`
 	RowWindow   string `json:"row_window,omitempty"`
 	Sheet       string `json:"sheet,omitempty"`
 	Range       string `json:"range,omitempty"`

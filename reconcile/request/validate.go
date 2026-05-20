@@ -102,31 +102,67 @@ func validateSelector(path, format string, selector SelectorConfig, errs *Valida
 		if strings.TrimSpace(selector.RowWindow) == "" {
 			errs.add(path+".row_window", CodeMissingRequired, "csv selector row_window is required")
 		}
-		if selector.JSONPointer != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" {
+		if selector.Encoding == "" {
+			errs.add(path+".encoding", CodeMissingRequired, "csv selector encoding is required")
+		}
+		if selector.Dialect == "" {
+			errs.add(path+".dialect", CodeMissingRequired, "csv selector dialect is required")
+		}
+		if selector.JSONPointer != "" || selector.LineWindow != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" {
 			errs.add(path, CodeInvalidModeConfig, "csv selector contains unsupported fields")
 		}
 	case FormatJSONL:
-		if strings.TrimSpace(selector.RowWindow) == "" {
-			errs.add(path+".row_window", CodeMissingRequired, "jsonl selector row_window is required")
+		if strings.TrimSpace(selector.LineWindow) == "" {
+			errs.add(path+".line_window", CodeMissingRequired, "jsonl selector line_window is required")
 		}
-		if selector.JSONPointer != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" || selector.Dialect != "" || selector.HeaderRow != 0 {
+		if selector.RowWindow != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" || selector.Dialect != "" || selector.HeaderRow != 0 || selector.Encoding != "" {
 			errs.add(path, CodeInvalidModeConfig, "jsonl selector contains unsupported fields")
 		}
 	case FormatXLSX:
 		if strings.TrimSpace(selector.Sheet) == "" && strings.TrimSpace(selector.Range) == "" && strings.TrimSpace(selector.Table) == "" {
 			errs.add(path, CodeMissingRequired, "xlsx selector requires sheet, range, or table")
 		}
-		if selector.JSONPointer != "" || selector.RowWindow != "" || selector.Encoding != "" || selector.Dialect != "" {
+		if selector.JSONPointer != "" || selector.LineWindow != "" || selector.Encoding != "" || selector.Dialect != "" || selector.HeaderRow != 0 {
 			errs.add(path, CodeInvalidModeConfig, "xlsx selector contains unsupported fields")
+		}
+		if selector.RowWindow != "" && !isClosedWindow(selector.RowWindow) {
+			errs.add(path+".row_window", CodeInvalidModeConfig, "xlsx selector row_window must use closed start-end syntax")
 		}
 	case FormatJSON:
 		if strings.TrimSpace(selector.JSONPointer) == "" {
 			errs.add(path+".json_pointer", CodeMissingRequired, "json selector json_pointer is required")
 		}
-		if selector.RowWindow != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" || selector.HeaderRow != 0 || selector.Encoding != "" || selector.Dialect != "" {
+		if selector.LineWindow != "" || selector.RowWindow != "" || selector.Sheet != "" || selector.Range != "" || selector.Table != "" || selector.HeaderRow != 0 || selector.Encoding != "" || selector.Dialect != "" {
 			errs.add(path, CodeInvalidModeConfig, "json selector contains unsupported fields")
 		}
 	}
+}
+
+func isClosedWindow(raw string) bool {
+	parts := strings.Split(raw, "-")
+	if len(parts) != 2 {
+		return false
+	}
+	if parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	start := 0
+	end := 0
+	for index, part := range parts {
+		value := 0
+		for _, ch := range part {
+			if ch < '0' || ch > '9' {
+				return false
+			}
+			value = value*10 + int(ch-'0')
+		}
+		if index == 0 {
+			start = value
+		} else {
+			end = value
+		}
+	}
+	return start > 0 && end >= start
 }
 
 func validateColumns(path string, columns Columns, errs *ValidationErrors) columnInfo {

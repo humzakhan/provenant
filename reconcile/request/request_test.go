@@ -147,6 +147,26 @@ func TestDecodeRequestFailures(t *testing.T) {
 			wantValCode: CodeMissingRequired,
 		},
 		{
+			name: "jsonl requires line window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatJSONL
+				req.Files[0].Reader = ReaderExtractJSONL
+				req.Files[0].Selector = SelectorConfig{RowWindow: "1:"}
+			}),
+			wantField:   "files[0].selector.line_window",
+			wantValCode: CodeMissingRequired,
+		},
+		{
+			name: "jsonl rejects row window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatJSONL
+				req.Files[0].Reader = ReaderExtractJSONL
+				req.Files[0].Selector = SelectorConfig{LineWindow: "1:", RowWindow: "1:"}
+			}),
+			wantField:   "files[0].selector",
+			wantValCode: CodeInvalidModeConfig,
+		},
+		{
 			name: "missing selector for xlsx",
 			payload: mutateJSON(t, base, func(req *Request) {
 				req.Files[0].Format = FormatXLSX
@@ -155,6 +175,26 @@ func TestDecodeRequestFailures(t *testing.T) {
 			}),
 			wantField:   "files[0].selector",
 			wantValCode: CodeMissingRequired,
+		},
+		{
+			name: "xlsx rejects header row",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatXLSX
+				req.Files[0].Reader = ReaderExtractSpreadsheet
+				req.Files[0].Selector = SelectorConfig{Sheet: "TrialBalance", HeaderRow: 1}
+			}),
+			wantField:   "files[0].selector",
+			wantValCode: CodeInvalidModeConfig,
+		},
+		{
+			name: "xlsx rejects open ended row window",
+			payload: mutateJSON(t, base, func(req *Request) {
+				req.Files[0].Format = FormatXLSX
+				req.Files[0].Reader = ReaderExtractSpreadsheet
+				req.Files[0].Selector = SelectorConfig{Sheet: "TrialBalance", RowWindow: "2:"}
+			}),
+			wantField:   "files[0].selector.row_window",
+			wantValCode: CodeInvalidModeConfig,
 		},
 		{
 			name:        "unsupported column role",
