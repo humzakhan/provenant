@@ -66,8 +66,11 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if req.Reconcile.Mode != request.ModeExactMatch && req.Reconcile.Mode != request.ModeAmountTolerance && req.Reconcile.Mode != request.ModeExistence {
+	if req.Reconcile.Mode != request.ModeExactMatch && req.Reconcile.Mode != request.ModeAmountTolerance && req.Reconcile.Mode != request.ModeExistence && req.Reconcile.Mode != request.ModeSchemaValidation {
 		return nil, fmt.Errorf("unsupported_reconcile_mode: %s", req.Reconcile.Mode)
+	}
+	if req.Reconcile.Mode == request.ModeSchemaValidation {
+		return reconcileSchemaValidation(req, files)
 	}
 	plan, err := comparisonPlanFor(req)
 	if err != nil {
@@ -129,6 +132,99 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 		set.Results[i].ID = resultID(req.Run.ID, set.Results[i])
 	}
 	return set, nil
+}
+
+func reconcileSchemaValidation(req request.Request, files []router.NormalizedFile) (*ResultSet, error) {
+	left, right, err := selectedFiles(req, files)
+	if err != nil {
+		return nil, err
+	}
+	set := &ResultSet{
+		RunID:       req.Run.ID,
+		Mode:        req.Reconcile.Mode,
+		LeftFileID:  left.FileID,
+		RightFileID: right.FileID,
+	}
+
+	leftResults, err := schemaValidationResults(req, left, true)
+	if err != nil {
+		return nil, err
+	}
+	rightResults, err := schemaValidationResults(req, right, false)
+	if err != nil {
+		return nil, err
+	}
+	set.Results = append(set.Results, leftResults...)
+	set.Results = append(set.Results, rightResults...)
+
+	sort.Slice(set.Results, func(i, j int) bool { return resultSortKey(set.Results[i]) < resultSortKey(set.Results[j]) })
+	for i := range set.Results {
+		set.Results[i].ID = resultID(req.Run.ID, set.Results[i])
+	}
+	return set, nil
+}
+
+func schemaValidationResults(req request.Request, file router.NormalizedFile, leftSide bool) ([]Result, error) {
+	columns := columnsForFile(req, file.FileID)
+	if len(columns) == 0 {
+		return nil, fmt.Errorf("invalid_schema_validation_config: file %q has no columns", file.FileID)
+	}
+	results := make([]Result, 0, len(file.Rows))
+	for _, row := range file.Rows {
+		indexed := indexedRow{fileID: file.FileID, row: row, key: schemaRowKey(file.FileID, row), keyID: file.FileID + ":" + row.RowKey}
+		reason := validateSchemaRow(row, columns)
+		outcome := OutcomeMatched
+		if reason != "" {
+			outcome = OutcomeInvalidRecord
+		}
+		if leftSide {
+			results = append(results, resultFor(outcome, &indexed, nil, nil, reason))
+			continue
+		}
+		results = append(results, resultFor(outcome, nil, &indexed, nil, reason))
+	}
+	return results, nil
+}
+
+func schemaRowKey(fileID string, row router.NormalizedRow) []KeyValue {
+	return []KeyValue{{Field: "file_id", Value: fileID}, {Field: "row_key", Value: row.RowKey}}
+}
+
+func validateSchemaRow(row router.NormalizedRow, columns request.Columns) string {
+	fields := make([]string, 0, len(columns))
+	for field := range columns {
+		fields = append(fields, field)
+	}
+	sort.Strings(fields)
+
+	reasons := make([]string, 0)
+	for _, field := range fields {
+		column := columns[field]
+		value, ok := row.Values[field]
+		if column.Required {
+			if !ok || value.LogicalField == "" {
+				reasons = append(reasons, fmt.Sprintf("missing required field %q", field))
+				continue
+			}
+			if value.Empty || strings.TrimSpace(value.Canonical) == "" {
+				reasons = append(reasons, fmt.Sprintf("empty required field %q", field))
+				continue
+			}
+		}
+		if !ok || value.LogicalField == "" {
+			continue
+		}
+		if value.LogicalField != field {
+			reasons = append(reasons, fmt.Sprintf("invalid normalized value reference %q", field))
+			continue
+		}
+		if column.Numeric != nil && !value.Empty && strings.TrimSpace(value.Canonical) != "" {
+			if _, err := decimal.NewFromString(value.Canonical); err != nil {
+				reasons = append(reasons, fmt.Sprintf("malformed numeric field %q", field))
+			}
+		}
+	}
+	return strings.Join(reasons, "; ")
 }
 
 func selectedFiles(req request.Request, files []router.NormalizedFile) (router.NormalizedFile, router.NormalizedFile, error) {

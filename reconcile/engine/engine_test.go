@@ -373,6 +373,111 @@ func TestReconcileExistenceShuffledInputOrdering(t *testing.T) {
 	}
 }
 
+func TestReconcileSchemaValidationOutcomes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		left     []router.NormalizedRow
+		right    []router.NormalizedRow
+		outcomes []Outcome
+		reason   string
+	}{
+		{
+			name:     "valid rows",
+			left:     []router.NormalizedRow{row("l1", "A1", "10.00", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A2", "11.00", "USD")},
+			outcomes: []Outcome{OutcomeMatched, OutcomeMatched},
+		},
+		{
+			name:     "required missing",
+			left:     []router.NormalizedRow{missingFieldRow("l1", "transaction_id")},
+			right:    []router.NormalizedRow{row("r1", "A2", "11.00", "USD")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
+			reason:   "missing required field \"transaction_id\"",
+		},
+		{
+			name:     "required empty",
+			left:     []router.NormalizedRow{emptyKeyRow("l1")},
+			right:    []router.NormalizedRow{row("r1", "A2", "11.00", "USD")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
+			reason:   "empty required field \"transaction_id\"",
+		},
+		{
+			name:     "malformed numeric",
+			left:     []router.NormalizedRow{row("l1", "A1", "not-money", "USD")},
+			right:    []router.NormalizedRow{row("r1", "A2", "11.00", "USD")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
+			reason:   "malformed numeric field \"amount\"",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			set, err := Reconcile(context.Background(), schemaValidationRequest(), files(tt.left, tt.right))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+			if got := outcomes(set.Results); !reflect.DeepEqual(got, tt.outcomes) {
+				t.Fatalf("outcomes = %#v, want %#v; results = %#v", got, tt.outcomes, set.Results)
+			}
+			if tt.reason != "" && !strings.Contains(set.Results[0].Reason, tt.reason) {
+				t.Fatalf("reason = %q, want containing %q; results = %#v", set.Results[0].Reason, tt.reason, set.Results)
+			}
+		})
+	}
+}
+
+func TestReconcileSchemaValidationShuffledInputOrdering(t *testing.T) {
+	t.Parallel()
+
+	req := schemaValidationRequest()
+	ordered, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{row("l1", "A1", "10.00", "USD"), row("l2", "", "20.00", "USD")},
+		[]router.NormalizedRow{row("r1", "A2", "11.00", "USD"), row("r2", "A3", "bad", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() ordered error = %v", err)
+	}
+	shuffled, err := Reconcile(context.Background(), req, []router.NormalizedFile{
+		{FileID: "right", Rows: []router.NormalizedRow{row("r2", "A3", "bad", "USD"), row("r1", "A2", "11.00", "USD")}},
+		{FileID: "left", Rows: []router.NormalizedRow{row("l2", "", "20.00", "USD"), row("l1", "A1", "10.00", "USD")}},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() shuffled error = %v", err)
+	}
+	if !reflect.DeepEqual(resultIDs(ordered.Results), resultIDs(shuffled.Results)) {
+		t.Fatalf("result IDs changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(outcomes(ordered.Results), outcomes(shuffled.Results)) {
+		t.Fatalf("outcomes changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
+func TestReconcileSchemaValidationInvalidReferences(t *testing.T) {
+	t.Parallel()
+
+	_, err := Reconcile(context.Background(), schemaValidationRequest(), []router.NormalizedFile{{FileID: "left"}})
+	if err == nil || !strings.Contains(err.Error(), "right file") {
+		t.Fatalf("Reconcile() error = %v, want missing right file", err)
+	}
+
+	bad := row("l1", "A1", "10.00", "USD")
+	bad.Values["amount"] = router.NormalizedValue{LogicalField: "total", Role: request.RoleAmount, Canonical: "10.00"}
+	set, err := Reconcile(context.Background(), schemaValidationRequest(), files([]router.NormalizedRow{bad}, []router.NormalizedRow{row("r1", "A2", "11.00", "USD")}))
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if got := outcomes(set.Results); !reflect.DeepEqual(got, []Outcome{OutcomeInvalidRecord, OutcomeMatched}) {
+		t.Fatalf("outcomes = %#v, want invalid_record and matched; results = %#v", got, set.Results)
+	}
+	if !strings.Contains(set.Results[0].Reason, "invalid normalized value reference \"amount\"") {
+		t.Fatalf("reason = %q, want invalid normalized value reference", set.Results[0].Reason)
+	}
+}
+
 func TestReconcilePreflightReferences(t *testing.T) {
 	t.Parallel()
 
@@ -411,6 +516,24 @@ func existenceRequest() request.Request {
 	req.Reconcile.Mode = request.ModeExistence
 	req.Reconcile.Compare = nil
 	return req
+}
+
+func schemaValidationRequest() request.Request {
+	req := exactRequest()
+	req.Files = []request.FileConfig{
+		{ID: "left", Columns: schemaValidationColumns()},
+		{ID: "right", Columns: schemaValidationColumns()},
+	}
+	req.Reconcile.Mode = request.ModeSchemaValidation
+	req.Reconcile.MatchOn = nil
+	req.Reconcile.Compare = nil
+	return req
+}
+
+func schemaValidationColumns() request.Columns {
+	columns := columns()
+	columns["transaction_id"] = request.ColumnConfig{Role: request.RoleKey, Required: true}
+	return columns
 }
 
 func columns() request.Columns {
