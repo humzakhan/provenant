@@ -335,6 +335,7 @@ func normalizeState(state State) (State, error) {
 	}
 
 	normalizedTokens := make([]kernel.Token, 0, len(state.AuditEntries))
+	referencedReadIDs := make(map[string]struct{}, len(state.CapturedReads))
 	var prevHash []byte
 	for index, entry := range state.AuditEntries {
 		if entry.Kind != kernel.EntryKindTokenMint {
@@ -394,9 +395,15 @@ func normalizeState(state State) (State, error) {
 		if err := validateCapturedReadAgainstPayload(read, payload); err != nil {
 			return State{}, err
 		}
+		referencedReadIDs[payload.CapturedReadID] = struct{}{}
 		normalizedTokens = append(normalizedTokens, deterministicToken(state.Run, read, payload, evidence))
 
 		prevHash = entry.Hash
+	}
+	for _, read := range state.CapturedReads {
+		if _, ok := referencedReadIDs[read.ID]; !ok {
+			return State{}, fmt.Errorf("%w: unreferenced captured read %s", ErrTamperDetected, read.ID)
+		}
 	}
 
 	state.Tokens = normalizedTokens
