@@ -21,12 +21,21 @@ type Evaluation struct {
 	Unit  string
 }
 
-// All returns every registered Phase 02 op in a stable order.
-// Phase 03 will extend this list.
+// All returns every registered op in a stable order. Phase 02 ops are first,
+// followed by Phase 03 additions.
+//
+// Note: FilterSumWhere is included so its name is registered, but its
+// standard Evaluate method must not be called directly — the derive engine
+// dispatches it via the EvaluateFilter path.
 func All() []Op {
 	return []Op{
 		Add{},
 		Subtract{},
 		Sum{},
+		Multiply{},
+		Divide{},
+		Passthrough{},
+		Round{},
+		FilterSumWhere{},
 	}
 }

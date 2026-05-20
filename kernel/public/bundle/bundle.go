@@ -568,14 +568,17 @@ func decodeTokenMintPayload(deterministic []byte) (tokenMintPayload, error) {
 
 // tokenDerivePayload is the in-memory representation of a token_derive
 // deterministic audit payload. It mirrors tokenMintPayload for the leaf path.
+// Matched and Predicate are only set for filter.sum_where.
 type tokenDerivePayload struct {
-	TokenID   string              `json:"token_id"`
-	Operation string              `json:"operation"`
-	Inputs    []string            `json:"inputs"`
-	FormulaID string              `json:"formula_id,omitempty"`
+	TokenID   string                `json:"token_id"`
+	Operation string                `json:"operation"`
+	Inputs    []string              `json:"inputs"`
+	Matched   []string              `json:"matched,omitempty"`
+	Predicate *kernel.RowPredicate  `json:"predicate,omitempty"`
+	FormulaID string                `json:"formula_id,omitempty"`
 	Rounding  kernel.RoundingPolicy `json:"rounding,omitempty"`
-	Evaluated string              `json:"evaluated"`
-	Unit      string              `json:"unit,omitempty"`
+	Evaluated string                `json:"evaluated"`
+	Unit      string                `json:"unit,omitempty"`
 }
 
 // validRoundingModes is the closed set of accepted rounding mode strings.
@@ -627,7 +630,38 @@ func decodeTokenDerivePayload(deterministic []byte, seqByTokenID map[string]uint
 		}
 	}
 
+	// filter.sum_where-specific field checks.
+	isFilter := payload.Operation == "filter.sum_where"
+	if !isFilter && (len(payload.Matched) > 0 || payload.Predicate != nil) {
+		return tokenDerivePayload{}, fmt.Errorf("predicate and matched fields are only valid for filter.sum_where, got operation %q", payload.Operation)
+	}
+	if isFilter && len(payload.Matched) > 0 {
+		if err := validateMatchedSubsetBundle(payload.Inputs, payload.Matched); err != nil {
+			return tokenDerivePayload{}, err
+		}
+	}
+
 	return payload, nil
+}
+
+// validateMatchedSubsetBundle checks that matched is a subsequence of inputs.
+func validateMatchedSubsetBundle(inputs, matched []string) error {
+	inputIdx := make(map[string]int, len(inputs))
+	for i, id := range inputs {
+		inputIdx[id] = i
+	}
+	prev := -1
+	for _, id := range matched {
+		pos, ok := inputIdx[id]
+		if !ok {
+			return fmt.Errorf("matched token %q not found in inputs", id)
+		}
+		if pos <= prev {
+			return fmt.Errorf("matched tokens are not in input order at %q", id)
+		}
+		prev = pos
+	}
+	return nil
 }
 
 func validateDerivedTokenAgainstPayload(token kernel.Token, payload tokenDerivePayload, run kernel.Run) error {
