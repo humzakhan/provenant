@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -425,7 +426,8 @@ func TestRunnerReconcileWritesReportPackage(t *testing.T) {
 
 	entries := readZipEntries(t, outPath)
 	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
-	if got := orderedReportNames(entries); !reflect.DeepEqual(got, wantNames) {
+	slices.Sort(wantNames)
+	if got := zipEntryNames(entries); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
 	}
 	if len(entries["manifest.json"]) == 0 {
@@ -447,7 +449,8 @@ func TestRunnerReconcileExampleFixture(t *testing.T) {
 
 	entries := readZipEntries(t, outPath)
 	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
-	if got := orderedReportNames(entries); !reflect.DeepEqual(got, wantNames) {
+	slices.Sort(wantNames)
+	if got := zipEntryNames(entries); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
 	}
 
@@ -805,14 +808,12 @@ func readZipEntries(t *testing.T, path string) map[string][]byte {
 	return entries
 }
 
-func orderedReportNames(entries map[string][]byte) []string {
-	ordered := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+func zipEntryNames(entries map[string][]byte) []string {
 	got := make([]string, 0, len(entries))
-	for _, name := range ordered {
-		if _, ok := entries[name]; ok {
-			got = append(got, name)
-		}
+	for name := range entries {
+		got = append(got, name)
 	}
+	slices.Sort(got)
 	return got
 }
 
