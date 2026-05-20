@@ -1,103 +1,47 @@
 # Provenant
 
-Provenant is a Go provenance kernel plus thin access surfaces for auditable source reads. Today it can read injected sources, mint provenance tokens from selected values, emit canonical audit bundles that can be verified and replayed later, and run a deterministic config-driven local reconciliation fixture through `provenant reconcile`.
+Provenant is a Go enforcement substrate for LLM agents in finance — not a logger or a reconciliation product. It enforces four kernel invariants across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, MCP host vendors, and compliance officers need a verifiable audit trail from raw bytes through to a hash-chained, replayable bundle.
 
-## Start Here
+## Mental Model
 
-If you are new to the repo, read this README first, then:
-
-- [`architecture/README.md`](architecture/README.md) for repo navigation
-- [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md) for reader contracts
-- [`examples/reconciliation/README.md`](examples/reconciliation/README.md) for the current deterministic `provenant reconcile` fixture
-- [`.planning/implementation-plan.md`](.planning/implementation-plan.md) for shipped phase boundaries
-
-## What Exists Today
-
-### Core path
-
-The shipped path is:
-
-1. Resolve one source's bytes in memory.
-2. Read a selected slice from that source.
-3. Mint one token from the selected output path.
-4. Snapshot a canonical bundle.
-5. Verify or replay that bundle from bytes alone.
-
-The thin access surfaces all call the same core path:
-
-- CLI: `read-mint-bundle`
-- HTTP: `POST /v1/read-mint-bundle`
-- MCP: `provenant.read_mint_bundle`
-
-### Readers
-
-At the kernel level, structured readers exist for:
-
-- `extract.json`
-- `extract.jsonl`
-- `extract.csv_rows`
-- `extract.spreadsheet` for `.xlsx`
-
-The current thin CLI, HTTP, and MCP wrappers are narrower: they accept one source at a time and currently only expose `reader: "extract.json"` in their request contract.
-
-### Bundle and audit output
-
-The top-level result is JSON around canonical bundle bytes and hash:
-
-- `surface`
-- `read_and_mint`
-- `bundle_bytes`
-- `bundle_sha256`
-
-The decoded canonical bundle inside `bundle_bytes` is JSON with:
-
-- `format`
-- `run`
-- `captured_reads`
-- `tokens`
-- `audit_jsonl`
-
-`audit_jsonl` is the tamper-evident audit chain for the run.
-
-## Reconciliation Fixture Path
-
-Phase 5 adds a local, deterministic, config-driven reconciliation path for fixture-scale CSV/XLSX inputs:
-
-```bash
-go run ./cmd/provenant reconcile --request examples/reconciliation/reconcile.json --out /tmp/provenant-reconcile-report.zip --workdir examples/reconciliation
+```
+source bytes → SourceReader.Read → CapturedRead + ReadResult
+                                    ↓
+                              kernel.MintToken
+                                    ↓
+                        AuditSink.AppendAuditEntry (hash-chained)
+                                    ↓
+                        bundle.Snapshot → bundle bytes + SHA-256
+                                    ↓
+                       bundle.Verify / bundle.Replay (offline)
 ```
 
-See [`examples/reconciliation/README.md`](examples/reconciliation/README.md) for the exact fixture inputs, request shape, ZIP artifacts, report excerpts, verification guidance, and failure fixtures.
+**Source bytes → CapturedRead + ReadResult.** The source reader receives raw bytes with a declared SHA-256 and selector. It produces a `CapturedRead` (stable identity, origin URI, reader name and version, output hash) plus a `ReadResult` (normalized value, byte span, matched pointer). No value enters the kernel without a captured read.
 
-For the broader user scenario "give Provenant arbitrary Excel files or CSVs and ask for reconciliation plus a complete audited chain":
+**kernel.MintToken.** The kernel receives the captured read and mints a provenance token bound to it. The token carries a canonical decimal value, unit, run ID, and tenant ID. Minting is fail-closed: any validation failure returns an error; no partial token escapes.
 
-### Exists now
+**AuditSink.AppendAuditEntry.** Every mint appends one audit entry to a hash chain. Each entry records its sequence number, kind, deterministic payload, previous hash, and current hash. The chain is tamper-evident: any edit to an earlier entry breaks the hash linkage.
 
-- Kernel readers for JSON, JSONL, CSV row windows, and XLSX ranges/tables
-- Deterministic captured reads
-- Token minting tied to captured reads
-- Canonical bundle emission, verification, replay, and derived export from bundle bytes
-- Thin access surfaces proving the same single-source path across CLI, HTTP, and MCP
-- Local `provenant reconcile` CLI path for an explicit request mapping two configured local sources
+**bundle.Snapshot → bundle bytes + SHA-256.** The snapshot serializes the run descriptor, all captured reads, all tokens, and the full audit JSONL into a single canonical byte sequence. The SHA-256 of that sequence is the bundle fingerprint.
 
-### Does not exist yet
+**bundle.Verify / bundle.Replay.** Verify checks the hash chain and confirms the bundle fingerprint matches. Replay re-derives every token from the captured reads in the bundle and confirms the audit chain is consistent. Both are offline operations that require only the bundle bytes.
 
-- No thin HTTP/MCP reconciliation flow that accepts multiple files in one request
-- No shipped reconciliation planner that infers mappings from arbitrary CSV/XLSX inputs
-- No access-surface contract today for `extract.csv_rows` or `extract.spreadsheet`
-- No complete end-user reconciliation product in this repo
-
-So the accurate claim today is: Provenant ships the auditable read/mint/bundle path, structured readers, and a deterministic local reconciliation fixture command, but not a finished end-user reconciliation product.
-
-## Run The Supported Path Today
-
-The easiest supported path is the CLI:
+## Quick Start
 
 ```bash
-rtk go run ./cmd/provenant read-mint-bundle --request /path/to/request.json
+git clone https://github.com/provenant/provenant
+cd provenant
+go test ./...
 ```
 
-Request shape:
+Two CLI subcommands exist today:
+
+- `go run ./cmd/provenant read-mint-bundle` — read one JSON source, mint one token, emit an audit bundle.
+- `go run ./cmd/provenant reconcile` — run the deterministic reconciliation fixture against local CSV/XLSX files.
+
+## Example 1: read-mint-bundle
+
+The only supported reader for this surface is `extract.json`. Prepare a request file:
 
 ```json
 {
@@ -127,23 +71,13 @@ Request shape:
 }
 ```
 
-The same request contract is exercised across surfaces in [`access/smoke/smoke_test.go`](access/smoke/smoke_test.go).
+Run it:
 
-## Example In Repo
+```bash
+go run ./cmd/provenant read-mint-bundle --request request.json
+```
 
-Use [`access/smoke/smoke_test.go`](access/smoke/smoke_test.go) as the canonical end-to-end example for first-time readers. It shows:
-
-- one JSON source
-- one `extract.json` read
-- one minted token
-- one canonical bundle
-- parity across CLI, HTTP, and MCP
-
-For reader coverage beyond the current thin surfaces, see [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md).
-
-## Sample Output Shape
-
-Representative CLI result:
+The response is JSON with four top-level keys: `surface`, `read_and_mint`, `bundle_bytes` (base64 canonical bundle), and `bundle_sha256`.
 
 ```json
 {
@@ -165,11 +99,6 @@ Representative CLI result:
         "run_id": "run_1",
         "source_path": "fixture://invoice.json",
         "origin": "fixture://invoice.json#ptr=/invoice/total&byte=20-26",
-        "selector": {
-          "json_pointer": "/invoice/total",
-          "jsonpath": "$.invoice.total",
-          "byte_span": "20-26"
-        },
         "reader_name": "extract.json",
         "reader_version": "v1",
         "source_sha256": "00a31c1d108c9a5045542250c7551107be5355a4ef6f5dad81a1ada6c4b894c9",
@@ -193,33 +122,143 @@ Representative CLI result:
 }
 ```
 
-Decoded bundle shape:
+Decoded, `bundle_bytes` is JSON with format `"phase1.bundle/v1"`, containing `run`, `captured_reads`, `tokens`, and `audit_jsonl`.
+
+The same request contract is exercised across surfaces in [`access/smoke/smoke_test.go`](access/smoke/smoke_test.go).
+
+## Example 2: reconcile (reconciliation fixture)
+
+The reconcile fixture reads two local files (`bank.csv` and `ledger.xlsx`), runs an exact-match comparison on `transaction_id`, and writes a ZIP report. The fixture is deterministic: the same inputs always produce the same output.
+
+```bash
+cd examples/reconciliation
+go run ../../cmd/provenant reconcile \
+  --request reconcile.json \
+  --out report.zip \
+  --workdir .
+```
+
+Re-run with `--overwrite` if `report.zip` already exists.
+
+### ZIP contents
+
+The output ZIP contains exactly these eight entries:
+
+| Entry | Description |
+|---|---|
+| `report.md` | Human-readable summary: run ID, mode, result count, outcome counts. |
+| `report.json` | Machine-readable version of the same counts plus per-result evidence. |
+| `mismatches.csv` | Rows for every non-matched result with result ID, outcome, key, field, left value, right value. |
+| `captured_reads.json` | All `CapturedRead` records from the run, including reader name, version, and output hash. |
+| `tokens.json` | All minted tokens with canonical values and bound captured read IDs. |
+| `audit.jsonl` | Hash-chained audit entries, one JSON object per line, covering every token mint. |
+| `bundle.json` | The canonical audit bundle (`phase1.bundle/v1`) containing the full run, captured reads, tokens, and audit chain. |
+| `manifest.json` | Verified bundle hash and SHA-256 for each sidecar artifact; used to confirm ZIP integrity offline. |
+
+### Sample audit.jsonl entry
+
+The first entry is a deterministic token mint for `bank.csv`:
+
+```json
+{"at":"1970-01-01T00:00:00Z","hash":"1c3a31b2c15870aa4b205af0263bf882123987affaa55e75222f89ee74203163","kind":"token_mint","payload_deterministic":{"captured_read_id":"read_c3182a42dc24532fcb411f81391f198b","reader_name":"extract.csv_rows","reader_version":"v1","source_sha256":"c430a1f9c8f25c2603459acb5f77b0531f5bddcd2429abafd6e06dc1f59911e0","source_value_raw":"100.00","token_id":"tok_b96a501573ad7fd5edb9185ed93604d5","value_canonical":"100.000000000"},"prev_hash":"4533226321c664c56ea0c277312cb192f27ae2cdad5bb632780ba79a7f9de1ba","run_id":"reconciliation_fixture_run_1","seq":1,"tenant_id":"tenant_demo"}
+```
+
+Absolute `source_path` and `origin` fields in the real output depend on the working directory at run time.
+
+### Sample manifest.json shape
 
 ```json
 {
-  "format": "phase1.bundle/v1",
-  "run": {
-    "id": "run_1",
-    "tenant_id": "tenant_1",
-    "status": "running"
-  },
-  "captured_reads": [
+  "schema_version": "provenant.reconcile.report.manifest.v1",
+  "bundle_hash": "43985b8db3be88c9c1b7dbef2fcd5028349eff173302f29f6ad815662983be25",
+  "artifacts": [
     {
-      "id": "read_5038967ffe96e2e546aaf16a042c0e33",
-      "reader_name": "extract.json",
-      "source_path": "fixture://invoice.json"
-    }
-  ],
-  "tokens": [
+      "name": "audit.jsonl",
+      "size": 14740,
+      "sha256": "7d4af8e201608b42c09d41ead8dec89feb5875eaa099a7bf926f1f31be51f8c8"
+    },
     {
-      "id": "tok_12d6f0a3ea0b8ee41c02ee9cdeb145ff",
-      "value_canonical": "123.450000000"
+      "name": "bundle.json",
+      "size": 29318,
+      "sha256": "43985b8db3be88c9c1b7dbef2fcd5028349eff173302f29f6ad815662983be25"
     }
-  ],
-  "audit_jsonl": "{\"seq\":1,\"kind\":\"token_mint\",...}\n"
+  ]
 }
 ```
 
-## Current Status
+The full manifest also covers `captured_reads.json`, `mismatches.csv`, `report.json`, `report.md`, and `tokens.json`.
 
-Phases 0-4 in the current release sequence are complete. The handoff boundary is recorded in [`.planning/phases/phase-four/handoff.md`](.planning/phases/phase-four/handoff.md). That closeout did not add a broader reconciliation product; it closed hardening and doc alignment for the shipped single-source path.
+Note: `extract.csv_rows` and `extract.spreadsheet` are available as kernel readers and are used by the reconcile fixture path. They are not exposed by the `read-mint-bundle` CLI surface today.
+
+## Verifying a Bundle
+
+`bundle.Verify` and `bundle.Replay` are Go API only today. There is no CLI verb for standalone bundle verification. The CLI tests exercise both in [`access/cli`](access/cli).
+
+To verify or replay a bundle in Go:
+
+```go
+import "github.com/provenant/provenant/kernel/public/bundle"
+
+data, _ := os.ReadFile("bundle.json")
+if err := bundle.Verify(data); err != nil {
+    log.Fatalf("bundle tampered or invalid: %v", err)
+}
+entries, _ := bundle.Replay(data)
+_ = entries // captured reads and tokens re-derived from bundle bytes
+```
+
+Run the full fixture test including verify/replay:
+
+```bash
+go test ./access/cli
+```
+
+## Failure Fixtures
+
+Seven failure and edge-case fixtures live under `examples/reconciliation/failures/`:
+
+| Fixture | Behavior |
+|---|---|
+| `missing_required_source` | Missing required source data fails with `selector_invalid`. |
+| `malformed_amount` | Invalid numeric evidence fails with `evidence_failed`. |
+| `unsupported_format` | Unsupported input format fails with `request_invalid`. |
+| `invalid_selector` | Invalid reader selector fails with `request_invalid`. |
+| `duplicate_key` | Produces `duplicate_key` outcomes without writing a failure exit. |
+| `invalid_record` | Produces `invalid_record` and `missing_left` outcomes. |
+| `currency_mismatch` | Produces a deterministic `mismatch` outcome for mismatched currency fields. |
+
+## What Exists vs. What Does Not
+
+**Exists now:**
+
+- Go kernel with non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism
+- CLI `read-mint-bundle` with `extract.json` reader (JSON sources only)
+- CLI `reconcile` fixture with `extract.csv_rows` (CSV) and `extract.spreadsheet` (XLSX) readers
+- Audit bundle verify and replay (Go API: `bundle.Verify`, `bundle.Replay`)
+- Hash-chained tamper-evident audit JSONL
+- Deterministic ZIP report with manifest and sidecar hashes
+
+**Does not exist yet:**
+
+- HTTP surface for `reconcile` (no `POST /v1/reconcile` endpoint)
+- MCP server tool for `reconcile`
+- Reconciliation planner that infers column mappings from arbitrary inputs
+- Fuzzy or AI-assisted matching
+- A complete end-user reconciliation product
+
+## Project Layout
+
+```
+kernel/                  Pure Go enforcement kernel: readers, minting, audit chain, bundle.
+access/cli/              CLI runner, flag parsing, and end-to-end tests including failure fixtures.
+reconcile/               Reconciliation engine, request schema, report generation, and provenance binding.
+cmd/provenant/           Main entry point for the CLI binary.
+examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
+```
+
+## Further Reading
+
+- [`docs/thesis.md`](docs/thesis.md) — design principles and invariant rationale
+- [`examples/reconciliation/README.md`](examples/reconciliation/README.md) — full reconciliation fixture walkthrough, verification guidance, and explicit non-support list
+- [`architecture/README.md`](architecture/README.md) — repo navigation map
+- [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md) — reader contracts and selector reference
