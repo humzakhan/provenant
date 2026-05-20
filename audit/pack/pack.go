@@ -56,35 +56,36 @@ type Options struct {
 	SkipSidecarDiscovery bool
 }
 
-// packDocument is the on-disk JSON shape of an audit pack.
-type packDocument struct {
-	SchemaVersion string               `json:"schema_version"`
-	BundleSHA256  string               `json:"bundle_sha256"`
-	Bundle        json.RawMessage      `json:"bundle"`
+// Document is the on-disk JSON shape of an audit pack. It is exported so that
+// callers of Decode can introspect the decoded pack contents.
+type Document struct {
+	SchemaVersion string                `json:"schema_version"`
+	BundleSHA256  string                `json:"bundle_sha256"`
+	Bundle        json.RawMessage       `json:"bundle"`
 	CapturedReads []kernel.CapturedRead `json:"captured_reads"`
-	Tokens        []kernel.Token       `json:"tokens"`
-	AuditJSONL    string               `json:"audit_jsonl"`
-	Report        *reportSection       `json:"report,omitempty"`
-	Manifest      manifestSection      `json:"manifest"`
+	Tokens        []kernel.Token        `json:"tokens"`
+	AuditJSONL    string                `json:"audit_jsonl"`
+	Report        *ReportSection        `json:"report,omitempty"`
+	Manifest      ManifestSection       `json:"manifest"`
 }
 
-// reportSection is the optional reconciliation report embedded in the pack.
+// ReportSection is the optional reconciliation report embedded in the pack.
 // Present only when the run came from a reconcile flow; absent otherwise.
-type reportSection struct {
+type ReportSection struct {
 	Markdown      string          `json:"markdown"`
 	JSON          json.RawMessage `json:"json,omitempty"`
 	MismatchesCSV string          `json:"mismatches_csv,omitempty"`
 }
 
-// manifestSection is a lightweight integrity manifest over the key artifacts.
-type manifestSection struct {
-	SchemaVersion string             `json:"schema_version"`
-	BundleHash    string             `json:"bundle_hash"`
-	Artifacts     []artifactRecord   `json:"artifacts"`
+// ManifestSection is a lightweight integrity manifest over the key artifacts.
+type ManifestSection struct {
+	SchemaVersion string           `json:"schema_version"`
+	BundleHash    string           `json:"bundle_hash"`
+	Artifacts     []ArtifactRecord `json:"artifacts"`
 }
 
-// artifactRecord is one entry in the manifest's artifact list.
-type artifactRecord struct {
+// ArtifactRecord is one entry in the manifest's artifact list.
+type ArtifactRecord struct {
 	Name   string `json:"name"`
 	SHA256 string `json:"sha256"`
 }
@@ -119,9 +120,9 @@ func Build(bundleBytes []byte, opts Options) ([]byte, error) {
 	}
 
 	// Assemble the report section (omitted when no sidecars are present).
-	var reportSec *reportSection
+	var reportSec *ReportSection
 	if len(opts.ReportMarkdown) > 0 || len(opts.ReportJSON) > 0 || len(opts.MismatchesCSV) > 0 {
-		reportSec = &reportSection{
+		reportSec = &ReportSection{
 			Markdown:      string(opts.ReportMarkdown),
 			JSON:          opts.ReportJSON,
 			MismatchesCSV: string(opts.MismatchesCSV),
@@ -129,12 +130,12 @@ func Build(bundleBytes []byte, opts Options) ([]byte, error) {
 	}
 
 	// Build the manifest over bundle + audit_jsonl.
-	artifacts := []artifactRecord{
+	artifacts := []ArtifactRecord{
 		{Name: "bundle", SHA256: bundleSHA256},
 		{Name: "audit.jsonl", SHA256: sha256Hex([]byte(auditJSONL))},
 	}
 
-	doc := packDocument{
+	doc := Document{
 		SchemaVersion: SchemaVersion,
 		BundleSHA256:  bundleSHA256,
 		Bundle:        json.RawMessage(bundleBytes),
@@ -142,7 +143,7 @@ func Build(bundleBytes []byte, opts Options) ([]byte, error) {
 		Tokens:        state.Tokens,
 		AuditJSONL:    auditJSONL,
 		Report:        reportSec,
-		Manifest: manifestSection{
+		Manifest: ManifestSection{
 			SchemaVersion: manifestSchemaVersion,
 			BundleHash:    bundleSHA256,
 			Artifacts:     artifacts,
@@ -235,19 +236,19 @@ func WriteFile(path string, packBytes []byte) error {
 
 // Decode parses and validates a pack document. It returns ErrUnknownSchema if
 // the schema_version is not recognised.
-func Decode(r io.Reader) (packDocument, error) {
+func Decode(r io.Reader) (Document, error) {
 	limited := &io.LimitedReader{R: r, N: maxPackBytes + 1}
 	dec := json.NewDecoder(limited)
 
-	var doc packDocument
+	var doc Document
 	if err := dec.Decode(&doc); err != nil {
-		return packDocument{}, fmt.Errorf("pack: decode: %w", err)
+		return Document{}, fmt.Errorf("pack: decode: %w", err)
 	}
 	if limited.N == 0 {
-		return packDocument{}, fmt.Errorf("pack: document exceeds size limit")
+		return Document{}, fmt.Errorf("pack: document exceeds size limit")
 	}
 	if doc.SchemaVersion != SchemaVersion {
-		return packDocument{}, fmt.Errorf("%w: %q", ErrUnknownSchema, doc.SchemaVersion)
+		return Document{}, fmt.Errorf("%w: %q", ErrUnknownSchema, doc.SchemaVersion)
 	}
 	return doc, nil
 }
