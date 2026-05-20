@@ -296,7 +296,21 @@ func normalizeState(state State) (State, error) {
 	if state.Run.ID == "" || state.Run.TenantID == "" {
 		return State{}, fmt.Errorf("%w: missing run identity", ErrTamperDetected)
 	}
-	if len(state.AuditEntries) != len(state.Tokens) || len(state.CapturedReads) == 0 || len(state.CapturedReads) > len(state.Tokens) {
+	// Count audit entries that produce tokens (token_mint, token_derive).
+	// Run lifecycle entries (run_started, run_completed, run_failed) do not
+	// produce tokens and are not counted in the token constraint.
+	tokenEntryCount := 0
+	for _, e := range state.AuditEntries {
+		if e.Kind == kernel.EntryKindTokenMint || e.Kind == kernel.EntryKindTokenDerive {
+			tokenEntryCount++
+		}
+	}
+	if tokenEntryCount != len(state.Tokens) {
+		return State{}, fmt.Errorf("%w: expected one audit per token and captured reads referenced by tokens", ErrTamperDetected)
+	}
+	// If there are tokens, there must be at least one captured read and no more
+	// captured reads than tokens (a captured read is a source for at least one token).
+	if len(state.Tokens) > 0 && (len(state.CapturedReads) == 0 || len(state.CapturedReads) > len(state.Tokens)) {
 		return State{}, fmt.Errorf("%w: expected one audit per token and captured reads referenced by tokens", ErrTamperDetected)
 	}
 
@@ -420,15 +434,29 @@ func normalizeState(state State) (State, error) {
 			normalizedTokens = append(normalizedTokens, deterministicDerivedToken(state.Run, payload))
 			seqByTokenID[payload.TokenID] = entry.Seq
 
+		case kernel.EntryKindRunStarted, kernel.EntryKindRunCompleted, kernel.EntryKindRunFailed:
+			// Run lifecycle entries carry no token and no payload beyond
+			// seq/prev_hash bookkeeping. Validate that the deterministic payload
+			// is an empty JSON object so the hash chain is stable.
+			if err := validateRunLifecyclePayload(deterministic, entry.Seq); err != nil {
+				return State{}, err
+			}
+			// No token produced; no contribution to referencedReadIDs.
+
 		default:
 			return State{}, fmt.Errorf("%w: unsupported audit kind %s", ErrTamperDetected, entry.Kind)
 		}
 
 		prevHash = entry.Hash
 	}
-	for _, read := range state.CapturedReads {
-		if _, ok := referencedReadIDs[read.ID]; !ok {
-			return State{}, fmt.Errorf("%w: unreferenced captured read %s", ErrTamperDetected, read.ID)
+	// Only enforce the "every captured read is referenced" invariant when
+	// there are tokens. A bundle containing only run lifecycle entries has
+	// no captured reads, so there is nothing to check.
+	if len(state.Tokens) > 0 {
+		for _, read := range state.CapturedReads {
+			if _, ok := referencedReadIDs[read.ID]; !ok {
+				return State{}, fmt.Errorf("%w: unreferenced captured read %s", ErrTamperDetected, read.ID)
+			}
 		}
 	}
 
@@ -698,6 +726,19 @@ func validateDerivedTokenAgainstPayload(token kernel.Token, payload tokenDeriveP
 		if id != payload.Inputs[i] {
 			return fmt.Errorf("%w: derived token %s input[%d] mismatch", ErrTamperDetected, token.ID, i)
 		}
+	}
+	return nil
+}
+
+// validateRunLifecyclePayload checks that a run lifecycle audit entry
+// (run_started, run_completed, run_failed) carries an empty JSON object as its
+// deterministic payload. An empty object is canonical: `{}`. Any other payload
+// is rejected as a tamper attempt.
+func validateRunLifecyclePayload(deterministic []byte, seq uint64) error {
+	// The canonical form of an empty object is exactly `{}`.
+	trimmed := bytes.TrimSpace(deterministic)
+	if string(trimmed) != "{}" {
+		return fmt.Errorf("%w: run lifecycle entry at seq %d must have empty payload, got %s", ErrTamperDetected, seq, trimmed)
 	}
 	return nil
 }
