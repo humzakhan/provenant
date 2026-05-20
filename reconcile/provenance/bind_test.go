@@ -1,13 +1,17 @@
 package provenance
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"reflect"
 	"strings"
 	"testing"
 
 	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/provenant/provenant/kernel/public/bundle"
 	"github.com/provenant/provenant/reconcile/engine"
 	"github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
@@ -200,6 +204,143 @@ func TestBindMissingProvenanceFailsClosed(t *testing.T) {
 	}
 }
 
+func TestBindMintsAmountTokenFromCapturedReadAndVerifiesBundle(t *testing.T) {
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+		ID:      "res_matched",
+		Outcome: engine.OutcomeMatched,
+		Key:     []engine.KeyValue{{Field: "id", Value: "a"}},
+		Left:    rowRef("left", "row:1"),
+		Right:   rowRef("right", "row:1"),
+	}}}
+
+	bound, err := Bind(context.Background(), testRequest(), testMintableFiles("10.00", "10.00"), set, Options{})
+	if err != nil {
+		t.Fatalf("Bind returned error: %v", err)
+	}
+	if got, want := len(bound.Tokens), 2; got != want {
+		t.Fatalf("tokens = %d, want %d: %#v", got, want, bound.Tokens)
+	}
+	if got, want := len(bound.AuditEntries), 2; got != want {
+		t.Fatalf("audit entries = %d, want %d: %#v", got, want, bound.AuditEntries)
+	}
+	if bound.Bundle == nil || len(bound.Bundle.Bytes) == 0 || bound.Bundle.SHA256 == "" {
+		t.Fatalf("bundle missing: %#v", bound.Bundle)
+	}
+	if got, want := bound.Bundle.SHA256, sha256HexForTest(bound.Bundle.Bytes); got != want {
+		t.Fatalf("bundle hash = %s, want %s", got, want)
+	}
+	if err := bundle.Verify(bound.Bundle.Bytes); err != nil {
+		t.Fatalf("bundle.Verify() error = %v", err)
+	}
+
+	amountTokenRefs := 0
+	for _, ref := range bound.Evidence[0].ValueRefs {
+		if ref.Role == request.RoleAmount {
+			amountTokenRefs++
+			if ref.TokenID == "" {
+				t.Fatalf("amount ref missing token id: %#v", ref)
+			}
+		} else if ref.TokenID != "" {
+			t.Fatalf("non-amount ref received token id: %#v", ref)
+		}
+	}
+	if amountTokenRefs != 2 {
+		t.Fatalf("amount token refs = %d, want 2", amountTokenRefs)
+	}
+}
+
+func TestBindBundleHashStableAcrossRepeatedBind(t *testing.T) {
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+		ID:      "res_stable",
+		Outcome: engine.OutcomeMatched,
+		Left:    rowRef("left", "row:1"),
+		Right:   rowRef("right", "row:1"),
+	}}}
+
+	first, err := Bind(context.Background(), testRequest(), testMintableFiles("10.00", "10.00"), set, Options{})
+	if err != nil {
+		t.Fatalf("first Bind returned error: %v", err)
+	}
+	second, err := Bind(context.Background(), testRequest(), testMintableFiles("10.00", "10.00"), set, Options{})
+	if err != nil {
+		t.Fatalf("second Bind returned error: %v", err)
+	}
+	if first.Bundle == nil || second.Bundle == nil {
+		t.Fatalf("bundle missing: first=%#v second=%#v", first.Bundle, second.Bundle)
+	}
+	if first.Bundle.SHA256 != second.Bundle.SHA256 || !bytes.Equal(first.Bundle.Bytes, second.Bundle.Bytes) {
+		t.Fatalf("bundle changed across repeated bind:\nfirst  %s\nsecond %s", first.Bundle.SHA256, second.Bundle.SHA256)
+	}
+}
+
+func TestBindMintEvidenceTamperFailsClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func([]router.NormalizedFile)
+	}{
+		{
+			name: "tampered output hash",
+			mutate: func(files []router.NormalizedFile) {
+				files[0].CapturedRead.OutputSHA256 = strings.Repeat("0", 64)
+			},
+		},
+		{
+			name: "missing output hash",
+			mutate: func(files []router.NormalizedFile) {
+				files[0].CapturedRead.OutputSHA256 = ""
+			},
+		},
+		{
+			name: "captured value mismatch",
+			mutate: func(files []router.NormalizedFile) {
+				output := json.RawMessage(`{"value":"99.00"}`)
+				files[0].CapturedRead.Output = output
+				files[0].CapturedRead.OutputSHA256 = sha256HexForTest(output)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			files := testMintableFiles("10.00", "10.00")
+			tt.mutate(files)
+			set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+				ID:      "res_tamper",
+				Outcome: engine.OutcomeMatched,
+				Left:    rowRef("left", "row:1"),
+				Right:   rowRef("right", "row:1"),
+			}}}
+
+			_, err := Bind(context.Background(), testRequest(), files, set, Options{})
+			if err == nil || (!strings.Contains(err.Error(), "mint amount token") && !strings.Contains(err.Error(), "captured read value mismatch")) {
+				t.Fatalf("Bind error = %v, want fail-closed mint evidence failure", err)
+			}
+		})
+	}
+}
+
+func TestBindNonMintableFieldsRemainCapturedReadOnly(t *testing.T) {
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+		ID:      "res_non_mintable",
+		Outcome: engine.OutcomeMatched,
+		Left:    rowRef("left", "row:1"),
+		Right:   rowRef("right", "row:1"),
+	}}}
+
+	bound, err := Bind(context.Background(), testRequest(), testFiles(), set, Options{})
+	if err != nil {
+		t.Fatalf("Bind returned error: %v", err)
+	}
+	if len(bound.Tokens) != 0 || len(bound.AuditEntries) != 0 || bound.Bundle != nil {
+		t.Fatalf("non-mintable bind produced minted evidence: tokens=%#v audits=%#v bundle=%#v", bound.Tokens, bound.AuditEntries, bound.Bundle)
+	}
+	for _, ref := range bound.Evidence[0].ValueRefs {
+		if ref.CapturedReadID == "" || ref.TokenID != "" {
+			t.Fatalf("non-mintable ref should keep captured read only: %#v", ref)
+		}
+	}
+}
+
 func TestBindPreservesResultOutcomesReasonsAndIDs(t *testing.T) {
 	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
 		ID:      "res_immutable",
@@ -283,6 +424,23 @@ func testFiles() []router.NormalizedFile {
 	}
 }
 
+func testMintableFiles(leftAmount, rightAmount string) []router.NormalizedFile {
+	files := []router.NormalizedFile{
+		testFile("left", "cr-left", []router.NormalizedRow{testRow("row:1", "a", leftAmount)}),
+		testFile("right", "cr-right", []router.NormalizedRow{testRow("row:1", "a", rightAmount)}),
+	}
+	for i := range files {
+		amount := leftAmount
+		if files[i].FileID == "right" {
+			amount = rightAmount
+		}
+		output := json.RawMessage(`{"value":"` + amount + `"}`)
+		files[i].CapturedRead.Output = output
+		files[i].CapturedRead.OutputSHA256 = sha256HexForTest(output)
+	}
+	return files
+}
+
 func testFile(fileID, capturedReadID string, rows []router.NormalizedRow) router.NormalizedFile {
 	return router.NormalizedFile{
 		FileID:     fileID,
@@ -326,4 +484,9 @@ func testValue(field, role, source, value string) router.NormalizedValue {
 
 func rowRef(fileID, rowKey string) *engine.RowRef {
 	return &engine.RowRef{FileID: fileID, RowKey: rowKey, Position: router.RowPosition{Row: 1}}
+}
+
+func sha256HexForTest(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

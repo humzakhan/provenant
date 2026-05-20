@@ -2,11 +2,18 @@ package provenance
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/provenant/provenant/kernel/public/bundle"
+	"github.com/provenant/provenant/kernel/public/memio"
 	"github.com/provenant/provenant/reconcile/engine"
 	"github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
@@ -15,9 +22,17 @@ import (
 type Options struct{}
 
 type ProvenancedResultSet struct {
-	Results       engine.ResultSet  `json:"results"`
-	CapturedReads []CapturedReadRef `json:"captured_reads"`
-	Evidence      []ResultEvidence  `json:"evidence"`
+	Results       engine.ResultSet    `json:"results"`
+	CapturedReads []CapturedReadRef   `json:"captured_reads"`
+	Tokens        []kernel.Token      `json:"tokens,omitempty"`
+	AuditEntries  []kernel.AuditEntry `json:"audit_entries,omitempty"`
+	Bundle        *BundleRef          `json:"bundle,omitempty"`
+	Evidence      []ResultEvidence    `json:"evidence"`
+}
+
+type BundleRef struct {
+	Bytes  []byte `json:"bytes"`
+	SHA256 string `json:"sha256"`
 }
 
 type CapturedReadRef struct {
@@ -58,6 +73,7 @@ type ValueEvidenceRef struct {
 	CapturedReadID string `json:"captured_read_id"`
 	SourceHash     string `json:"source_hash"`
 	Selector       string `json:"selector"`
+	TokenID        string `json:"token_id,omitempty"`
 }
 
 func Bind(ctx context.Context, req request.Request, files []router.NormalizedFile, results *engine.ResultSet, opts Options) (*ProvenancedResultSet, error) {
@@ -93,7 +109,185 @@ func Bind(ctx context.Context, req request.Request, files []router.NormalizedFil
 		}
 		bound.Evidence = append(bound.Evidence, evidence)
 	}
+	if err := mintAmountEvidence(ctx, req, bound, index); err != nil {
+		return nil, err
+	}
 	return bound, nil
+}
+
+func mintAmountEvidence(ctx context.Context, req request.Request, bound *ProvenancedResultSet, idx fileIndex) error {
+	if bound == nil {
+		return nil
+	}
+
+	run := kernel.Run{ID: req.Run.ID, TenantID: req.Run.TenantID, Status: kernel.RunRunning}
+	binding := memio.NewBinding()
+	clock := fixedClock{at: time.Unix(0, 0).UTC()}
+	minted := map[string]kernel.MintFromCapturedReadResult{}
+	mintedReads := map[string]kernel.CapturedRead{}
+
+	for evidenceIndex := range bound.Evidence {
+		for valueIndex := range bound.Evidence[evidenceIndex].ValueRefs {
+			ref := &bound.Evidence[evidenceIndex].ValueRefs[valueIndex]
+			if ref.Role != request.RoleAmount {
+				continue
+			}
+
+			read, ok, err := capturedReadForValueRef(*ref, idx)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				continue
+			}
+			if !capturedReadValueMatchesRef(read.Output, *ref) {
+				return fmt.Errorf("provenance_bind_failed: captured read value mismatch for file %q row %q field %q", ref.FileID, ref.RowKey, ref.LogicalField)
+			}
+
+			key := read.ID + "\x00$.value"
+			mintedResult, exists := minted[key]
+			if !exists {
+				result, err := kernel.MintFromCapturedRead(
+					ctx,
+					binding,
+					binding,
+					binding,
+					clock,
+					run,
+					kernel.MintFromCapturedReadRequest{
+						CapturedRead: read,
+						Source:       kernel.Source{Path: read.SourcePath, SHA256: read.SourceSHA256},
+						OutputPath:   "$.value",
+					},
+				)
+				if err != nil {
+					if nonMintableAmountError(err) {
+						continue
+					}
+					return fmt.Errorf("provenance_bind_failed: mint amount token for file %q row %q field %q: %w", ref.FileID, ref.RowKey, ref.LogicalField, err)
+				}
+				minted[key] = result
+				mintedReads[read.ID] = read
+				mintedResult = result
+			}
+			ref.TokenID = mintedResult.Token.ID
+		}
+	}
+
+	if len(minted) == 0 {
+		return nil
+	}
+
+	tokens, audits, err := mintedState(ctx, binding, run)
+	if err != nil {
+		return err
+	}
+	reads := make([]kernel.CapturedRead, 0, len(mintedReads))
+	for _, read := range mintedReads {
+		reads = append(reads, cloneCapturedRead(read))
+	}
+	sort.Slice(reads, func(i, j int) bool { return reads[i].ID < reads[j].ID })
+
+	bundleBytes, err := bundle.Emit(bundle.State{Run: run, CapturedReads: reads, Tokens: tokens, AuditEntries: audits})
+	if err != nil {
+		return fmt.Errorf("provenance_bind_failed: emit bundle: %w", err)
+	}
+	if err := bundle.Verify(bundleBytes); err != nil {
+		return fmt.Errorf("provenance_bind_failed: verify bundle: %w", err)
+	}
+
+	bound.Tokens = tokens
+	bound.AuditEntries = audits
+	bound.Bundle = &BundleRef{Bytes: bundleBytes, SHA256: sha256Hex(bundleBytes)}
+	return nil
+}
+
+func capturedReadForValueRef(ref ValueEvidenceRef, idx fileIndex) (kernel.CapturedRead, bool, error) {
+	file, ok := idx.files[ref.FileID]
+	if !ok {
+		return kernel.CapturedRead{}, false, fmt.Errorf("provenance_bind_failed: missing file provenance for %q", ref.FileID)
+	}
+	read := file.file.CapturedRead
+	if read.ID != ref.CapturedReadID {
+		return kernel.CapturedRead{}, false, fmt.Errorf("provenance_bind_failed: captured read mismatch for file %q", ref.FileID)
+	}
+	if !hasTopLevelValue(read.Output) {
+		return kernel.CapturedRead{}, false, nil
+	}
+	return cloneCapturedRead(read), true, nil
+}
+
+func hasTopLevelValue(output json.RawMessage) bool {
+	var payload map[string]json.RawMessage
+	if err := json.Unmarshal(output, &payload); err != nil {
+		return false
+	}
+	_, ok := payload["value"]
+	return ok
+}
+
+func capturedReadValueMatchesRef(output json.RawMessage, ref ValueEvidenceRef) bool {
+	var payload struct {
+		Value any `json:"value"`
+	}
+	dec := json.NewDecoder(strings.NewReader(string(output)))
+	dec.UseNumber()
+	if err := dec.Decode(&payload); err != nil {
+		return false
+	}
+
+	var value string
+	switch typed := payload.Value.(type) {
+	case string:
+		value = typed
+	case json.Number:
+		value = typed.String()
+	default:
+		return false
+	}
+	return value == ref.Canonical || value == ref.Raw
+}
+
+func nonMintableAmountError(err error) bool {
+	return errors.Is(err, kernel.ErrOutputPathNotFound) || errors.Is(err, kernel.ErrMintValueNotNumeric) || errors.Is(err, kernel.ErrUnsupportedOutputPath)
+}
+
+func mintedState(ctx context.Context, binding *memio.Binding, run kernel.Run) ([]kernel.Token, []kernel.AuditEntry, error) {
+	var tokens []kernel.Token
+	var audits []kernel.AuditEntry
+	if err := binding.WithTx(ctx, func(ctx context.Context, tx kernel.Tx) error {
+		var err error
+		tokens, err = binding.Tokens(ctx, tx, run.ID)
+		if err != nil {
+			return err
+		}
+		audits, err = binding.AuditEntries(ctx, tx, run.TenantID, run.ID)
+		return err
+	}); err != nil {
+		return nil, nil, fmt.Errorf("provenance_bind_failed: collect minted state: %w", err)
+	}
+	return tokens, audits, nil
+}
+
+type fixedClock struct {
+	at time.Time
+}
+
+func (c fixedClock) Now() time.Time {
+	return c.at
+}
+
+func cloneCapturedRead(read kernel.CapturedRead) kernel.CapturedRead {
+	cloned := read
+	cloned.ReaderOptions = append([]byte(nil), read.ReaderOptions...)
+	cloned.Locator = append([]byte(nil), read.Locator...)
+	cloned.Output = append([]byte(nil), read.Output...)
+	return cloned
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }
 
 type fileIndex struct {
