@@ -1,6 +1,6 @@
 # Provenant
 
-Provenant is a Go provenance kernel plus thin access surfaces for auditable source reads. Today it can read one injected source, mint a provenance token from a selected value, and emit a canonical audit bundle that can be verified and replayed later.
+Provenant is a Go provenance kernel plus thin access surfaces for auditable source reads. Today it can read injected sources, mint provenance tokens from selected values, emit canonical audit bundles that can be verified and replayed later, and run a deterministic config-driven local reconciliation fixture through `provenant reconcile`.
 
 ## Start Here
 
@@ -8,6 +8,7 @@ If you are new to the repo, read this README first, then:
 
 - [`architecture/README.md`](architecture/README.md) for repo navigation
 - [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md) for reader contracts
+- [`examples/reconciliation/README.md`](examples/reconciliation/README.md) for the current deterministic `provenant reconcile` fixture
 - [`.planning/implementation-plan.md`](.planning/implementation-plan.md) for shipped phase boundaries
 
 ## What Exists Today
@@ -58,9 +59,17 @@ The decoded canonical bundle inside `bundle_bytes` is JSON with:
 
 `audit_jsonl` is the tamper-evident audit chain for the run.
 
-## What This Is Not Yet
+## Reconciliation Fixture Path
 
-For the user scenario "give Provenant three Excel files or CSVs and ask for reconciliation plus a complete audited chain":
+Phase 5 adds a local, deterministic, config-driven reconciliation path for fixture-scale CSV/XLSX inputs:
+
+```bash
+go run ./cmd/provenant reconcile --request examples/reconciliation/reconcile.json --out /tmp/provenant-reconcile-report.zip --workdir examples/reconciliation
+```
+
+See [`examples/reconciliation/README.md`](examples/reconciliation/README.md) for the exact fixture inputs, request shape, ZIP artifacts, report excerpts, verification guidance, and failure fixtures.
+
+For the broader user scenario "give Provenant arbitrary Excel files or CSVs and ask for reconciliation plus a complete audited chain":
 
 ### Exists now
 
@@ -69,16 +78,16 @@ For the user scenario "give Provenant three Excel files or CSVs and ask for reco
 - Token minting tied to captured reads
 - Canonical bundle emission, verification, replay, and derived export from bundle bytes
 - Thin access surfaces proving the same single-source path across CLI, HTTP, and MCP
+- Local `provenant reconcile` CLI path for an explicit request mapping two configured local sources
 
 ### Does not exist yet
 
-- No first-class three-file reconciliation command
-- No thin CLI/HTTP/MCP flow that accepts multiple files in one request
-- No shipped reconciliation planner that compares three CSV/XLSX inputs and produces a final decision artifact
+- No thin HTTP/MCP reconciliation flow that accepts multiple files in one request
+- No shipped reconciliation planner that infers mappings from arbitrary CSV/XLSX inputs
 - No access-surface contract today for `extract.csv_rows` or `extract.spreadsheet`
 - No complete end-user reconciliation product in this repo
 
-So the accurate claim today is: Provenant ships the auditable single-source read/mint/bundle path and the kernel pieces needed for broader structured-file workflows, but not a finished three-file reconciliation workflow.
+So the accurate claim today is: Provenant ships the auditable read/mint/bundle path, structured readers, and a deterministic local reconciliation fixture command, but not a finished end-user reconciliation product.
 
 ## Run The Supported Path Today
 

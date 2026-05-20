@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -425,11 +426,125 @@ func TestRunnerReconcileWritesReportPackage(t *testing.T) {
 
 	entries := readZipEntries(t, outPath)
 	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
-	if got := orderedReportNames(entries); !reflect.DeepEqual(got, wantNames) {
+	slices.Sort(wantNames)
+	if got := zipEntryNames(entries); !reflect.DeepEqual(got, wantNames) {
 		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
 	}
 	if len(entries["manifest.json"]) == 0 {
 		t.Fatal("manifest.json is empty")
+	}
+}
+
+func TestRunnerReconcileExampleFixture(t *testing.T) {
+	fixtureDir := filepath.Join("..", "..", "examples", "reconciliation")
+	workdir := t.TempDir()
+	copyFixtureFiles(t, fixtureDir, workdir, "reconcile.json", "bank.csv", "ledger.xlsx", "invoices.csv")
+
+	outPath := filepath.Join(workdir, "report.zip")
+	var stdout bytes.Buffer
+	if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(workdir, "reconcile.json"), "--out", outPath, "--workdir", workdir}, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	assertNoStdoutAndReportExists(t, stdout, outPath)
+
+	entries := readZipEntries(t, outPath)
+	wantNames := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+	slices.Sort(wantNames)
+	if got := zipEntryNames(entries); !reflect.DeepEqual(got, wantNames) {
+		t.Fatalf("zip entries = %#v, want %#v", got, wantNames)
+	}
+
+	var reportPayload struct {
+		ResultCount   int            `json:"result_count"`
+		OutcomeCounts map[string]int `json:"outcome_counts"`
+	}
+	if err := json.Unmarshal(entries["report.json"], &reportPayload); err != nil {
+		t.Fatalf("Unmarshal(report.json) error = %v", err)
+	}
+	if reportPayload.ResultCount != 4 {
+		t.Fatalf("result_count = %d, want 4", reportPayload.ResultCount)
+	}
+	for outcome, want := range map[string]int{"matched": 1, "mismatch": 1, "missing_left": 1, "missing_right": 1} {
+		if got := reportPayload.OutcomeCounts[outcome]; got != want {
+			t.Fatalf("outcome_counts[%s] = %d, want %d", outcome, got, want)
+		}
+	}
+
+	assertManifestHashes(t, entries)
+	if err := bundle.Verify(entries["bundle.json"]); err != nil {
+		t.Fatalf("bundle.Verify(bundle.json) error = %v", err)
+	}
+	if _, err := bundle.Replay(entries["bundle.json"]); err != nil {
+		t.Fatalf("bundle.Replay(bundle.json) error = %v", err)
+	}
+}
+
+func TestRunnerReconcileFailureFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureRoot := filepath.Join("..", "..", "examples", "reconciliation", "failures")
+	tests := []struct {
+		name       string
+		wantPrefix string
+	}{
+		{name: "missing_required_source", wantPrefix: "selector_invalid: "},
+		{name: "malformed_amount", wantPrefix: "evidence_failed: "},
+		{name: "unsupported_format", wantPrefix: "request_invalid: "},
+		{name: "invalid_selector", wantPrefix: "request_invalid: "},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtureDir := filepath.Join(fixtureRoot, tc.name)
+			outPath := filepath.Join(t.TempDir(), "report.zip")
+			var stdout bytes.Buffer
+			err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(fixtureDir, "reconcile.json"), "--out", outPath, "--workdir", fixtureDir}, strings.NewReader(""), &stdout)
+			assertCLIErrorPrefix(t, err, tc.wantPrefix)
+			assertNoOutput(t, stdout, outPath)
+		})
+	}
+}
+
+func TestRunnerReconcileOutcomeFixtures(t *testing.T) {
+	t.Parallel()
+
+	fixtureRoot := filepath.Join("..", "..", "examples", "reconciliation", "failures")
+	tests := []struct {
+		name       string
+		wantCounts map[string]int
+	}{
+		{name: "duplicate_key", wantCounts: map[string]int{"duplicate_key": 2}},
+		{name: "invalid_record", wantCounts: map[string]int{"invalid_record": 1, "missing_left": 1}},
+		{name: "currency_mismatch", wantCounts: map[string]int{"mismatch": 1}},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			fixtureDir := filepath.Join(fixtureRoot, tc.name)
+			outPath := filepath.Join(t.TempDir(), "report.zip")
+			var stdout bytes.Buffer
+			if err := (cli.Runner{}).Run(context.Background(), []string{"reconcile", "--request", filepath.Join(fixtureDir, "reconcile.json"), "--out", outPath, "--workdir", fixtureDir}, strings.NewReader(""), &stdout); err != nil {
+				t.Fatalf("Run() error = %v", err)
+			}
+			assertNoStdoutAndReportExists(t, stdout, outPath)
+
+			entries := readZipEntries(t, outPath)
+			var reportPayload struct {
+				OutcomeCounts map[string]int `json:"outcome_counts"`
+			}
+			if err := json.Unmarshal(entries["report.json"], &reportPayload); err != nil {
+				t.Fatalf("Unmarshal(report.json) error = %v", err)
+			}
+			if !reflect.DeepEqual(reportPayload.OutcomeCounts, tc.wantCounts) {
+				t.Fatalf("outcome_counts = %#v, want %#v", reportPayload.OutcomeCounts, tc.wantCounts)
+			}
+		})
 	}
 }
 
@@ -590,6 +705,52 @@ func writeTestFile(t *testing.T, path string, data []byte) {
 	}
 }
 
+func copyFixtureFiles(t *testing.T, srcDir, dstDir string, names ...string) {
+	t.Helper()
+
+	for _, name := range names {
+		data, err := os.ReadFile(filepath.Join(srcDir, name))
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", name, err)
+		}
+		writeTestFile(t, filepath.Join(dstDir, name), data)
+	}
+}
+
+func assertManifestHashes(t *testing.T, entries map[string][]byte) {
+	t.Helper()
+
+	var manifest struct {
+		BundleHash string `json:"bundle_hash"`
+		Artifacts  []struct {
+			Name   string `json:"name"`
+			Size   int    `json:"size"`
+			SHA256 string `json:"sha256"`
+		} `json:"artifacts"`
+	}
+	if err := json.Unmarshal(entries["manifest.json"], &manifest); err != nil {
+		t.Fatalf("Unmarshal(manifest.json) error = %v", err)
+	}
+	if got, want := manifest.BundleHash, sha256Hex(entries["bundle.json"]); got != want {
+		t.Fatalf("manifest bundle_hash = %s, want %s", got, want)
+	}
+	if len(manifest.Artifacts) == 0 {
+		t.Fatal("manifest artifacts empty")
+	}
+	for _, artifact := range manifest.Artifacts {
+		data, ok := entries[artifact.Name]
+		if !ok {
+			t.Fatalf("manifest artifact %q missing from zip", artifact.Name)
+		}
+		if got := len(data); got != artifact.Size {
+			t.Fatalf("manifest artifact %q size = %d, want %d", artifact.Name, got, artifact.Size)
+		}
+		if got := sha256Hex(data); got != artifact.SHA256 {
+			t.Fatalf("manifest artifact %q sha256 = %s, want %s", artifact.Name, got, artifact.SHA256)
+		}
+	}
+}
+
 func assertCLIErrorPrefix(t *testing.T, err error, want string) {
 	t.Helper()
 
@@ -647,14 +808,12 @@ func readZipEntries(t *testing.T, path string) map[string][]byte {
 	return entries
 }
 
-func orderedReportNames(entries map[string][]byte) []string {
-	ordered := []string{"report.md", "report.json", "mismatches.csv", "captured_reads.json", "tokens.json", "audit.jsonl", "bundle.json", "manifest.json"}
+func zipEntryNames(entries map[string][]byte) []string {
 	got := make([]string, 0, len(entries))
-	for _, name := range ordered {
-		if _, ok := entries[name]; ok {
-			got = append(got, name)
-		}
+	for name := range entries {
+		got = append(got, name)
 	}
+	slices.Sort(got)
 	return got
 }
 

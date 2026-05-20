@@ -1,0 +1,32 @@
+{
+  "run": {"id": "unsupported_format", "tenant_id": "tenant_demo"},
+  "files": [
+    {
+      "id": "left",
+      "purpose": "left",
+      "format": "pdf",
+      "path": "left.csv",
+      "reader": "extract.csv_rows",
+      "selector": {"row_window": "2:", "encoding": "utf-8", "dialect": "excel"},
+      "columns": {
+        "transaction_id": {"source": "ID", "role": "key", "required": true},
+        "amount": {"source": "Amount", "role": "amount", "required": true, "numeric": {"scale": 2, "currency_field": "currency"}},
+        "currency": {"source": "Currency", "role": "currency", "required": true}
+      }
+    },
+    {
+      "id": "right",
+      "purpose": "right",
+      "format": "csv",
+      "path": "right.csv",
+      "reader": "extract.csv_rows",
+      "selector": {"row_window": "2:", "encoding": "utf-8", "dialect": "excel"},
+      "columns": {
+        "transaction_id": {"source": "ID", "role": "key", "required": true},
+        "amount": {"source": "Amount", "role": "amount", "required": true, "numeric": {"scale": 2, "currency_field": "currency"}},
+        "currency": {"source": "Currency", "role": "currency", "required": true}
+      }
+    }
+  ],
+  "reconcile": {"mode": "exact_match", "left": "left", "right": "right", "match_on": ["transaction_id"], "compare": ["amount", "currency"]}
+}
