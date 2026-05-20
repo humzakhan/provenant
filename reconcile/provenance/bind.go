@@ -68,7 +68,11 @@ func Bind(ctx context.Context, req request.Request, files []router.NormalizedFil
 		return nil, fmt.Errorf("provenance_bind_failed: missing result set")
 	}
 
-	index, captured, err := newFileIndex(files)
+	scope, err := newBindingScope(req, *results)
+	if err != nil {
+		return nil, err
+	}
+	index, captured, err := newFileIndex(files, scope.files)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +87,7 @@ func Bind(ctx context.Context, req request.Request, files []router.NormalizedFil
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		evidence, err := bindResult(result, fields, index)
+		evidence, err := bindResult(result, fields, index, scope)
 		if err != nil {
 			return nil, err
 		}
@@ -96,15 +100,73 @@ type fileIndex struct {
 	files map[string]fileEvidence
 }
 
+type bindingScope struct {
+	left  string
+	right string
+	files map[string]struct{}
+}
+
 type fileEvidence struct {
 	file router.NormalizedFile
 	rows map[string]router.NormalizedRow
 }
 
-func newFileIndex(files []router.NormalizedFile) (fileIndex, []CapturedReadRef, error) {
-	idx := fileIndex{files: make(map[string]fileEvidence, len(files))}
-	captured := make([]CapturedReadRef, 0, len(files))
+func newBindingScope(req request.Request, results engine.ResultSet) (bindingScope, error) {
+	scope := bindingScope{
+		left:  req.Reconcile.Left,
+		right: req.Reconcile.Right,
+		files: map[string]struct{}{},
+	}
+	for _, result := range results.Results {
+		if result.Left != nil {
+			if err := scope.addRef("left", *result.Left); err != nil {
+				return bindingScope{}, err
+			}
+		}
+		if result.Right != nil {
+			if err := scope.addRef("right", *result.Right); err != nil {
+				return bindingScope{}, err
+			}
+		}
+		for _, ref := range result.GroupRowKeys {
+			if _, err := scope.groupSide(ref); err != nil {
+				return bindingScope{}, err
+			}
+			scope.files[ref.FileID] = struct{}{}
+		}
+	}
+	return scope, nil
+}
+
+func (s bindingScope) addRef(side string, ref engine.RowRef) error {
+	expected := s.left
+	if side == "right" {
+		expected = s.right
+	}
+	if ref.FileID != expected {
+		return fmt.Errorf("provenance_bind_failed: %s row ref file %q outside reconcile scope %q", side, ref.FileID, expected)
+	}
+	s.files[ref.FileID] = struct{}{}
+	return nil
+}
+
+func (s bindingScope) groupSide(ref engine.RowRef) (string, error) {
+	if ref.FileID == s.left {
+		return "left_group", nil
+	}
+	if ref.FileID == s.right {
+		return "right_group", nil
+	}
+	return "", fmt.Errorf("provenance_bind_failed: group row ref file %q outside reconcile scope %q/%q", ref.FileID, s.left, s.right)
+}
+
+func newFileIndex(files []router.NormalizedFile, include map[string]struct{}) (fileIndex, []CapturedReadRef, error) {
+	idx := fileIndex{files: make(map[string]fileEvidence, len(include))}
+	captured := make([]CapturedReadRef, 0, len(include))
 	for _, file := range files {
+		if _, ok := include[file.FileID]; !ok {
+			continue
+		}
 		if strings.TrimSpace(file.FileID) == "" {
 			return fileIndex{}, nil, fmt.Errorf("provenance_bind_failed: missing file_id")
 		}
@@ -143,11 +205,16 @@ func newFileIndex(files []router.NormalizedFile) (fileIndex, []CapturedReadRef, 
 			ReaderVersion:  file.CapturedRead.ReaderVersion,
 		})
 	}
+	for fileID := range include {
+		if _, ok := idx.files[fileID]; !ok {
+			return fileIndex{}, nil, fmt.Errorf("provenance_bind_failed: missing file provenance for %q", fileID)
+		}
+	}
 	sort.Slice(captured, func(i, j int) bool { return captured[i].FileID < captured[j].FileID })
 	return idx, captured, nil
 }
 
-func bindResult(result engine.Result, fields resultFields, idx fileIndex) (ResultEvidence, error) {
+func bindResult(result engine.Result, fields resultFields, idx fileIndex, scope bindingScope) (ResultEvidence, error) {
 	evidence := ResultEvidence{ResultID: result.ID}
 	seenRows := map[string]struct{}{}
 	seenValues := map[string]struct{}{}
@@ -169,7 +236,10 @@ func bindResult(result engine.Result, fields resultFields, idx fileIndex) (Resul
 		}
 	}
 	for _, ref := range result.GroupRowKeys {
-		side := groupSide(ref, result)
+		side, err := scope.groupSide(ref)
+		if err != nil {
+			return ResultEvidence{}, err
+		}
 		if err := appendRowEvidence(&evidence, seenRows, side, ref, idx); err != nil {
 			return ResultEvidence{}, err
 		}
@@ -297,16 +367,6 @@ func fieldsForResults(req request.Request) resultFields {
 	}
 	right = add(right, req.Reconcile.Compare)
 	return resultFields{left: left, right: right}
-}
-
-func groupSide(ref engine.RowRef, result engine.Result) string {
-	if result.Left != nil && ref.FileID == result.Left.FileID {
-		return "left_group"
-	}
-	if result.Right != nil && ref.FileID == result.Right.FileID {
-		return "right_group"
-	}
-	return "group"
 }
 
 func selectorPath(rowKey, field string) string {

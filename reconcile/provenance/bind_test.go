@@ -112,6 +112,78 @@ func TestBindGroupedRefs(t *testing.T) {
 	}
 }
 
+func TestBindExcludesUnreferencedNormalizedFiles(t *testing.T) {
+	files := append(testFiles(), testFile("extra", "cr-extra", []router.NormalizedRow{
+		testRow("row:1", "z", "99.00"),
+	}))
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+		ID:      "res_matched",
+		Outcome: engine.OutcomeMatched,
+		Left:    rowRef("left", "row:1"),
+		Right:   rowRef("right", "row:1"),
+	}}}
+
+	bound, err := Bind(context.Background(), testRequest(), files, set, Options{})
+	if err != nil {
+		t.Fatalf("Bind returned error: %v", err)
+	}
+	if got, want := len(bound.CapturedReads), 2; got != want {
+		t.Fatalf("captured reads = %d, want %d: %#v", got, want, bound.CapturedReads)
+	}
+	for _, read := range bound.CapturedReads {
+		if read.FileID == "extra" {
+			t.Fatalf("unreferenced file exported as captured read: %#v", bound.CapturedReads)
+		}
+	}
+	for _, evidence := range bound.Evidence {
+		for _, ref := range evidence.RowRefs {
+			if ref.FileID == "extra" {
+				t.Fatalf("unreferenced file exported as row evidence: %#v", evidence.RowRefs)
+			}
+		}
+		for _, ref := range evidence.ValueRefs {
+			if ref.FileID == "extra" {
+				t.Fatalf("unreferenced file exported as value evidence: %#v", evidence.ValueRefs)
+			}
+		}
+	}
+}
+
+func TestBindRejectsResultRefsOutsideSideScope(t *testing.T) {
+	files := append(testFiles(), testFile("extra", "cr-extra", []router.NormalizedRow{
+		testRow("row:1", "z", "99.00"),
+	}))
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeExactMatch, Results: []engine.Result{{
+		ID:      "res_out_of_scope",
+		Outcome: engine.OutcomeMatched,
+		Left:    rowRef("extra", "row:1"),
+		Right:   rowRef("right", "row:1"),
+	}}}
+
+	_, err := Bind(context.Background(), testRequest(), files, set, Options{})
+	if err == nil || !strings.Contains(err.Error(), "left row ref file \"extra\" outside reconcile scope \"left\"") {
+		t.Fatalf("Bind error = %v, want left scope failure", err)
+	}
+}
+
+func TestBindRejectsGroupRefsOutsideReconcileScope(t *testing.T) {
+	files := append(testFiles(), testFile("extra", "cr-extra", []router.NormalizedRow{
+		testRow("row:1", "z", "99.00"),
+	}))
+	set := &engine.ResultSet{RunID: "run-1", Mode: request.ModeOneToMany, Results: []engine.Result{{
+		ID:           "res_group_out_of_scope",
+		Outcome:      engine.OutcomeMatched,
+		Left:         rowRef("left", "row:1"),
+		Right:        rowRef("right", "row:1"),
+		GroupRowKeys: []engine.RowRef{*rowRef("extra", "row:1")},
+	}}}
+
+	_, err := Bind(context.Background(), testRequest(), files, set, Options{})
+	if err == nil || !strings.Contains(err.Error(), "group row ref file \"extra\" outside reconcile scope \"left\"/\"right\"") {
+		t.Fatalf("Bind error = %v, want group scope failure", err)
+	}
+}
+
 func TestBindMissingProvenanceFailsClosed(t *testing.T) {
 	files := testFiles()
 	delete(files[0].Rows[0].Values, "amount")
