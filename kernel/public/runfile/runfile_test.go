@@ -644,6 +644,74 @@ func TestBundleBackwardCompat(t *testing.T) {
 	}
 }
 
+// TestFinishOnRecoveredRunRequiresClock verifies that Finish on a Recover()-ed
+// run without a Clock returns a clear error rather than panicking, and that
+// SetClock + Finish produces a valid finalized bundle.
+func TestFinishOnRecoveredRunRequiresClock(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	run := testRun()
+	clock := fixedClock{t: epoch}
+	bundlePath := filepath.Join(dir, "recover_finish.bundle.json")
+	b := memio.NewBinding()
+	primeBindingWithRunStarted(t, b, run, epoch)
+
+	tok1, entry1, read1 := mintIntoBinding(t, b, run, "9.00", "USD")
+
+	// Start, append, then release without finalizing (simulate crash by closing
+	// only via Abort's lock release path is destructive — instead, we open a
+	// run, append, and then forcibly leak by calling Abort's no-finalize logic
+	// via a fresh Recover after dropping the lock).
+	r, err := runfile.Start(runfile.Options{Path: bundlePath, Run: run, Clock: clock, Tenant: run.TenantID})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if err := r.AppendEntry(entry1, &tok1, &read1); err != nil {
+		t.Fatalf("AppendEntry error = %v", err)
+	}
+	// Simulate crash: drop our reference by recovering in a new Run.
+	// To do that we must release the lock first; we use Abort with a hack:
+	// instead, we close via Finish of an Abort-equivalent path? The simplest
+	// way is to skip Finish, then Recover from a different process simulation
+	// by releasing the lock manually. We approximate by calling Abort to clear
+	// our handle, then re-creating the .part file from scratch with valid content.
+	if err := r.Abort(); err != nil {
+		t.Fatalf("Abort() to release lock error = %v", err)
+	}
+
+	// Rebuild a valid .part file (header + run_started + captured_read + token + audit).
+	partPath := filepath.Join(dir, ".recover_finish.bundle.json.part")
+	validContent := buildValidPartContent(t, run, epoch, entry1, tok1, read1)
+	if err := os.WriteFile(partPath, validContent, 0o600); err != nil {
+		t.Fatalf("WriteFile valid part: %v", err)
+	}
+
+	r2, err := runfile.Recover(bundlePath)
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+
+	// Finish without a clock must error, not panic.
+	if err := r2.Finish(); err == nil {
+		t.Fatalf("Finish() on recovered run without clock returned nil; want error")
+	}
+
+	// After SetClock, Finish must succeed.
+	r2.SetClock(clock)
+	if err := r2.Finish(); err != nil {
+		t.Fatalf("Finish() after SetClock error = %v", err)
+	}
+
+	bundleBytes, err := os.ReadFile(bundlePath)
+	if err != nil {
+		t.Fatalf("ReadFile(bundle) error = %v", err)
+	}
+	if err := bundle.Verify(bundleBytes); err != nil {
+		t.Fatalf("bundle.Verify() after Recover+SetClock+Finish error = %v", err)
+	}
+}
+
 // TestStartReturnsErrAlreadyFinalized verifies that Start on a path that
 // already has a valid finalized bundle returns ErrAlreadyFinalized.
 func TestStartReturnsErrAlreadyFinalized(t *testing.T) {

@@ -157,9 +157,17 @@ func (r *Run) AppendEntry(entry kernel.AuditEntry, token *kernel.Token, read *ke
 
 // Finish writes the run_completed audit entry, finalizes the bundle by
 // renaming .part -> Path, releases the lock, and closes file handles.
+//
+// Finish requires Options.Clock to be non-nil. Runs returned by Recover do
+// not have a Clock attached (Recover takes only a path); callers that intend
+// to Finish a recovered run must call SetClock first. Without a Clock, Finish
+// returns an error rather than reading a wall clock.
 func (r *Run) Finish() error {
 	if r.state != runStateOpen {
 		return fmt.Errorf("runfile: Finish called on non-open run (state=%d)", r.state)
+	}
+	if r.opts.Clock == nil {
+		return errors.New("runfile: Finish requires a Clock; recovered runs must call SetClock before Finish")
 	}
 
 	// Build and append the run_completed entry.
@@ -180,9 +188,15 @@ func (r *Run) Finish() error {
 // Fail writes the run_failed audit entry with the supplied reason, finalizes
 // the bundle as a failed run bundle, releases the lock, and closes file
 // handles. The finalized file is a valid bundle.
+//
+// Like Finish, Fail requires Options.Clock to be non-nil. Recovered runs must
+// call SetClock before Fail.
 func (r *Run) Fail(reason string) error {
 	if r.state != runStateOpen {
 		return fmt.Errorf("runfile: Fail called on non-open run (state=%d)", r.state)
+	}
+	if r.opts.Clock == nil {
+		return errors.New("runfile: Fail requires a Clock; recovered runs must call SetClock before Fail")
 	}
 
 	_ = reason // reason is recorded in non-deterministic payload at caller level; not yet wired here
@@ -199,6 +213,18 @@ func (r *Run) Fail(reason string) error {
 	}
 
 	return r.finalize()
+}
+
+// SetClock attaches a Clock to a Run. This is intended for runs returned by
+// Recover, which constructs the Run without a Clock (the spec's Recover
+// signature takes only a path). Callers that intend to Finish or Fail a
+// recovered run must call SetClock first. Calling SetClock with a nil Clock
+// is a no-op.
+func (r *Run) SetClock(clock kernel.Clock) {
+	if clock == nil {
+		return
+	}
+	r.opts.Clock = clock
 }
 
 // Abort discards the .part file and releases the lock without finalizing.
