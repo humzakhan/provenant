@@ -328,19 +328,22 @@ func normalizeState(state State) (State, error) {
 		if _, exists := tokensByID[token.ID]; exists {
 			return State{}, fmt.Errorf("%w: duplicate token %s", ErrTamperDetected, token.ID)
 		}
-		if _, ok := readsByID[token.Source.CapturedReadID]; !ok {
-			return State{}, fmt.Errorf("%w: captured read %s", ErrMissingArtifact, token.Source.CapturedReadID)
+		// Leaf tokens must reference a captured read; derived tokens must not.
+		if token.Derivation == nil {
+			if _, ok := readsByID[token.Source.CapturedReadID]; !ok {
+				return State{}, fmt.Errorf("%w: captured read %s", ErrMissingArtifact, token.Source.CapturedReadID)
+			}
 		}
 		tokensByID[token.ID] = cloneToken(token)
 	}
 
 	normalizedTokens := make([]kernel.Token, 0, len(state.AuditEntries))
+	// seqByTokenID tracks the audit seq at which each token was minted or
+	// derived, enabling forward-reference checks for derivation inputs.
+	seqByTokenID := make(map[string]uint64, len(state.AuditEntries))
 	referencedReadIDs := make(map[string]struct{}, len(state.CapturedReads))
 	var prevHash []byte
 	for index, entry := range state.AuditEntries {
-		if entry.Kind != kernel.EntryKindTokenMint {
-			return State{}, fmt.Errorf("%w: unsupported audit kind %s", ErrTamperDetected, entry.Kind)
-		}
 		if entry.RunID != state.Run.ID || entry.TenantID != state.Run.TenantID {
 			return State{}, fmt.Errorf("%w: audit entry %d run or tenant mismatch", ErrTamperDetected, entry.Seq)
 		}
@@ -369,34 +372,57 @@ func normalizeState(state State) (State, error) {
 			return State{}, fmt.Errorf("%w: invalid audit hash at seq %d", ErrTamperDetected, entry.Seq)
 		}
 
-		payload, err := decodeTokenMintPayload(deterministic)
-		if err != nil {
-			return State{}, fmt.Errorf("%w: parse token_mint payload at seq %d: %v", ErrTamperDetected, entry.Seq, err)
-		}
+		switch entry.Kind {
+		case kernel.EntryKindTokenMint:
+			payload, err := decodeTokenMintPayload(deterministic)
+			if err != nil {
+				return State{}, fmt.Errorf("%w: parse token_mint payload at seq %d: %v", ErrTamperDetected, entry.Seq, err)
+			}
 
-		token, ok := tokensByID[payload.TokenID]
-		if !ok {
-			return State{}, fmt.Errorf("%w: token %s", ErrMissingArtifact, payload.TokenID)
+			token, ok := tokensByID[payload.TokenID]
+			if !ok {
+				return State{}, fmt.Errorf("%w: token %s", ErrMissingArtifact, payload.TokenID)
+			}
+			read, ok := readsByID[payload.CapturedReadID]
+			if !ok {
+				return State{}, fmt.Errorf("%w: captured read %s", ErrMissingArtifact, payload.CapturedReadID)
+			}
+			evidence, err := phaseone.ReconstructMintEvidence(state.Run.ID, read.ID, read.Output, payload.OutputPath, payload.Unit)
+			if err != nil {
+				return State{}, fmt.Errorf("%w: reconstruct mint evidence for %s: %v", ErrTamperDetected, read.ID, err)
+			}
+			if err := validateEvidenceAgainstPayload(evidence, payload); err != nil {
+				return State{}, err
+			}
+			if err := validateTokenAgainstPayload(token, payload, state.Run, read, evidence); err != nil {
+				return State{}, err
+			}
+			if err := validateCapturedReadAgainstPayload(read, payload); err != nil {
+				return State{}, err
+			}
+			referencedReadIDs[payload.CapturedReadID] = struct{}{}
+			normalizedTokens = append(normalizedTokens, deterministicToken(state.Run, read, payload, evidence))
+			seqByTokenID[payload.TokenID] = entry.Seq
+
+		case kernel.EntryKindTokenDerive:
+			payload, err := decodeTokenDerivePayload(deterministic, seqByTokenID, entry.Seq)
+			if err != nil {
+				return State{}, fmt.Errorf("%w: parse token_derive payload at seq %d: %v", ErrTamperDetected, entry.Seq, err)
+			}
+
+			token, ok := tokensByID[payload.TokenID]
+			if !ok {
+				return State{}, fmt.Errorf("%w: token %s", ErrMissingArtifact, payload.TokenID)
+			}
+			if err := validateDerivedTokenAgainstPayload(token, payload, state.Run); err != nil {
+				return State{}, err
+			}
+			normalizedTokens = append(normalizedTokens, deterministicDerivedToken(state.Run, payload))
+			seqByTokenID[payload.TokenID] = entry.Seq
+
+		default:
+			return State{}, fmt.Errorf("%w: unsupported audit kind %s", ErrTamperDetected, entry.Kind)
 		}
-		read, ok := readsByID[payload.CapturedReadID]
-		if !ok {
-			return State{}, fmt.Errorf("%w: captured read %s", ErrMissingArtifact, payload.CapturedReadID)
-		}
-		evidence, err := phaseone.ReconstructMintEvidence(state.Run.ID, read.ID, read.Output, payload.OutputPath, payload.Unit)
-		if err != nil {
-			return State{}, fmt.Errorf("%w: reconstruct mint evidence for %s: %v", ErrTamperDetected, read.ID, err)
-		}
-		if err := validateEvidenceAgainstPayload(evidence, payload); err != nil {
-			return State{}, err
-		}
-		if err := validateTokenAgainstPayload(token, payload, state.Run, read, evidence); err != nil {
-			return State{}, err
-		}
-		if err := validateCapturedReadAgainstPayload(read, payload); err != nil {
-			return State{}, err
-		}
-		referencedReadIDs[payload.CapturedReadID] = struct{}{}
-		normalizedTokens = append(normalizedTokens, deterministicToken(state.Run, read, payload, evidence))
 
 		prevHash = entry.Hash
 	}
@@ -532,6 +558,126 @@ func decodeTokenMintPayload(deterministic []byte) (tokenMintPayload, error) {
 		return tokenMintPayload{}, errors.New("missing value_canonical")
 	default:
 		return payload, nil
+	}
+}
+
+// tokenDerivePayload is the in-memory representation of a token_derive
+// deterministic audit payload. It mirrors tokenMintPayload for the leaf path.
+type tokenDerivePayload struct {
+	TokenID   string              `json:"token_id"`
+	Operation string              `json:"operation"`
+	Inputs    []string            `json:"inputs"`
+	FormulaID string              `json:"formula_id,omitempty"`
+	Rounding  kernel.RoundingPolicy `json:"rounding,omitempty"`
+	Evaluated string              `json:"evaluated"`
+	Unit      string              `json:"unit,omitempty"`
+}
+
+// validRoundingModes is the closed set of accepted rounding mode strings.
+// The empty string represents the default "half_even" behaviour.
+var validRoundingModes = map[string]bool{
+	"":          true,
+	"half_even": true,
+	"half_up":   true,
+	"down":      true,
+}
+
+// decodeTokenDerivePayload parses and validates a token_derive deterministic
+// payload. seqByTokenID maps already-seen token IDs to their audit seq; currentSeq
+// is the seq of the current entry, used to reject forward references.
+func decodeTokenDerivePayload(deterministic []byte, seqByTokenID map[string]uint64, currentSeq uint64) (tokenDerivePayload, error) {
+	dec := json.NewDecoder(bytes.NewReader(deterministic))
+	dec.DisallowUnknownFields()
+
+	var payload tokenDerivePayload
+	if err := dec.Decode(&payload); err != nil {
+		return tokenDerivePayload{}, err
+	}
+	if err := dec.Decode(&struct{}{}); err != io.EOF {
+		return tokenDerivePayload{}, errors.New("trailing payload bytes")
+	}
+
+	switch {
+	case payload.TokenID == "":
+		return tokenDerivePayload{}, errors.New("missing token_id")
+	case payload.Operation == "":
+		return tokenDerivePayload{}, errors.New("missing operation")
+	case payload.Evaluated == "":
+		return tokenDerivePayload{}, errors.New("missing evaluated")
+	case len(payload.Inputs) == 0:
+		return tokenDerivePayload{}, errors.New("inputs must be non-empty")
+	case !validRoundingModes[payload.Rounding.Mode]:
+		return tokenDerivePayload{}, fmt.Errorf("invalid rounding mode %q", payload.Rounding.Mode)
+	case payload.Rounding.Scale < 0 || payload.Rounding.Scale > 18:
+		return tokenDerivePayload{}, fmt.Errorf("rounding scale %d out of range [0, 18]", payload.Rounding.Scale)
+	}
+
+	for _, inputID := range payload.Inputs {
+		inputSeq, ok := seqByTokenID[inputID]
+		if !ok {
+			return tokenDerivePayload{}, fmt.Errorf("input token %s not found in prior audit entries", inputID)
+		}
+		if inputSeq >= currentSeq {
+			return tokenDerivePayload{}, fmt.Errorf("input token %s has seq %d, not strictly less than current seq %d (forward reference or cycle)", inputID, inputSeq, currentSeq)
+		}
+	}
+
+	return payload, nil
+}
+
+func validateDerivedTokenAgainstPayload(token kernel.Token, payload tokenDerivePayload, run kernel.Run) error {
+	want := deterministicDerivedToken(run, payload)
+	switch {
+	case token.ID != want.ID:
+		return fmt.Errorf("%w: derived token id mismatch for %s", ErrTamperDetected, token.ID)
+	case token.RunID != want.RunID:
+		return fmt.Errorf("%w: derived token %s run mismatch", ErrTamperDetected, token.ID)
+	case token.TenantID != want.TenantID:
+		return fmt.Errorf("%w: derived token %s tenant mismatch", ErrTamperDetected, token.ID)
+	case token.Unit != want.Unit:
+		return fmt.Errorf("%w: derived token %s unit mismatch", ErrTamperDetected, token.ID)
+	case token.ValueCanonical != payload.Evaluated:
+		return fmt.Errorf("%w: derived token %s value_canonical %q != payload evaluated %q", ErrTamperDetected, token.ID, token.ValueCanonical, payload.Evaluated)
+	case token.Source != (kernel.TokenSource{}):
+		return fmt.Errorf("%w: derived token %s must have zero Source", ErrTamperDetected, token.ID)
+	case token.Derivation == nil:
+		return fmt.Errorf("%w: derived token %s missing Derivation", ErrTamperDetected, token.ID)
+	case token.Derivation.Operation != payload.Operation:
+		return fmt.Errorf("%w: derived token %s operation mismatch", ErrTamperDetected, token.ID)
+	case token.Derivation.FormulaID != payload.FormulaID:
+		return fmt.Errorf("%w: derived token %s formula_id mismatch", ErrTamperDetected, token.ID)
+	case token.Derivation.Rounding != payload.Rounding:
+		return fmt.Errorf("%w: derived token %s rounding mismatch", ErrTamperDetected, token.ID)
+	case token.Derivation.Evaluated != payload.Evaluated:
+		return fmt.Errorf("%w: derived token %s derivation.evaluated mismatch", ErrTamperDetected, token.ID)
+	}
+	// Validate inputs slice equality.
+	if len(token.Derivation.Inputs) != len(payload.Inputs) {
+		return fmt.Errorf("%w: derived token %s inputs length mismatch", ErrTamperDetected, token.ID)
+	}
+	for i, id := range token.Derivation.Inputs {
+		if id != payload.Inputs[i] {
+			return fmt.Errorf("%w: derived token %s input[%d] mismatch", ErrTamperDetected, token.ID, i)
+		}
+	}
+	return nil
+}
+
+func deterministicDerivedToken(run kernel.Run, payload tokenDerivePayload) kernel.Token {
+	inputs := append([]string(nil), payload.Inputs...)
+	return kernel.Token{
+		ID:             payload.TokenID,
+		RunID:          run.ID,
+		TenantID:       run.TenantID,
+		ValueCanonical: payload.Evaluated,
+		Unit:           payload.Unit,
+		Derivation: &kernel.Derivation{
+			Operation: payload.Operation,
+			Inputs:    inputs,
+			FormulaID: payload.FormulaID,
+			Rounding:  payload.Rounding,
+			Evaluated: payload.Evaluated,
+		},
 	}
 }
 

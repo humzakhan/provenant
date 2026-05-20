@@ -121,6 +121,19 @@ type CapturedRead struct {
 }
 
 // Token is the kernel-owned provenance wrapper around one canonical value.
+//
+// Exactly one of the two lineage fields must be set:
+//   - Leaf token: Source.CapturedReadID is non-empty, Derivation is nil.
+//     Produced by ReadAndMint from a CapturedRead.
+//   - Derived token: Derivation is non-nil, Source is the zero value.
+//     Produced by the kernel derivation engine (Phase 02+).
+//
+// A token with both fields set, or with neither field set, is invalid
+// and will be rejected by bundle.Verify and bundle.Replay.
+//
+// Note: Derivation.Evaluated duplicates ValueCanonical intentionally.
+// The audit hash binds the computed result to the op identity, not just
+// to the token identity.
 type Token struct {
 	ID             string      `json:"id"`
 	RunID          string      `json:"run_id"`
@@ -142,10 +155,23 @@ type TokenSource struct {
 }
 
 // Derivation records deterministic parent-token lineage for computed tokens.
+//
+// Evaluated must equal the owning Token.ValueCanonical. Both fields are kept
+// so that the audit hash binds the computed result to the op identity, not
+// just to the token identity.
 type Derivation struct {
-	Operation string   `json:"operation"`
-	Inputs    []string `json:"inputs"`
-	FormulaID string   `json:"formula_id,omitempty"`
+	Operation string        `json:"operation"`
+	Inputs    []string      `json:"inputs"`
+	FormulaID string        `json:"formula_id,omitempty"`
+	Rounding  RoundingPolicy `json:"rounding,omitempty"`
+	Evaluated string        `json:"evaluated"`
+}
+
+// RoundingPolicy describes the decimal rounding mode and scale applied by a
+// derivation op. Mode "" is interpreted as "half_even" by the kernel.
+type RoundingPolicy struct {
+	Mode  string `json:"mode,omitempty"`  // "half_even" (default), "half_up", "down"
+	Scale int    `json:"scale,omitempty"` // decimal places; 0 means unset
 }
 
 // EntryKind names the deterministic audit event schema for an entry.
@@ -154,8 +180,12 @@ type EntryKind string
 const (
 	// EntryKindRunStarted records the start of a run.
 	EntryKindRunStarted EntryKind = "run_started"
-	// EntryKindTokenMint records a kernel-owned token mint.
+	// EntryKindTokenMint records a kernel-owned token mint from a CapturedRead.
 	EntryKindTokenMint EntryKind = "token_mint"
+	// EntryKindTokenDerive records a kernel-owned derived token produced by a
+	// named deterministic op. The payload shape is defined in
+	// kernel/public/internal/derivation.
+	EntryKindTokenDerive EntryKind = "token_derive"
 	// EntryKindRunCompleted records successful run completion.
 	EntryKindRunCompleted EntryKind = "run_completed"
 	// EntryKindRunFailed records terminal run failure.
