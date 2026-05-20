@@ -33,6 +33,7 @@ const (
 	commandSubmitAnswer   = "submit-answer"
 	commandVerify         = "verify"
 	commandReplay         = "replay"
+	commandPack           = "pack"
 	readerExtractJSON     = "extract.json"
 	maxRequestBytes       = 2 << 20
 	maxSourceBytes        = 1 << 20
@@ -175,6 +176,8 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 		return r.runVerify(ctx, args[1:], stdin, stdout)
 	case commandReplay:
 		return r.runReplay(ctx, args[1:], stdin, stdout)
+	case commandPack:
+		return r.runPack(ctx, args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedCommand, args[0])
 	}

@@ -5,19 +5,26 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 
+	"github.com/provenant/provenant/access/sources"
 	kernel "github.com/provenant/provenant/kernel/public"
 	"github.com/provenant/provenant/kernel/public/runfile"
 )
 
-// readMintRequest extends the existing ReadMintBundleRequest shape with
-// a required run_file field for the long-lived partfile verb.
+// readMintRequest is the JSON body for the `read-mint` verb.
+//
+// Exactly one of the two source-identification modes must be used:
+//   - Named-source mode: set source_name and supply --sources <registry-path>;
+//     the registry resolves reader, path, selector, and output_path.
+//   - Raw mode: set reader, source, and read fields directly (pre-Phase-06 behaviour).
 type readMintRequest struct {
-	RunFile string                    `json:"run_file"`
-	Reader  string                    `json:"reader"`
-	Source  kernel.SourceBytes        `json:"source"`
-	Run     kernel.Run                `json:"run"`
-	Read    kernel.ReadAndMintRequest `json:"read"`
+	RunFile    string                    `json:"run_file"`
+	SourceName string                    `json:"source_name,omitempty"`
+	Reader     string                    `json:"reader"`
+	Source     kernel.SourceBytes        `json:"source"`
+	Run        kernel.Run                `json:"run"`
+	Read       kernel.ReadAndMintRequest `json:"read"`
 }
 
 // readMintResponse is written to stdout on `read-mint` success.
@@ -28,13 +35,28 @@ type readMintResponse struct {
 }
 
 func (r Runner) runReadMint(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
-	req, err := decodeJSONRequest[readMintRequest](args, stdin)
+	// Parse --sources flag before consuming stdin.
+	sourcesPath, remainingArgs := extractSourcesFlag(args)
+
+	req, err := decodeJSONRequest[readMintRequest](remainingArgs, stdin)
 	if err != nil {
 		return err
 	}
 	if req.RunFile == "" {
 		return newPacketError(packetErrorRequestInvalid, fmt.Errorf("run_file is required for read-mint"))
 	}
+
+	// Resolve source_name if provided.
+	if req.SourceName != "" {
+		if sourcesPath == "" {
+			return newPacketError(packetErrorRequestInvalid, fmt.Errorf("--sources is required when source_name is used"))
+		}
+		req, err = resolveSourceName(req, sourcesPath)
+		if err != nil {
+			return err
+		}
+	}
+
 	if err := validateReadMintVerbRequest(req); err != nil {
 		return err
 	}
@@ -63,8 +85,8 @@ func (r Runner) runReadMint(ctx context.Context, args []string, stdin io.Reader,
 		return err
 	}
 
-	// Execute ReadAndMint. The sink captures PutToken/PutCapturedRead/AppendAuditEntry
-	// in memory; the actual disk write happens via run.AppendEntry below.
+	// Execute ReadAndMint. The kernel propagates req.Read.SourceName into
+	// the captured read and audit payload automatically.
 	mintResult, err := kernel.ReadAndMint(
 		ctx,
 		sink, // TransactionalScope
@@ -102,7 +124,67 @@ func (r Runner) runReadMint(ctx context.Context, args []string, stdin io.Reader,
 	})
 }
 
+// resolveSourceName looks up the named source in the registry at sourcesPath
+// and populates reader, source path, selector, output_path, and unit from the
+// entry. The source bytes must already be set by the caller.
+func resolveSourceName(req readMintRequest, sourcesPath string) (readMintRequest, error) {
+	f, err := os.Open(sourcesPath)
+	if err != nil {
+		return req, newPacketError(packetErrorInputNotFound, fmt.Errorf("open sources registry %s: %w", sourcesPath, err))
+	}
+	defer f.Close()
+
+	reg, err := sources.Load(f)
+	if err != nil {
+		return req, newPacketError(packetErrorRequestInvalid, fmt.Errorf("load sources registry: %w", err))
+	}
+
+	entry, ok := reg.Resolve(req.SourceName)
+	if !ok {
+		return req, newPacketError(packetErrorRequestInvalid, fmt.Errorf("source name %q not found in registry", req.SourceName))
+	}
+
+	// Populate reader and read fields from the registry entry.
+	req.Reader = entry.Reader
+	req.Read = kernel.ReadAndMintRequest{
+		SourcePath: entry.Path,
+		Selector:   entry.Selector,
+		OutputPath: entry.OutputPath,
+		Unit:       entry.Unit,
+		SourceName: req.SourceName,
+	}
+	// The source bytes are caller-supplied; align the path to the registry entry.
+	req.Source.Source.Path = entry.Path
+
+	return req, nil
+}
+
+// extractSourcesFlag removes --sources <path> (or --sources=<path>) from args
+// and returns the path value and the remaining args.
+func extractSourcesFlag(args []string) (string, []string) {
+	remaining := make([]string, 0, len(args))
+	var value string
+	for i := 0; i < len(args); i++ {
+		if args[i] == "--sources" {
+			if i+1 < len(args) {
+				value = args[i+1]
+				i++ // skip the value token
+			}
+			continue
+		}
+		if len(args[i]) > 10 && args[i][:10] == "--sources=" {
+			value = args[i][10:]
+			continue
+		}
+		remaining = append(remaining, args[i])
+	}
+	return value, remaining
+}
+
 func validateReadMintVerbRequest(req readMintRequest) error {
+	if req.Reader == "" {
+		return newPacketError(packetErrorRequestInvalid, fmt.Errorf("reader is required"))
+	}
 	if req.Reader != readerExtractJSON {
 		return fmt.Errorf("%w: %s", ErrUnsupportedReader, req.Reader)
 	}

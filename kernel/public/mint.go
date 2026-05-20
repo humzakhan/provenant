@@ -45,6 +45,10 @@ type ReadAndMintRequest struct {
 	Selector   SourceSelector `json:"selector"`
 	OutputPath string         `json:"output_path"`
 	Unit       string         `json:"unit,omitempty"`
+	// SourceName is optional. When non-empty it records the logical source name
+	// (from a named-source registry) that produced this read. It is propagated
+	// into the CapturedRead and into the deterministic token_mint audit payload.
+	SourceName string `json:"source_name,omitempty"`
 }
 
 // ReadAndMintResult returns the captured read, minted token, and appended audit entry.
@@ -129,6 +133,9 @@ func ReadAndMint(
 		if err != nil {
 			return err
 		}
+		// Propagate the optional logical source name from the request into
+		// the captured read so the audit payload and stored read agree.
+		read.CapturedRead.SourceName = request.SourceName
 		if err := validateReadAndMintCapturedRead(source, read, run, request); err != nil {
 			return err
 		}
@@ -218,6 +225,7 @@ type tokenMintPayload struct {
 	SourceSelector SourceSelector  `json:"source_selector"`
 	OutputPath     string          `json:"output_path"`
 	Origin         string          `json:"origin,omitempty"`
+	SourceName     string          `json:"source_name,omitempty"`
 	ReaderName     string          `json:"reader_name"`
 	ReaderVersion  string          `json:"reader_version"`
 	ReaderOptions  json.RawMessage `json:"reader_options,omitempty"`
@@ -332,6 +340,7 @@ func mintFromCapturedReadTx(
 		SourceSelector: read.Selector,
 		OutputPath:     outputPath,
 		Origin:         read.Origin,
+		SourceName:     read.SourceName,
 		ReaderName:     read.ReaderName,
 		ReaderVersion:  read.ReaderVersion,
 		ReaderOptions:  read.ReaderOptions,

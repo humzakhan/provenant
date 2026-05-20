@@ -73,6 +73,7 @@ type tokenMintPayload struct {
 	SourceSelector kernel.SourceSelector `json:"source_selector"`
 	OutputPath     string                `json:"output_path"`
 	Origin         string                `json:"origin,omitempty"`
+	SourceName     string                `json:"source_name,omitempty"`
 	ReaderName     string                `json:"reader_name"`
 	ReaderVersion  string                `json:"reader_version"`
 	ReaderOptions  json.RawMessage       `json:"reader_options,omitempty"`
@@ -523,6 +524,8 @@ func validateCapturedReadAgainstPayload(read kernel.CapturedRead, payload tokenM
 		return fmt.Errorf("%w: captured read %s selector mismatch", ErrTamperDetected, read.ID)
 	case read.Origin != payload.Origin:
 		return fmt.Errorf("%w: captured read %s origin mismatch", ErrTamperDetected, read.ID)
+	case read.SourceName != payload.SourceName:
+		return fmt.Errorf("%w: captured read %s source_name mismatch", ErrTamperDetected, read.ID)
 	case read.ReaderName != payload.ReaderName:
 		return fmt.Errorf("%w: captured read %s reader name mismatch", ErrTamperDetected, read.ID)
 	case read.ReaderVersion != payload.ReaderVersion:
