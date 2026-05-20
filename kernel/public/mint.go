@@ -54,6 +54,20 @@ type ReadAndMintResult struct {
 	AuditEntry AuditEntry `json:"audit_entry"`
 }
 
+// MintFromCapturedReadRequest identifies one already captured source read plus the mintable output path.
+type MintFromCapturedReadRequest struct {
+	CapturedRead CapturedRead `json:"captured_read"`
+	Source       Source       `json:"source"`
+	OutputPath   string       `json:"output_path"`
+	Unit         string       `json:"unit,omitempty"`
+}
+
+// MintFromCapturedReadResult returns the minted token and appended audit entry.
+type MintFromCapturedReadResult struct {
+	Token      Token      `json:"token"`
+	AuditEntry AuditEntry `json:"audit_entry"`
+}
+
 // ReadAndMint resolves one injected source, runs the reader, and mints a token from the selected output path.
 func ReadAndMint(
 	ctx context.Context,
@@ -115,111 +129,83 @@ func ReadAndMint(
 		if err != nil {
 			return err
 		}
-		if err := validateCapturedRead(source, read, run, request); err != nil {
+		if err := validateReadAndMintCapturedRead(source, read, run, request); err != nil {
 			return err
 		}
 		if err := capturedReadStore.PutCapturedRead(ctx, tx, read.CapturedRead); err != nil {
 			return err
 		}
-
-		rawValue, err := extractMintValue(read.Output, request.OutputPath)
-		if err != nil {
-			return err
-		}
-		sourceValueRaw, err := normalizeSourceValueRaw(rawValue)
-		if err != nil {
-			return err
-		}
-
-		valueCanonical, err := canonicalizeNumeric(rawValue)
-		if err != nil {
-			return err
-		}
-
-		now := clock.Now().UTC()
-		token := Token{
-			ID:             tokenID(run.ID, read.CapturedRead.ID, request.OutputPath, request.Unit, sourceValueRaw, valueCanonical),
-			RunID:          run.ID,
-			TenantID:       run.TenantID,
-			ValueCanonical: valueCanonical,
-			Unit:           request.Unit,
-			Source: TokenSource{
-				CapturedReadID: read.CapturedRead.ID,
-				SourcePath:     read.CapturedRead.SourcePath,
-				SourceSelector: read.CapturedRead.Selector,
-				OutputPath:     request.OutputPath,
-				Origin:         read.CapturedRead.Origin,
-			},
-			CreatedAt: now,
-		}
-
-		entries, err := auditSink.AuditEntries(ctx, tx, run.TenantID, run.ID)
-		if err != nil {
-			return err
-		}
-
-		deterministic, err := canonicalizeDeterministicPayload(tokenMintPayload{
-			TokenID:        token.ID,
-			CapturedReadID: read.CapturedRead.ID,
-			SourcePath:     read.CapturedRead.SourcePath,
-			SourceSelector: read.CapturedRead.Selector,
-			OutputPath:     request.OutputPath,
-			Origin:         read.CapturedRead.Origin,
-			ReaderName:     read.CapturedRead.ReaderName,
-			ReaderVersion:  read.CapturedRead.ReaderVersion,
-			ReaderOptions:  read.CapturedRead.ReaderOptions,
-			Locator:        read.CapturedRead.Locator,
-			SourceSHA256:   read.CapturedRead.SourceSHA256,
-			OutputSHA256:   read.CapturedRead.OutputSHA256,
-			SourceValueRaw: sourceValueRaw,
-			ValueCanonical: valueCanonical,
-			Unit:           request.Unit,
-		})
-		if err != nil {
-			return err
-		}
-
-		prevHash := genesisHash(run.TenantID)
-		seq := uint64(1)
-		if len(entries) > 0 {
-			last := entries[len(entries)-1]
-			prevHash = append([]byte(nil), last.Hash...)
-			seq = last.Seq + 1
-		}
-
-		hashInput := append([]byte(nil), deterministic...)
-		entry := AuditEntry{
-			Seq:      seq,
-			RunID:    run.ID,
-			TenantID: run.TenantID,
-			Kind:     EntryKindTokenMint,
-			At:       now,
-			PrevHash: prevHash,
-			Hash:     auditHash(prevHash, seq, run.ID, run.TenantID, EntryKindTokenMint, hashInput),
-			Payload: PayloadEnvelope{
-				Deterministic:      deterministic,
-				HashInputCanonical: hashInput,
-			},
-		}
-
-		if err := store.PutToken(ctx, tx, token); err != nil {
-			return err
-		}
-
-		appended, err := auditSink.AppendAuditEntry(ctx, tx, entry)
+		minted, err := mintFromCapturedReadTx(ctx, tx, store, auditSink, clock, run, read.CapturedRead, request.OutputPath, request.Unit)
 		if err != nil {
 			return err
 		}
 
 		result = ReadAndMintResult{
 			ReadResult: read,
-			Token:      token,
-			AuditEntry: appended,
+			Token:      minted.Token,
+			AuditEntry: minted.AuditEntry,
 		}
 
 		return nil
 	}); err != nil {
 		return ReadAndMintResult{}, err
+	}
+
+	return result, nil
+}
+
+// MintFromCapturedRead mints a token from supplied captured-read evidence after verifying its source and output hashes.
+func MintFromCapturedRead(
+	ctx context.Context,
+	scope TransactionalScope,
+	store Store,
+	auditSink AuditSink,
+	clock Clock,
+	run Run,
+	request MintFromCapturedReadRequest,
+) (MintFromCapturedReadResult, error) {
+	if scope == nil {
+		return MintFromCapturedReadResult{}, ErrNilTransactionalScope
+	}
+	if store == nil {
+		return MintFromCapturedReadResult{}, ErrNilStore
+	}
+	if auditSink == nil {
+		return MintFromCapturedReadResult{}, ErrNilAuditSink
+	}
+	if clock == nil {
+		return MintFromCapturedReadResult{}, ErrNilClock
+	}
+	if run.ID == "" {
+		return MintFromCapturedReadResult{}, ErrMissingRunID
+	}
+	if run.TenantID == "" {
+		return MintFromCapturedReadResult{}, ErrMissingTenantID
+	}
+	if request.Source.Path == "" {
+		return MintFromCapturedReadResult{}, ErrMissingSourcePath
+	}
+	if request.OutputPath == "" {
+		return MintFromCapturedReadResult{}, ErrMissingOutputPath
+	}
+	if scope.TransactionalSubstrate() != store.TransactionalSubstrate() || scope.TransactionalSubstrate() != auditSink.TransactionalSubstrate() {
+		return MintFromCapturedReadResult{}, ErrTransactionalScopeMismatch
+	}
+
+	var result MintFromCapturedReadResult
+	if err := scope.WithTx(ctx, func(ctx context.Context, tx Tx) error {
+		if err := validateCapturedReadForMint(request.CapturedRead, request.Source, run); err != nil {
+			return err
+		}
+
+		minted, err := mintFromCapturedReadTx(ctx, tx, store, auditSink, clock, run, request.CapturedRead, request.OutputPath, request.Unit)
+		if err != nil {
+			return err
+		}
+		result = minted
+		return nil
+	}); err != nil {
+		return MintFromCapturedReadResult{}, err
 	}
 
 	return result, nil
@@ -248,7 +234,7 @@ func extractMintValue(output []byte, outputPath string) (string, error) {
 	return value, mapPhaseOneMintError(err)
 }
 
-func validateCapturedRead(source SourceBytes, read ReadResult, run Run, request ReadAndMintRequest) error {
+func validateReadAndMintCapturedRead(source SourceBytes, read ReadResult, run Run, request ReadAndMintRequest) error {
 	if read.CapturedRead.RunID != run.ID {
 		return ErrCapturedReadRunIDMismatch
 	}
@@ -274,6 +260,125 @@ func validateCapturedRead(source SourceBytes, read ReadResult, run Run, request 
 	}
 
 	return nil
+}
+
+func validateCapturedReadForMint(read CapturedRead, source Source, run Run) error {
+	if read.RunID != run.ID {
+		return ErrCapturedReadRunIDMismatch
+	}
+	if read.SourcePath != source.Path {
+		return ErrCapturedReadPathMismatch
+	}
+	if read.SourceSHA256 == "" || source.SHA256 == "" || read.SourceSHA256 != source.SHA256 {
+		return ErrCapturedReadSourceHashMismatch
+	}
+	if read.OutputSHA256 == "" || read.OutputSHA256 != sha256Hex(read.Output) {
+		return ErrCapturedReadOutputHashMismatch
+	}
+	return nil
+}
+
+func mintFromCapturedReadTx(
+	ctx context.Context,
+	tx Tx,
+	store Store,
+	auditSink AuditSink,
+	clock Clock,
+	run Run,
+	read CapturedRead,
+	outputPath string,
+	unit string,
+) (MintFromCapturedReadResult, error) {
+	rawValue, err := extractMintValue(read.Output, outputPath)
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+	sourceValueRaw, err := normalizeSourceValueRaw(rawValue)
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	valueCanonical, err := canonicalizeNumeric(rawValue)
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	now := clock.Now().UTC()
+	token := Token{
+		ID:             tokenID(run.ID, read.ID, outputPath, unit, sourceValueRaw, valueCanonical),
+		RunID:          run.ID,
+		TenantID:       run.TenantID,
+		ValueCanonical: valueCanonical,
+		Unit:           unit,
+		Source: TokenSource{
+			CapturedReadID: read.ID,
+			SourcePath:     read.SourcePath,
+			SourceSelector: read.Selector,
+			OutputPath:     outputPath,
+			Origin:         read.Origin,
+		},
+		CreatedAt: now,
+	}
+
+	entries, err := auditSink.AuditEntries(ctx, tx, run.TenantID, run.ID)
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	deterministic, err := canonicalizeDeterministicPayload(tokenMintPayload{
+		TokenID:        token.ID,
+		CapturedReadID: read.ID,
+		SourcePath:     read.SourcePath,
+		SourceSelector: read.Selector,
+		OutputPath:     outputPath,
+		Origin:         read.Origin,
+		ReaderName:     read.ReaderName,
+		ReaderVersion:  read.ReaderVersion,
+		ReaderOptions:  read.ReaderOptions,
+		Locator:        read.Locator,
+		SourceSHA256:   read.SourceSHA256,
+		OutputSHA256:   read.OutputSHA256,
+		SourceValueRaw: sourceValueRaw,
+		ValueCanonical: valueCanonical,
+		Unit:           unit,
+	})
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	prevHash := genesisHash(run.TenantID)
+	seq := uint64(1)
+	if len(entries) > 0 {
+		last := entries[len(entries)-1]
+		prevHash = append([]byte(nil), last.Hash...)
+		seq = last.Seq + 1
+	}
+
+	hashInput := append([]byte(nil), deterministic...)
+	entry := AuditEntry{
+		Seq:      seq,
+		RunID:    run.ID,
+		TenantID: run.TenantID,
+		Kind:     EntryKindTokenMint,
+		At:       now,
+		PrevHash: prevHash,
+		Hash:     auditHash(prevHash, seq, run.ID, run.TenantID, EntryKindTokenMint, hashInput),
+		Payload: PayloadEnvelope{
+			Deterministic:      deterministic,
+			HashInputCanonical: hashInput,
+		},
+	}
+
+	if err := store.PutToken(ctx, tx, token); err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	appended, err := auditSink.AppendAuditEntry(ctx, tx, entry)
+	if err != nil {
+		return MintFromCapturedReadResult{}, err
+	}
+
+	return MintFromCapturedReadResult{Token: token, AuditEntry: appended}, nil
 }
 
 func normalizeSourceValueRaw(raw string) (string, error) {
