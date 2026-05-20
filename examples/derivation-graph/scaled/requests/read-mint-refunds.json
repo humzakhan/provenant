@@ -1,0 +1,28 @@
+{
+  "run_file": "<path-to-bundle-file>",
+  "reader": "extract.csv_rows",
+  "source": {
+    "source": {
+      "path": "fixture://refunds.csv",
+      "sha256": "<sha256-of-refunds.csv>"
+    },
+    "bytes": "<base64-encoded-refunds.csv>"
+  },
+  "run": {
+    "id": "derivation_graph_scaled_run_1",
+    "tenant_id": "tenant_demo",
+    "status": "running"
+  },
+  "read": {
+    "source_path": "fixture://refunds.csv",
+    "selector": {
+      "row_window": "<N>-<N>",
+      "header_row": 1,
+      "dialect": "excel",
+      "encoding": "utf-8",
+      "column_projection": "amount"
+    },
+    "output_path": "/rows/0/cells/0/value",
+    "unit": "USD"
+  }
+}
