@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/provenant/provenant/reconcile/request"
 	"github.com/provenant/provenant/reconcile/router"
@@ -287,8 +288,23 @@ func validateSchemaRow(row router.NormalizedRow, columns request.Columns) string
 				reasons = append(reasons, fmt.Sprintf("malformed numeric field %q", field))
 			}
 		}
+		if column.Role == request.RoleDate && column.Format != "" && !value.Empty && strings.TrimSpace(value.Canonical) != "" {
+			if !validDateValue(value.Canonical, column.Format) {
+				reasons = append(reasons, fmt.Sprintf("malformed date field %q", field))
+			}
+		}
 	}
 	return strings.Join(reasons, "; ")
+}
+
+func validDateValue(value, format string) bool {
+	switch format {
+	case "YYYY-MM-DD":
+		_, err := time.Parse("2006-01-02", value)
+		return err == nil
+	default:
+		return false
+	}
 }
 
 func selectedFiles(req request.Request, files []router.NormalizedFile) (router.NormalizedFile, router.NormalizedFile, error) {

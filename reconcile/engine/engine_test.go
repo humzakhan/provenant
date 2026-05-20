@@ -677,6 +677,32 @@ func TestReconcileSchemaValidationOutcomes(t *testing.T) {
 			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
 			reason:   "malformed numeric field \"amount\"",
 		},
+		{
+			name:     "valid date",
+			left:     []router.NormalizedRow{rowWithDate("l1", "A1", "10.00", "USD", "2026-05-19")},
+			right:    []router.NormalizedRow{rowWithDate("r1", "A2", "11.00", "USD", "2026-05-20")},
+			outcomes: []Outcome{OutcomeMatched, OutcomeMatched},
+		},
+		{
+			name:     "malformed date",
+			left:     []router.NormalizedRow{rowWithDate("l1", "A1", "10.00", "USD", "05/19/2026")},
+			right:    []router.NormalizedRow{rowWithDate("r1", "A2", "11.00", "USD", "2026-05-20")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
+			reason:   "malformed date field \"posted_date\"",
+		},
+		{
+			name:     "empty optional date",
+			left:     []router.NormalizedRow{rowWithDate("l1", "A1", "10.00", "USD", "")},
+			right:    []router.NormalizedRow{rowWithDate("r1", "A2", "11.00", "USD", "2026-05-20")},
+			outcomes: []Outcome{OutcomeMatched, OutcomeMatched},
+		},
+		{
+			name:     "malformed reasons are stable",
+			left:     []router.NormalizedRow{rowWithDate("l1", "A1", "not-money", "USD", "05/19/2026")},
+			right:    []router.NormalizedRow{rowWithDate("r1", "A2", "11.00", "USD", "2026-05-20")},
+			outcomes: []Outcome{OutcomeInvalidRecord, OutcomeMatched},
+			reason:   "malformed numeric field \"amount\"; malformed date field \"posted_date\"",
+		},
 	}
 
 	for _, tt := range tests {
@@ -690,8 +716,8 @@ func TestReconcileSchemaValidationOutcomes(t *testing.T) {
 			if got := outcomes(set.Results); !reflect.DeepEqual(got, tt.outcomes) {
 				t.Fatalf("outcomes = %#v, want %#v; results = %#v", got, tt.outcomes, set.Results)
 			}
-			if tt.reason != "" && !strings.Contains(set.Results[0].Reason, tt.reason) {
-				t.Fatalf("reason = %q, want containing %q; results = %#v", set.Results[0].Reason, tt.reason, set.Results)
+			if tt.reason != "" && set.Results[0].Reason != tt.reason {
+				t.Fatalf("reason = %q, want %q; results = %#v", set.Results[0].Reason, tt.reason, set.Results)
 			}
 		})
 	}
@@ -811,6 +837,7 @@ func schemaValidationRequest() request.Request {
 func schemaValidationColumns() request.Columns {
 	columns := columns()
 	columns["transaction_id"] = request.ColumnConfig{Role: request.RoleKey, Required: true}
+	columns["posted_date"] = request.ColumnConfig{Role: request.RoleDate, Format: "YYYY-MM-DD"}
 	return columns
 }
 
@@ -835,6 +862,12 @@ func row(rowKey, transactionID, amount, currency string) router.NormalizedRow {
 			"currency":       value("currency", request.RoleCurrency, currency),
 		},
 	}
+}
+
+func rowWithDate(rowKey, transactionID, amount, currency, postedDate string) router.NormalizedRow {
+	row := row(rowKey, transactionID, amount, currency)
+	row.Values["posted_date"] = value("posted_date", request.RoleDate, postedDate)
+	return row
 }
 
 func missingFieldRow(rowKey, field string) router.NormalizedRow {
