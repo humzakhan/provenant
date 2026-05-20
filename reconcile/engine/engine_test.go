@@ -123,6 +123,93 @@ func TestReconcileExactInvalidEmptyMatchField(t *testing.T) {
 	t.Fatalf("results = %#v, want invalid_record with empty match field reason", set.Results)
 }
 
+func TestReconcileExactInvalidRecordSideAttribution(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		left      []router.NormalizedRow
+		right     []router.NormalizedRow
+		wantLeft  bool
+		wantFile  string
+		wantRowID string
+	}{
+		{
+			name:      "left invalid row uses left slot",
+			left:      []router.NormalizedRow{emptyKeyRow("l_bad")},
+			right:     []router.NormalizedRow{row("r1", "A1", "10.00", "USD")},
+			wantLeft:  true,
+			wantFile:  "left",
+			wantRowID: "l_bad",
+		},
+		{
+			name:      "right invalid row uses right slot",
+			left:      []router.NormalizedRow{row("l1", "A1", "10.00", "USD")},
+			right:     []router.NormalizedRow{emptyKeyRow("r_bad")},
+			wantFile:  "right",
+			wantRowID: "r_bad",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			set, err := Reconcile(context.Background(), exactRequest(), files(tt.left, tt.right))
+			if err != nil {
+				t.Fatalf("Reconcile() error = %v", err)
+			}
+
+			result := invalidResultForTest(t, set.Results)
+			if tt.wantLeft {
+				if result.Left == nil || result.Right != nil || result.Left.FileID != tt.wantFile || result.Left.RowKey != tt.wantRowID {
+					t.Fatalf("invalid result side = %#v", result)
+				}
+				return
+			}
+			if result.Left != nil || result.Right == nil || result.Right.FileID != tt.wantFile || result.Right.RowKey != tt.wantRowID {
+				t.Fatalf("invalid result side = %#v", result)
+			}
+		})
+	}
+}
+
+func TestReconcileExactInvalidRecordStableOrderAndID(t *testing.T) {
+	t.Parallel()
+
+	req := exactRequest()
+	ordered, err := Reconcile(context.Background(), req, files(
+		[]router.NormalizedRow{emptyKeyRow("l_bad"), row("l1", "A1", "10.00", "USD")},
+		[]router.NormalizedRow{emptyKeyRow("r_bad"), row("r1", "A1", "10.00", "USD")},
+	))
+	if err != nil {
+		t.Fatalf("Reconcile() ordered error = %v", err)
+	}
+	shuffled, err := Reconcile(context.Background(), req, []router.NormalizedFile{
+		{FileID: "right", Rows: []router.NormalizedRow{row("r1", "A1", "10.00", "USD"), emptyKeyRow("r_bad")}},
+		{FileID: "left", Rows: []router.NormalizedRow{row("l1", "A1", "10.00", "USD"), emptyKeyRow("l_bad")}},
+	})
+	if err != nil {
+		t.Fatalf("Reconcile() shuffled error = %v", err)
+	}
+
+	want := []resultSignature{
+		{outcome: OutcomeMatched, leftRow: "l1", rightRow: "r1"},
+		{outcome: OutcomeInvalidRecord, rightRow: "r_bad"},
+		{outcome: OutcomeInvalidRecord, leftRow: "l_bad"},
+	}
+	if got := resultSignatures(ordered.Results); !reflect.DeepEqual(got, want) {
+		t.Fatalf("ordered results = %#v, want %#v; results = %#v", got, want, ordered.Results)
+	}
+	if !reflect.DeepEqual(resultSignatures(ordered.Results), resultSignatures(shuffled.Results)) {
+		t.Fatalf("result order changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+	if !reflect.DeepEqual(resultIDs(ordered.Results), resultIDs(shuffled.Results)) {
+		t.Fatalf("result IDs changed across shuffled input: %#v vs %#v", ordered.Results, shuffled.Results)
+	}
+}
+
 func TestReconcileExactShuffledInputOrdering(t *testing.T) {
 	t.Parallel()
 
@@ -713,6 +800,37 @@ func outcomes(results []Result) []Outcome {
 	got := make([]Outcome, len(results))
 	for i, result := range results {
 		got[i] = result.Outcome
+	}
+	return got
+}
+
+func invalidResultForTest(t *testing.T, results []Result) Result {
+	t.Helper()
+	for _, result := range results {
+		if result.Outcome == OutcomeInvalidRecord {
+			return result
+		}
+	}
+	t.Fatalf("results = %#v, want invalid_record", results)
+	return Result{}
+}
+
+type resultSignature struct {
+	outcome  Outcome
+	leftRow  string
+	rightRow string
+}
+
+func resultSignatures(results []Result) []resultSignature {
+	got := make([]resultSignature, len(results))
+	for i, result := range results {
+		got[i].outcome = result.Outcome
+		if result.Left != nil {
+			got[i].leftRow = result.Left.RowKey
+		}
+		if result.Right != nil {
+			got[i].rightRow = result.Right.RowKey
+		}
 	}
 	return got
 }

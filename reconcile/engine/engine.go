@@ -97,8 +97,8 @@ func Reconcile(ctx context.Context, req request.Request, files []router.Normaliz
 		Compare:     compare,
 	}
 
-	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, compare, plan)
-	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, compare, plan)
+	leftRows, leftInvalid := indexRows(left, req.Reconcile.MatchOn, compare, plan, true)
+	rightRows, rightInvalid := indexRows(right, req.Reconcile.MatchOn, compare, plan, false)
 	set.Results = append(set.Results, leftInvalid...)
 	set.Results = append(set.Results, rightInvalid...)
 
@@ -159,8 +159,8 @@ func reconcileOneToMany(req request.Request, files []router.NormalizedFile) (*Re
 		Compare:     append([]string(nil), req.Reconcile.Compare...),
 	}
 
-	leftRows, leftInvalid := indexRows(left, req.Reconcile.Group.LeftKey, req.Reconcile.Compare, plan)
-	rightRows, rightInvalid := indexRows(right, req.Reconcile.Group.RightKey, req.Reconcile.Compare, plan)
+	leftRows, leftInvalid := indexRows(left, req.Reconcile.Group.LeftKey, req.Reconcile.Compare, plan, true)
+	rightRows, rightInvalid := indexRows(right, req.Reconcile.Group.RightKey, req.Reconcile.Compare, plan, false)
 	set.Results = append(set.Results, leftInvalid...)
 	set.Results = append(set.Results, rightInvalid...)
 
@@ -372,24 +372,31 @@ func columnsForFile(req request.Request, fileID string) request.Columns {
 	return nil
 }
 
-func indexRows(file router.NormalizedFile, matchOn, compare []string, plan comparisonPlan) (map[string][]indexedRow, []Result) {
+func indexRows(file router.NormalizedFile, matchOn, compare []string, plan comparisonPlan, leftSide bool) (map[string][]indexedRow, []Result) {
 	rows := make(map[string][]indexedRow, len(file.Rows))
 	invalid := make([]Result, 0)
 	for _, row := range file.Rows {
 		key, keyID, reason, ok := rowKey(row, matchOn)
 		if !ok {
 			indexed := indexedRow{fileID: file.FileID, row: row, key: key, keyID: keyID}
-			invalid = append(invalid, resultFor(OutcomeInvalidRecord, sideRow(file.FileID, indexed), nil, nil, reason))
+			invalid = append(invalid, invalidResult(indexed, leftSide, reason))
 			continue
 		}
 		if reason := validateCompareValues(row, compare, plan); reason != "" {
 			indexed := indexedRow{fileID: file.FileID, row: row, key: key, keyID: keyID}
-			invalid = append(invalid, resultFor(OutcomeInvalidRecord, sideRow(file.FileID, indexed), nil, nil, reason))
+			invalid = append(invalid, invalidResult(indexed, leftSide, reason))
 			continue
 		}
 		rows[keyID] = append(rows[keyID], indexedRow{fileID: file.FileID, row: row, key: key, keyID: keyID})
 	}
 	return rows, invalid
+}
+
+func invalidResult(row indexedRow, leftSide bool, reason string) Result {
+	if leftSide {
+		return resultFor(OutcomeInvalidRecord, &row, nil, nil, reason)
+	}
+	return resultFor(OutcomeInvalidRecord, nil, &row, nil, reason)
 }
 
 func rowKey(row router.NormalizedRow, fields []string) ([]KeyValue, string, string, bool) {
@@ -588,11 +595,6 @@ func resultFor(outcome Outcome, left, right *indexedRow, diffs []Difference, rea
 		}
 	}
 	return result
-}
-
-func sideRow(fileID string, row indexedRow) *indexedRow {
-	row.fileID = fileID
-	return &row
 }
 
 func canonicalKey(key []KeyValue) string {
