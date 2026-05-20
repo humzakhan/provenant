@@ -183,6 +183,8 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 		return r.runPack(ctx, args[1:], stdin, stdout)
 	case commandTrace:
 		return r.runTrace(ctx, args[1:], stdin, stdout)
+	case commandAuditHTML:
+		return r.runAuditHTML(ctx, args[1:], stdin, stdout)
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedCommand, args[0])
 	}

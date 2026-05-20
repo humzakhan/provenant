@@ -352,6 +352,46 @@ func TestScaledFauxbooksReplayDeterminism(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// TestScaledFauxbooksHTMLReport: audit-html renders a deterministic HTML report
+// ---------------------------------------------------------------------------
+
+func TestScaledFauxbooksHTMLReport(t *testing.T) {
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "scaled.bundle.json")
+	packPath := filepath.Join(dir, "scaled.pack.json")
+	htmlPath := filepath.Join(dir, "report.html")
+
+	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
+	runScaledDemo(t, runner, bundlePath)
+
+	// Build the audit pack from the bundle.
+	testsupport.RunCLIFileArgs(t, runner, []string{"pack", "--bundle", bundlePath, "--out", packPath})
+
+	// Render the HTML report.
+	testsupport.RunCLIFileArgs(t, runner, []string{"audit-html", "--pack", packPath, "--out", htmlPath})
+
+	got, err := os.ReadFile(htmlPath)
+	if err != nil {
+		t.Fatalf("ReadFile(html): %v", err)
+	}
+
+	goldenPath := filepath.Join(".", "golden.report.html")
+	if os.Getenv("UPDATE_GOLDEN") != "" {
+		if err2 := os.WriteFile(goldenPath, got, 0o644); err2 != nil {
+			t.Fatalf("write golden.report.html: %v", err2)
+		}
+		t.Logf("golden.report.html written (%d bytes)", len(got))
+	}
+	want, readErr := os.ReadFile(goldenPath)
+	if readErr != nil {
+		t.Fatalf("golden.report.html missing — run with UPDATE_GOLDEN=1 to generate: %v", readErr)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatal("HTML report bytes diverged from golden.report.html — if intentional, re-run with UPDATE_GOLDEN=1")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Demo driver
 // ---------------------------------------------------------------------------
 

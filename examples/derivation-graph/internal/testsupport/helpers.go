@@ -14,11 +14,25 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"testing"
 
 	"github.com/provenant/provenant/access/cli"
 	kernel "github.com/provenant/provenant/kernel/public"
 )
+
+// RunCLIFileArgs invokes runner.Run with no stdin body (empty reader) and
+// returns the stdout bytes. It fails the test immediately if the CLI call
+// returns an error. Use this for verbs that accept only file-path flags
+// (e.g. audit-html, pack) rather than a JSON body on stdin.
+func RunCLIFileArgs(t *testing.T, runner cli.Runner, args []string) []byte {
+	t.Helper()
+	var stdout bytes.Buffer
+	if err := runner.Run(context.Background(), args, strings.NewReader(""), &stdout); err != nil {
+		t.Fatalf("CLI %v error: %v", args, err)
+	}
+	return stdout.Bytes()
+}
 
 // RunCLIInTest invokes runner.Run with a JSON-encoded body on stdin and returns
 // the stdout bytes. It fails the test immediately if the CLI call returns an
