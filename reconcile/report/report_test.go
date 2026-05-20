@@ -104,6 +104,9 @@ func TestWriteManifestHashes(t *testing.T) {
 	if got.BundleHash != sha256HexForTest(in.Bundle.Bytes) {
 		t.Fatalf("bundle hash = %s, want %s", got.BundleHash, sha256HexForTest(in.Bundle.Bytes))
 	}
+	if got.SchemaVersion != "provenant.reconcile.report.manifest.v1" {
+		t.Fatalf("schema version = %q", got.SchemaVersion)
+	}
 	if len(got.Artifacts) != 7 {
 		t.Fatalf("manifest artifacts = %d, want 7", len(got.Artifacts))
 	}
@@ -121,6 +124,62 @@ func TestWriteManifestHashes(t *testing.T) {
 	}
 	if _, ok := entries["manifest.json"]; !ok {
 		t.Fatal("manifest.json missing")
+	}
+}
+
+func TestWriteReportJSONIncludesMismatchEvidence(t *testing.T) {
+	in := testProvenancedResultSet(t, true)
+	var buf bytes.Buffer
+	if err := Write(context.Background(), &buf, in); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+	entries := readZip(t, buf.Bytes())
+	var got reportJSON
+	if err := json.Unmarshal(entries["report.json"], &got); err != nil {
+		t.Fatalf("report.json unmarshal error = %v", err)
+	}
+
+	var mismatch mismatchSummary
+	for _, item := range got.Mismatches {
+		if item.ResultID == "res_mismatch" {
+			mismatch = item
+			break
+		}
+	}
+	if mismatch.ResultID == "" {
+		t.Fatal("res_mismatch missing from report.json")
+	}
+	if got, want := len(mismatch.Evidence.RowRefs), 2; got != want {
+		t.Fatalf("row refs = %d, want %d: %#v", got, want, mismatch.Evidence.RowRefs)
+	}
+	if got, want := len(mismatch.Evidence.ValueRefs), 2; got != want {
+		t.Fatalf("value refs = %d, want %d: %#v", got, want, mismatch.Evidence.ValueRefs)
+	}
+	for _, ref := range mismatch.Evidence.ValueRefs {
+		if ref.CapturedReadID == "" || ref.Selector == "" || ref.OutputPath == "" || ref.TokenID == "" {
+			t.Fatalf("value evidence missing captured-read/token refs: %#v", ref)
+		}
+	}
+}
+
+func TestWriteMissingReportEvidenceFailsClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*provenance.ProvenancedResultSet)
+	}{
+		{name: "missing result evidence", mutate: func(in *provenance.ProvenancedResultSet) { in.Evidence = in.Evidence[:1] }},
+		{name: "missing row captured read", mutate: func(in *provenance.ProvenancedResultSet) { in.Evidence[1].RowRefs[0].CapturedReadID = "" }},
+		{name: "missing value token", mutate: func(in *provenance.ProvenancedResultSet) { in.Evidence[1].ValueRefs[0].TokenID = "" }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			in := testProvenancedResultSet(t, true)
+			tt.mutate(in)
+			var buf bytes.Buffer
+			if err := Write(context.Background(), &buf, in); err == nil {
+				t.Fatal("Write() error = nil, want fail-closed evidence validation")
+			}
+		})
 	}
 }
 
@@ -188,7 +247,7 @@ func TestWriteDeterministicRepeatedOutput(t *testing.T) {
 func testProvenancedResultSet(t *testing.T, includeMismatch bool) *provenance.ProvenancedResultSet {
 	t.Helper()
 	run := kernel.Run{ID: "run-1", TenantID: "tenant-1", Status: kernel.RunRunning}
-	read := kernel.CapturedRead{
+	leftRead := kernel.CapturedRead{
 		ID:            "cr-left",
 		RunID:         run.ID,
 		SourcePath:    "left.csv",
@@ -199,36 +258,71 @@ func testProvenancedResultSet(t *testing.T, includeMismatch bool) *provenance.Pr
 		OutputSHA256:  sha256HexForTest([]byte(`{"value":"10.00"}`)),
 		Output:        json.RawMessage(`{"value":"10.00"}`),
 	}
+	rightRead := kernel.CapturedRead{
+		ID:            "cr-right",
+		RunID:         run.ID,
+		SourcePath:    "right.csv",
+		Selector:      kernel.SourceSelector{RowWindow: "2:"},
+		ReaderName:    "extractcsvrows",
+		ReaderVersion: "test",
+		SourceSHA256:  strings.Repeat("b", 64),
+		OutputSHA256:  sha256HexForTest([]byte(`{"value":"11.00"}`)),
+		Output:        json.RawMessage(`{"value":"11.00"}`),
+	}
 	binding := memio.NewBinding()
-	minted, err := kernel.MintFromCapturedRead(context.Background(), binding, binding, binding, fixedClock{}, run, kernel.MintFromCapturedReadRequest{
-		CapturedRead: read,
-		Source:       kernel.Source{Path: read.SourcePath, SHA256: read.SourceSHA256},
+	leftMinted, err := kernel.MintFromCapturedRead(context.Background(), binding, binding, binding, fixedClock{}, run, kernel.MintFromCapturedReadRequest{
+		CapturedRead: leftRead,
+		Source:       kernel.Source{Path: leftRead.SourcePath, SHA256: leftRead.SourceSHA256},
 		OutputPath:   "$.value",
 	})
 	if err != nil {
-		t.Fatalf("MintFromCapturedRead() error = %v", err)
+		t.Fatalf("left MintFromCapturedRead() error = %v", err)
 	}
-	bundleBytes, err := bundle.Emit(bundle.State{Run: run, CapturedReads: []kernel.CapturedRead{read}, Tokens: []kernel.Token{minted.Token}, AuditEntries: []kernel.AuditEntry{minted.AuditEntry}})
+	rightMinted, err := kernel.MintFromCapturedRead(context.Background(), binding, binding, binding, fixedClock{}, run, kernel.MintFromCapturedReadRequest{
+		CapturedRead: rightRead,
+		Source:       kernel.Source{Path: rightRead.SourcePath, SHA256: rightRead.SourceSHA256},
+		OutputPath:   "$.value",
+	})
+	if err != nil {
+		t.Fatalf("right MintFromCapturedRead() error = %v", err)
+	}
+	bundleBytes, err := bundle.Emit(bundle.State{Run: run, CapturedReads: []kernel.CapturedRead{leftRead, rightRead}, Tokens: []kernel.Token{leftMinted.Token, rightMinted.Token}, AuditEntries: []kernel.AuditEntry{leftMinted.AuditEntry, rightMinted.AuditEntry}})
 	if err != nil {
 		t.Fatalf("bundle.Emit() error = %v", err)
 	}
 	if err := bundle.Verify(bundleBytes); err != nil {
 		t.Fatalf("bundle.Verify() error = %v", err)
 	}
-	results := []engine.Result{{ID: "res_matched", Outcome: engine.OutcomeMatched}}
+	leftRef := engine.RowRef{FileID: "left", RowKey: "row:1", Position: router.RowPosition{Row: 1}}
+	rightRef := engine.RowRef{FileID: "right", RowKey: "row:1", Position: router.RowPosition{Row: 1}}
+	missingRightRef := engine.RowRef{FileID: "left", RowKey: "row:2", Position: router.RowPosition{Row: 2}}
+	results := []engine.Result{{ID: "res_matched", Outcome: engine.OutcomeMatched, Left: &leftRef}}
 	if includeMismatch {
 		results = append(results,
-			engine.Result{ID: "res_mismatch", Outcome: engine.OutcomeMismatch, Key: []engine.KeyValue{{Field: "id", Value: "a"}}, Differences: []engine.Difference{{Field: "amount", Left: "10.00", Right: "11.00"}}, Reason: "amount mismatch"},
-			engine.Result{ID: "res_missing_right", Outcome: engine.OutcomeMissingRight, Reason: "not on right"},
+			engine.Result{ID: "res_mismatch", Outcome: engine.OutcomeMismatch, Key: []engine.KeyValue{{Field: "id", Value: "a"}}, Left: &leftRef, Right: &rightRef, Differences: []engine.Difference{{Field: "amount", Left: "10.00", Right: "11.00"}}, Reason: "amount mismatch"},
+			engine.Result{ID: "res_missing_right", Outcome: engine.OutcomeMissingRight, Left: &missingRightRef, Reason: "not on right"},
 		)
 	}
 	return &provenance.ProvenancedResultSet{
-		Results:       engine.ResultSet{RunID: run.ID, Mode: "exact_match", LeftFileID: "left", RightFileID: "right", Results: results},
-		CapturedReads: []provenance.CapturedReadRef{{FileID: "left", CapturedReadID: read.ID, SourcePath: read.SourcePath, SourceHash: read.SourceSHA256, Selector: read.Selector, Reader: read.ReaderName, ReaderVersion: read.ReaderVersion}},
-		Tokens:        []kernel.Token{minted.Token},
-		AuditEntries:  []kernel.AuditEntry{minted.AuditEntry},
-		Bundle:        &provenance.BundleRef{Bytes: bundleBytes, SHA256: sha256HexForTest(bundleBytes)},
-		Evidence:      []provenance.ResultEvidence{{ResultID: "res_matched", RowRefs: []provenance.RowEvidenceRef{{Side: "left", FileID: "left", RowKey: "row:1", Position: router.RowPosition{Row: 1}, CapturedReadID: read.ID, SourceHash: read.SourceSHA256}}}},
+		Results: engine.ResultSet{RunID: run.ID, Mode: "exact_match", LeftFileID: "left", RightFileID: "right", Results: results},
+		CapturedReads: []provenance.CapturedReadRef{
+			{FileID: "left", CapturedReadID: leftRead.ID, SourcePath: leftRead.SourcePath, SourceHash: leftRead.SourceSHA256, Selector: leftRead.Selector, Reader: leftRead.ReaderName, ReaderVersion: leftRead.ReaderVersion},
+			{FileID: "right", CapturedReadID: rightRead.ID, SourcePath: rightRead.SourcePath, SourceHash: rightRead.SourceSHA256, Selector: rightRead.Selector, Reader: rightRead.ReaderName, ReaderVersion: rightRead.ReaderVersion},
+		},
+		Tokens:       []kernel.Token{leftMinted.Token, rightMinted.Token},
+		AuditEntries: []kernel.AuditEntry{leftMinted.AuditEntry, rightMinted.AuditEntry},
+		Bundle:       &provenance.BundleRef{Bytes: bundleBytes, SHA256: sha256HexForTest(bundleBytes)},
+		Evidence: []provenance.ResultEvidence{
+			{ResultID: "res_matched", RowRefs: []provenance.RowEvidenceRef{{Side: "left", FileID: "left", RowKey: "row:1", Position: router.RowPosition{Row: 1}, CapturedReadID: leftRead.ID, SourceHash: leftRead.SourceSHA256}}},
+			{ResultID: "res_mismatch", RowRefs: []provenance.RowEvidenceRef{
+				{Side: "left", FileID: "left", RowKey: "row:1", Position: router.RowPosition{Row: 1}, CapturedReadID: leftRead.ID, SourceHash: leftRead.SourceSHA256},
+				{Side: "right", FileID: "right", RowKey: "row:1", Position: router.RowPosition{Row: 1}, CapturedReadID: rightRead.ID, SourceHash: rightRead.SourceSHA256},
+			}, ValueRefs: []provenance.ValueEvidenceRef{
+				{Side: "left", FileID: "left", RowKey: "row:1", LogicalField: "amount", SourceField: "amount", Role: "amount", Canonical: "10.00", CapturedReadID: leftRead.ID, SourceHash: leftRead.SourceSHA256, Selector: "$.value", OutputPath: "$.value", TokenID: leftMinted.Token.ID},
+				{Side: "right", FileID: "right", RowKey: "row:1", LogicalField: "amount", SourceField: "amount", Role: "amount", Canonical: "11.00", CapturedReadID: rightRead.ID, SourceHash: rightRead.SourceSHA256, Selector: "$.value", OutputPath: "$.value", TokenID: rightMinted.Token.ID},
+			}},
+			{ResultID: "res_missing_right", RowRefs: []provenance.RowEvidenceRef{{Side: "left", FileID: "left", RowKey: "row:2", Position: router.RowPosition{Row: 2}, CapturedReadID: leftRead.ID, SourceHash: leftRead.SourceSHA256}}},
+		},
 	}
 }
 

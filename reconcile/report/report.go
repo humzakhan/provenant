@@ -22,8 +22,9 @@ import (
 var zipModified = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)
 
 type manifest struct {
-	BundleHash string             `json:"bundle_hash"`
-	Artifacts  []manifestArtifact `json:"artifacts"`
+	SchemaVersion string             `json:"schema_version"`
+	BundleHash    string             `json:"bundle_hash"`
+	Artifacts     []manifestArtifact `json:"artifacts"`
 }
 
 type manifestArtifact struct {
@@ -43,11 +44,12 @@ type reportJSON struct {
 }
 
 type mismatchSummary struct {
-	ResultID string              `json:"result_id"`
-	Outcome  engine.Outcome      `json:"outcome"`
-	Key      []engine.KeyValue   `json:"key,omitempty"`
-	Reason   string              `json:"reason,omitempty"`
-	Diffs    []engine.Difference `json:"differences,omitempty"`
+	ResultID string                    `json:"result_id"`
+	Outcome  engine.Outcome            `json:"outcome"`
+	Key      []engine.KeyValue         `json:"key,omitempty"`
+	Reason   string                    `json:"reason,omitempty"`
+	Diffs    []engine.Difference       `json:"differences,omitempty"`
+	Evidence provenance.ResultEvidence `json:"evidence"`
 }
 
 type auditLine struct {
@@ -215,6 +217,10 @@ type artifact struct {
 }
 
 func buildReportJSON(in *provenance.ProvenancedResultSet) (reportJSON, error) {
+	evidenceByResult, err := reportEvidenceByResult(in)
+	if err != nil {
+		return reportJSON{}, err
+	}
 	out := reportJSON{
 		RunID:         in.Results.RunID,
 		Mode:          in.Results.Mode,
@@ -228,16 +234,147 @@ func buildReportJSON(in *provenance.ProvenancedResultSet) (reportJSON, error) {
 		if result.Outcome == engine.OutcomeMatched {
 			continue
 		}
+		evidence, ok := evidenceByResult[result.ID]
+		if !ok {
+			return reportJSON{}, fmt.Errorf("reconcile_report_failed: result %q missing report evidence", result.ID)
+		}
+		if err := validateReportResultEvidence(result, evidence, in); err != nil {
+			return reportJSON{}, err
+		}
 		out.Mismatches = append(out.Mismatches, mismatchSummary{
 			ResultID: result.ID,
 			Outcome:  result.Outcome,
 			Key:      append([]engine.KeyValue(nil), result.Key...),
 			Reason:   result.Reason,
 			Diffs:    append([]engine.Difference(nil), result.Differences...),
+			Evidence: copyResultEvidence(evidence),
 		})
 	}
 	sort.Slice(out.Mismatches, func(i, j int) bool { return out.Mismatches[i].ResultID < out.Mismatches[j].ResultID })
 	return out, nil
+}
+
+func reportEvidenceByResult(in *provenance.ProvenancedResultSet) (map[string]provenance.ResultEvidence, error) {
+	out := make(map[string]provenance.ResultEvidence, len(in.Evidence))
+	for _, evidence := range in.Evidence {
+		if evidence.ResultID == "" {
+			return nil, fmt.Errorf("reconcile_report_failed: report evidence missing result id")
+		}
+		if _, exists := out[evidence.ResultID]; exists {
+			return nil, fmt.Errorf("reconcile_report_failed: duplicate report evidence for result %q", evidence.ResultID)
+		}
+		out[evidence.ResultID] = evidence
+	}
+	return out, nil
+}
+
+func validateReportResultEvidence(result engine.Result, evidence provenance.ResultEvidence, in *provenance.ProvenancedResultSet) error {
+	readsByID := make(map[string]provenance.CapturedReadRef, len(in.CapturedReads))
+	for _, read := range in.CapturedReads {
+		readsByID[read.CapturedReadID] = read
+	}
+	tokensByID := make(map[string]struct{}, len(in.Tokens))
+	for _, token := range in.Tokens {
+		tokensByID[token.ID] = struct{}{}
+	}
+
+	rowRefs := make(map[string]struct{}, len(evidence.RowRefs))
+	for _, ref := range evidence.RowRefs {
+		if ref.CapturedReadID == "" || ref.SourceHash == "" {
+			return fmt.Errorf("reconcile_report_failed: result %q row evidence for %s/%s missing captured read", result.ID, ref.FileID, ref.RowKey)
+		}
+		read, ok := readsByID[ref.CapturedReadID]
+		if !ok || read.SourceHash != ref.SourceHash {
+			return fmt.Errorf("reconcile_report_failed: result %q row evidence for %s/%s references unknown captured read", result.ID, ref.FileID, ref.RowKey)
+		}
+		rowRefs[rowEvidenceKey(ref.Side, ref.FileID, ref.RowKey)] = struct{}{}
+	}
+	for _, want := range referencedRows(result, in.Results) {
+		if _, ok := rowRefs[rowEvidenceKey(want.side, want.ref.FileID, want.ref.RowKey)]; !ok {
+			return fmt.Errorf("reconcile_report_failed: result %q missing row evidence for %s/%s", result.ID, want.ref.FileID, want.ref.RowKey)
+		}
+	}
+
+	valueRefs := make(map[string]struct{}, len(evidence.ValueRefs))
+	for _, ref := range evidence.ValueRefs {
+		if ref.CapturedReadID == "" || ref.SourceHash == "" || ref.Selector == "" {
+			return fmt.Errorf("reconcile_report_failed: result %q value evidence for %s/%s/%s missing captured read", result.ID, ref.FileID, ref.RowKey, ref.LogicalField)
+		}
+		read, ok := readsByID[ref.CapturedReadID]
+		if !ok || read.SourceHash != ref.SourceHash {
+			return fmt.Errorf("reconcile_report_failed: result %q value evidence for %s/%s/%s references unknown captured read", result.ID, ref.FileID, ref.RowKey, ref.LogicalField)
+		}
+		if ref.Role == "amount" {
+			if ref.OutputPath == "" || ref.TokenID == "" {
+				return fmt.Errorf("reconcile_report_failed: result %q amount evidence for %s/%s/%s missing token", result.ID, ref.FileID, ref.RowKey, ref.LogicalField)
+			}
+			if _, ok := tokensByID[ref.TokenID]; !ok {
+				return fmt.Errorf("reconcile_report_failed: result %q amount evidence for %s/%s/%s references unknown token", result.ID, ref.FileID, ref.RowKey, ref.LogicalField)
+			}
+		}
+		valueRefs[valueEvidenceKey(ref.Side, ref.FileID, ref.RowKey, ref.LogicalField)] = struct{}{}
+	}
+	for _, want := range referencedRows(result, in.Results) {
+		for _, diff := range result.Differences {
+			if _, ok := valueRefs[valueEvidenceKey(want.side, want.ref.FileID, want.ref.RowKey, diff.Field)]; !ok {
+				return fmt.Errorf("reconcile_report_failed: result %q missing value evidence for %s/%s/%s", result.ID, want.ref.FileID, want.ref.RowKey, diff.Field)
+			}
+		}
+	}
+	return nil
+}
+
+type reportRowRef struct {
+	side string
+	ref  engine.RowRef
+}
+
+func referencedRows(result engine.Result, set engine.ResultSet) []reportRowRef {
+	rows := make([]reportRowRef, 0, 2+len(result.GroupRowKeys))
+	if result.Left != nil {
+		rows = append(rows, reportRowRef{side: "left", ref: *result.Left})
+	}
+	if result.Right != nil {
+		rows = append(rows, reportRowRef{side: "right", ref: *result.Right})
+	}
+	for _, ref := range result.GroupRowKeys {
+		rows = append(rows, reportRowRef{side: resultSide(ref.FileID, result, set), ref: ref})
+	}
+	return rows
+}
+
+func resultSide(fileID string, result engine.Result, set engine.ResultSet) string {
+	if fileID != "" {
+		if result.Left != nil && fileID == result.Left.FileID {
+			return "left"
+		}
+		if result.Right != nil && fileID == result.Right.FileID {
+			return "right"
+		}
+		if fileID == set.LeftFileID {
+			return "left"
+		}
+		if fileID == set.RightFileID {
+			return "right"
+		}
+	}
+	return "group"
+}
+
+func rowEvidenceKey(side, fileID, rowKey string) string {
+	return side + "\x00" + fileID + "\x00" + rowKey
+}
+
+func valueEvidenceKey(side, fileID, rowKey, field string) string {
+	return rowEvidenceKey(side, fileID, rowKey) + "\x00" + field
+}
+
+func copyResultEvidence(evidence provenance.ResultEvidence) provenance.ResultEvidence {
+	return provenance.ResultEvidence{
+		ResultID:  evidence.ResultID,
+		RowRefs:   append([]provenance.RowEvidenceRef(nil), evidence.RowRefs...),
+		ValueRefs: append([]provenance.ValueEvidenceRef(nil), evidence.ValueRefs...),
+	}
 }
 
 func buildReportMarkdown(report reportJSON) []byte {
@@ -349,7 +486,7 @@ func buildAuditJSONL(entries []kernel.AuditEntry) ([]byte, error) {
 }
 
 func buildManifest(artifacts []artifact, bundleHash string) ([]byte, error) {
-	out := manifest{BundleHash: bundleHash, Artifacts: make([]manifestArtifact, 0, len(artifacts)+1)}
+	out := manifest{SchemaVersion: "provenant.reconcile.report.manifest.v1", BundleHash: bundleHash, Artifacts: make([]manifestArtifact, 0, len(artifacts)+1)}
 	for _, artifact := range artifacts {
 		out.Artifacts = append(out.Artifacts, manifestArtifact{Name: artifact.name, Size: len(artifact.data), SHA256: sha256Hex(artifact.data)})
 	}
