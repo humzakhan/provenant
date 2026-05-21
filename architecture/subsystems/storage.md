@@ -38,7 +38,7 @@ The bundle is self-contained: `provenant audit verify <bundle-path>` reads only 
 In library mode this is the typical artifact flow:
 
 ```go
-runState, bundle, err := kernel.Run(ctx, input)   // bundle is []byte (or io.Reader of a zip)
+runState, bundle, err := kernel.Run(ctx, input)   // bundle is []byte containing one canonical JSON document
 if err != nil { return err }
 host.Persist(bundle)                                // host decides where it lives
 ```
@@ -146,8 +146,8 @@ provenant-<tenant_id>/
 │   ├── <run_id>/<step_index>.txt    # full prompts as sent to model
 ├── responses/
 │   ├── <run_id>/<step_index>.json   # full model responses
-└── audit-packs/
-    ├── <run_id>.zip                 # generated audit pack exports
+└── audit-bundles/
+    ├── <run_id>.json                # generated single JSON audit bundle exports
 ```
 
 `Store` rows reference object-store keys via the `BlobStore` indirection. The object store is the authoritative storage for blobs when the runtime binding is in use; in library mode the in-memory `BlobStore` holds them and they are included in the emitted bundle.
@@ -157,7 +157,7 @@ provenant-<tenant_id>/
 - Documents and extracts: retained per tenant policy (default 7 years for SOX-affected workflows).
 - Prompts and model responses: retained per tenant policy (default 3 years; configurable).
 - Captured reads: retained as long as the case bank entry that references them.
-- Audit pack exports: retained 90 days after generation; regenerable from source data within retention window.
+- Audit bundle exports: retained 90 days after generation; regenerable from source data within retention window.
 
 Lifecycle policies enforced at the bucket level. Manual deletion is blocked; retention extension is logged. **In library mode none of these apply** — retention is the host's concern.
 

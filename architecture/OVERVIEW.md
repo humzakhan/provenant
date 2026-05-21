@@ -221,7 +221,7 @@ The runtime layer ships `provenant`, a CLI binary that wraps the kernel public G
 
 - **Deployer is responsible for:** invoking the binary, providing model API credentials, picking a persistent storage binding **only if HITL pause/resume across CLI invocations is needed**. A single-shot `provenant run` + `provenant audit pack` flow against in-memory state requires no database — the bundle goes to disk.
 - **Kernel handles:** every enforcement decision, identical to library and MCP modes.
-- **Batch / CI mode:** `provenant run --bundle-out ./out.zip` runs the kernel against `kernel/public/memio/` and writes the bundle as a single zip. This is the recommended deployment shape for CI gates, regulatory replay drills, and air-gapped batch jobs.
+- **Batch / CI mode:** `provenant run --bundle-out ./bundle.json` runs the kernel against `kernel/public/memio/` and writes the self-contained single JSON audit bundle. This is the recommended deployment shape for CI gates, regulatory replay drills, and air-gapped batch jobs.
 
 ### 7.4 Latency budget for the access-surface shells
 
