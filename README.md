@@ -1,6 +1,6 @@
 # Provenant
 
-Provenant is a Go enforcement substrate for LLM agents in finance — not a logger or a reconciliation product. It enforces four kernel invariants across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, MCP host vendors, and compliance officers need a verifiable audit trail from raw bytes through to a hash-chained, replayable bundle.
+Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger or a reconciliation product. It enforces four guarantees across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, MCP host vendors, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
 
 ## Mental Model
 
@@ -16,15 +16,15 @@ source bytes → SourceReader.Read → CapturedRead + ReadResult
                        bundle.Verify / bundle.Replay (offline)
 ```
 
-**Source bytes → CapturedRead + ReadResult.** The source reader receives raw bytes with a declared SHA-256 and selector. It produces a `CapturedRead` (stable identity, origin URI, reader name and version, output hash) plus a `ReadResult` (normalized value, byte span, matched pointer). No value enters the kernel without a captured read.
+**Source bytes → captured read + ReadResult.** The source reader receives raw bytes with a declared SHA-256 and selector. It produces a captured read (`CapturedRead`: stable identity, origin URI, reader name and version, output hash) plus a `ReadResult` (normalized value, byte span, matched pointer). No value enters the kernel without a captured read.
 
-**kernel.MintToken.** The kernel receives the captured read and mints a provenance token bound to it. The token carries a canonical decimal value, unit, run ID, and tenant ID. Minting is fail-closed: any validation failure returns an error; no partial token escapes.
+**kernel.MintToken.** The kernel receives the captured read and issues a provenance token bound to it. The provenance token carries a canonical decimal value, unit, run ID, and tenant ID. Issuing the token is fail-closed: any validation failure returns an error; no partial token escapes.
 
-**AuditSink.AppendAuditEntry.** Every mint appends one audit entry to a hash chain. Each entry records its sequence number, kind, deterministic payload, previous hash, and current hash. The chain is tamper-evident: any edit to an earlier entry breaks the hash linkage.
+**AuditSink.AppendAuditEntry.** Every issued token appends one audit entry to the audit chain. Each entry records its sequence number, kind, deterministic payload, previous hash, and current hash. The audit chain is tamper-evident: any edit to an earlier entry breaks the hash linkage.
 
-**bundle.Snapshot → bundle bytes + SHA-256.** The snapshot serializes the run descriptor, all captured reads, all tokens, and the full audit JSONL into a single canonical byte sequence. The SHA-256 of that sequence is the bundle fingerprint.
+**bundle.Snapshot → audit bundle bytes + SHA-256.** The snapshot serializes the run descriptor, all captured reads, all provenance tokens, and the full audit JSONL into a single canonical byte sequence. The SHA-256 of that sequence is the audit bundle fingerprint.
 
-**bundle.Verify / bundle.Replay.** Verify checks the hash chain and confirms the bundle fingerprint matches. Replay re-derives every token from the captured reads in the bundle and confirms the audit chain is consistent. Both are offline operations that require only the bundle bytes.
+**bundle.Verify / bundle.Replay.** Verify checks the audit chain and confirms the audit bundle fingerprint matches. Replay re-derives every provenance token from the captured reads in the audit bundle and confirms the audit chain is consistent. Both are offline operations that require only the audit bundle bytes.
 
 ## Quick Start
 
@@ -153,7 +153,7 @@ The output ZIP contains exactly these eight entries:
 | `tokens.json` | All minted tokens with canonical values and bound captured read IDs. |
 | `audit.jsonl` | Hash-chained audit entries, one JSON object per line, covering every token mint. |
 | `bundle.json` | The canonical audit bundle (`phase1.bundle/v1`) containing the full run, captured reads, tokens, and audit chain. |
-| `manifest.json` | Verified bundle hash and SHA-256 for each sidecar artifact; used to confirm ZIP integrity offline. |
+| `manifest.json` | Verified bundle hash and SHA-256 for each companion artifact; used to confirm ZIP integrity offline. |
 
 ### Sample audit.jsonl entry
 
