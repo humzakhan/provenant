@@ -33,7 +33,7 @@ and Firefox support `file://` links when the report itself is opened via a
 The report has two tabs:
 
 - **Plain view** (default) — visual file cards for each source, the
-  contribution invariant VIOLATED banner (due to injected mismatches), the
+  contribution invariant OK banner, reconciliation mismatch details, the
   submitted answer hero callout, and the full derivation audit chain.
 - **Technical detail** — derivation graph table, reconciliation mismatches,
   captured reads, audit chain sequence, and manifest.
@@ -52,9 +52,9 @@ in the report resolve when opened locally:
 
 ## Notes
 
-- The VIOLATED invariant banner appears because the broken fixture has
-  injected reconciliation mismatches (non-ok outcome rows in the reconciliation
-  report), not because the cryptographic bundle integrity is broken.
+- The contribution invariant remains OK for this broken fixture: the bundle and
+  report are internally self-consistent, and verify/replay integrity is not
+  broken. The injected issues appear as reconciliation/business mismatches.
 - The report is fully self-contained (no external assets, offline-capable).
 - Source file paths in the report are absolute `file://` paths pointing at the
   CSVs in this directory. Moving the directory requires regenerating the report
