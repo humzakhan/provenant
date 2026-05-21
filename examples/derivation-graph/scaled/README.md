@@ -119,8 +119,9 @@ go test -v -run TestBrokenFauxbooksHTMLReport ./examples/derivation-graph/scaled
 ```
 
 Renders the broken audit pack as HTML and asserts byte-equal against
-`broken/golden.report.html`. The rendered report contains a `VIOLATED`
-contribution-invariant banner visible in the mismatches section.
+`broken/golden.report.html`. The rendered report keeps the contribution
+invariant `OK`; reconciliation mismatches remain visible as distinct business
+data anomalies.
 
 ### Full suite
 
@@ -157,7 +158,7 @@ Open either HTML file directly from disk — no server or network access needed.
 ## What's in the Report
 
 The `audit-html` renderer produces a single self-contained HTML file with eight
-sections (no JavaScript, no external assets):
+sections (no external assets or network dependencies):
 
 | Section | What it shows | Why it matters |
 |---|---|---|
@@ -209,5 +210,5 @@ rounding), the broken dataset in `broken/data/` and all goldens in
 - **Definition of Done:** see the DoD checklist at the end of the phase plan.
 - **Contribution invariant** (happy path): `sum(LeafContribution.Contribution) == operating_income.ValueCanonical`. Asserted by `TestScaledFauxbooksEndToEnd`.
 - **Broken-run cross-run inequality**: `broken.operating_income.ValueCanonical != happy.operating_income.ValueCanonical`. Asserted by `TestBrokenFauxbooksEndToEnd` via an independent CSV recomputation, not via `trace.Trace`.
-- **Self-contained HTML**: `TestRenderHTMLNoExternalAssets` asserts no `<script>` tags and no `src=`/`href=` attributes with `http` scheme.
+- **Self-contained HTML**: `TestRenderHTMLNoExternalAssets` asserts the report has no external assets or network dependencies.
 - **Phase-08 demo** (`examples/derivation-graph/`) is untouched by phase-09 work. Its goldens and `TestFauxbooksEndToEnd` are regression sentinels for every phase-09 step.
