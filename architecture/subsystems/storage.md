@@ -2,7 +2,7 @@
 
 Status: **v0 (runtime-layer reference bindings)**
 
-> **Reframe (cycle 11, [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md)).** Storage is **not part of the Provenant kernel**. The kernel has no storage requirement. It takes typed inputs, accumulates state in memory during a run, and emits a self-contained audit bundle (`audit.jsonl` + `audit.csv` + `audit.pdf` + `token-graph.json`) as bytes. What the caller does with those bytes is the caller's concern. This document is therefore not a description of "what provenant requires" — it is a description of the **reference SQLite and Postgres bindings** the optional MCP server and CLI access surfaces use, and which an embedding host *may* choose to wire up if it wants persistence beyond the run.
+> **Reframe (cycle 11, [ADR-0011](../adrs/0011-storage-is-a-deployment-concern.md)).** Storage is **not part of the Provenant kernel**. The kernel has no storage requirement. It takes typed inputs, accumulates state in memory during a run, and emits a self-contained single JSON audit bundle as bytes. What the caller does with those bytes is the caller's concern. This document is therefore not a description of "what provenant requires" — it is a description of the **reference SQLite and Postgres bindings** the optional MCP server and CLI access surfaces use, and which an embedding host *may* choose to wire up if it wants persistence beyond the run.
 
 ## Depends on
 - (For the SQLite reference binding) the SQLite engine, bundled as a Go module dependency of `runtime/sqlite/`
@@ -31,20 +31,14 @@ These interfaces exist so a host *may* wire up persistence. They are **not** a r
 
 After a run, the in-memory binding can emit a self-contained bundle as bytes:
 
-```
-bundle/
-├── audit.jsonl          one JSONL row per AuditEntry; deterministic-portion bytes are exactly what was hashed
-├── audit.csv            human-readable projection for spreadsheet review
-├── audit.pdf            signed-PDF walkthrough for regulator hand-off (renderer is pure-Go)
-└── token-graph.json     the token derivation graph as JSON
-```
+The current bundle is one canonical JSON document with format `phase1.bundle/v1`. It contains the run, captured reads, tokens, and an `audit_jsonl` string with one JSONL row per `AuditEntry`; the deterministic-portion bytes in each audit row are exactly what was hashed.
 
-The bundle is self-contained: `provenant audit verify <bundle-path>` reads only the bundle bytes and validates the chain. **No database access at any point.** The verifier is a pure function over `audit.jsonl`.
+The bundle is self-contained: `provenant audit verify <bundle-path>` reads only the bundle bytes and validates the chain. **No database access at any point.** The verifier is a pure function over the bundle JSON and its embedded `audit_jsonl`.
 
 In library mode this is the typical artifact flow:
 
 ```go
-runState, bundle, err := kernel.Run(ctx, input)   // bundle is []byte (or io.Reader of a zip)
+runState, bundle, err := kernel.Run(ctx, input)   // bundle is []byte containing one canonical JSON document
 if err != nil { return err }
 host.Persist(bundle)                                // host decides where it lives
 ```
@@ -116,7 +110,7 @@ The audit-chain payload-schema fixes adopted in cycles 3, 4, and 5 (see [`audit.
   - `payload_non_deterministic JSONB NOT NULL DEFAULT '{}'::jsonb` — the non-deterministic sub-object (wall-clock fields, retry counts, panic messages); stored on the row but excluded from the hash input.
   - `hash_input_canonical TEXT NOT NULL` — the exact canonical-JSON bytes of `payload_deterministic` that were fed into the SHA-256 hash, retained for replay-debug. This column is **not** itself hashed; it is operational debug surface.
 
-The three-column projection is the source-of-truth surface for any persistent binding; `audit.md` continues to describe the payload as a single object with `deterministic` / `non_deterministic` sub-objects for readability, and the storage layer projects between the two shapes. The in-memory binding's bundle output (`audit.jsonl`) uses the single-object representation directly — one JSONL row per entry, sub-objects as nested JSON.
+The three-column projection is the source-of-truth surface for any persistent binding; `audit.md` continues to describe the payload as a single object with `deterministic` / `non_deterministic` sub-objects for readability, and the storage layer projects between the two shapes. The in-memory binding's single JSON bundle embeds `audit_jsonl` using the single-object representation directly — one JSONL row per entry, sub-objects as nested JSON.
 
 #### Common columns
 
@@ -152,8 +146,8 @@ provenant-<tenant_id>/
 │   ├── <run_id>/<step_index>.txt    # full prompts as sent to model
 ├── responses/
 │   ├── <run_id>/<step_index>.json   # full model responses
-└── audit-packs/
-    ├── <run_id>.zip                 # generated audit pack exports
+└── audit-bundles/
+    ├── <run_id>.json                # generated single JSON audit bundle exports
 ```
 
 `Store` rows reference object-store keys via the `BlobStore` indirection. The object store is the authoritative storage for blobs when the runtime binding is in use; in library mode the in-memory `BlobStore` holds them and they are included in the emitted bundle.
@@ -163,7 +157,7 @@ provenant-<tenant_id>/
 - Documents and extracts: retained per tenant policy (default 7 years for SOX-affected workflows).
 - Prompts and model responses: retained per tenant policy (default 3 years; configurable).
 - Captured reads: retained as long as the case bank entry that references them.
-- Audit pack exports: retained 90 days after generation; regenerable from source data within retention window.
+- Audit bundle exports: retained 90 days after generation; regenerable from source data within retention window.
 
 Lifecycle policies enforced at the bucket level. Manual deletion is blocked; retention extension is logged. **In library mode none of these apply** — retention is the host's concern.
 
