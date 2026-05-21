@@ -18,7 +18,7 @@ The deployment-shape table below covers the **optional MCP and CLI access surfac
 
 ## Library mode (Mode A)
 
-The host application imports `kernel/public/...` as a Go module dependency, optionally binds `kernel/public/memio/` (the first-class in-memory binding) as the I/O substrate, and calls `kernel.Run(ctx, input)`. The kernel emits a self-contained audit bundle (`audit.jsonl` + `audit.csv` + `audit.pdf` + `token-graph.json`) as bytes that the host stores, signs, forwards, or discards as it sees fit.
+The host application imports `kernel/public/...` as a Go module dependency, optionally binds `kernel/public/memio/` (the first-class in-memory binding) as the I/O substrate, and calls `kernel.Run(ctx, input)`. The kernel emits a self-contained single JSON audit bundle as bytes that the host stores, signs, forwards, or discards as it sees fit.
 
 ```go
 // Minimal library-mode invocation
