@@ -18,7 +18,11 @@ Required reading before edits:
 
 Hard requirements:
 - Recommend and use Astro + Starlight unless you find and document a concrete blocker.
-- Build the docs site under `docs-site/` unless a concrete repository constraint requires stopping and asking first.
+- Build the public docs site under top-level `docs-site/` unless a concrete repository constraint requires stopping and asking first.
+- Do not build the public documentation site under the existing `docs/` directory. Preserve `docs/` as repo-facing narrative, governance, thesis, and trade-off material.
+- Preserve `architecture/` as the canonical architecture reference. Public docs may summarize, cite, and link to architecture files, but must not replace them or become a competing source of truth.
+- Preserve `examples/` as runnable example evidence. Public quickstarts and guides may summarize, cite, and link to examples, but must not relocate or duplicate committed example artifacts as the authoritative source.
+- Include source references in public docs so readers can trace public-facing summaries back to `docs/`, `architecture/`, `examples/`, tests, or code as appropriate.
 - Use local docs scripts in `docs-site/package.json`, preferably `npm run dev`, `npm run build`, `npm run check`, and optionally `npm run preview` unless the repo already has a different package-manager convention.
 - Make the docs site follow the Provenant landing-page design language and keep it highly customizable with HTML/CSS.
 - Because the actual landing-page file is not present in the repo, use `audit/report/html.go` and generated audit report HTML as the discoverable design-token source. Mention future alignment with the actual landing page asset if it is later provided.
@@ -49,6 +53,8 @@ Validation to run before reporting done:
 Non-goals:
 - Do not implement new Provenant runtime, CLI, MCP, HTTP, kernel, source reader, tool backend, or skill-pack functionality.
 - Do not invent APIs, commands, screenshots, configuration files, hosted workflows, or marketplace flows.
+- Do not place the public docs site, public page hierarchy, or Starlight content tree under existing `docs/`.
+- Do not move, rename, or collapse existing `docs/`, `architecture/`, or `examples/` source material into `docs-site/`.
 - Do not rewrite canonical architecture decisions in the docs site without updating the source architecture docs first and getting explicit approval.
 - Do not add broad repo restructuring just to host docs.
 

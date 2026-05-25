@@ -28,6 +28,14 @@ Do not choose GitBook as the default. GitBook is acceptable only if the project 
 
 Build the documentation site as a small, source-controlled Astro + Starlight project in `docs-site/`.
 
+Repository documentation boundaries:
+
+- Public documentation pages and public-docs tooling belong in top-level `docs-site/`, not in the existing `docs/` directory.
+- The existing `docs/` directory remains repo-facing narrative, governance, thesis, and trade-off material. Do not move or replace those source documents as part of the public docs site.
+- The existing `architecture/` directory remains the canonical architecture reference. Public architecture pages should summarize, cite, and link to those files rather than becoming a competing source of truth.
+- The existing `examples/` directory remains runnable example evidence. Public quickstarts and guides should cite, summarize, and link to committed examples instead of relocating or duplicating their evidence artifacts.
+- Public docs should make these source relationships visible through `Source references` sections, status labels, and links back to canonical repository inputs.
+
 Recommended structure:
 
 - `docs-site/package.json`: docs-local package manifest with scripts and pinned docs dependencies.
