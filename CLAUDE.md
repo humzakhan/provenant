@@ -7,6 +7,12 @@ Use repo-local guidance from `.claude/skills/` and `.agents/` when it matches. P
 - Prefer repo-local skills for orchestration, architecture review, workflow, and commit/PR hygiene.
 - Keep skill usage additive and narrow. For implementation-specific work, load only the extra skills required for that task.
 
+## Provenant MCP Attestation
+
+- MCP local-agent mode cannot force arbitrary host-channel model output through Provenant.
+- Treat regulated conclusions as official only when they come from a passing `submit_answer` and the `[PROVENANT-ATTESTED v1 ...]` marker is matched against the audit chain/audit pack; marker text alone is not sufficient.
+- Restricting regulated files to Provenant-controlled tools mitigates direct raw-file bypass, but host-channel output still requires `submit_answer` and verification. Hard non-bypassable enforcement requires Mode A CLI/embedded harness or a Provenant-owned harness.
+
 ## Personas
 
 - Implementation: `.agents/engineer.md`
