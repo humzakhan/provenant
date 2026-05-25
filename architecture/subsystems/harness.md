@@ -234,15 +234,18 @@ In MCP / LangChain / OpenAI Agents modes, the host agent owns the loop. Provenan
 - That the kernel header is in the system prompt (the host may have its own).
 - That tool descriptions are presented in our preferred order.
 - That the agent calls `submit_answer` rather than emitting a text answer through the host's normal channel.
+- That arbitrary host-channel model output includes or preserves Provenant's attestation marker.
+
+Therefore Mode B's official local-agent enforcement pattern is attestation at the Provenant boundary. Final regulated conclusions should be submitted through `submit_answer`. The visible `[PROVENANT-ATTESTED v1 ...]` marker is official only when produced by a passing `submit_answer` and matched against the audit chain/audit pack; answers lacking verified attestation are non-attested scratch output, even when produced by a host session that can call Provenant tools.
 
 We mitigate these by:
 
 1. The MCP adapter exposes the skill pack's prompts as **MCP prompts**. Hosts that support prompt invocation (Claude.ai) attach our kernel header. For hosts that don't auto-attach (Claude Code by default), the user must explicitly invoke `/prompt provenant.recon` or similar.
-2. The `submit_answer` tool is the only path that returns "official" output to the user. Anything the agent emits through the host's text channel without going through `submit_answer` is **not Provenant-signed**. The audit pack's `run_completed` entry explicitly records whether the run ended via `submit_answer` or without it; `exit_kind` is a deterministic enum field on `EntryKindRunCompleted` with exactly two legal values — `submit_answer` and `host_text_only` — enumerated in [`audit.md`](audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration). The kernel-immutable `submit_answer` tool's output envelope carries a `signature_marker` field (defined below) that the audit pack and `provenant audit pack` prominently display; consumers of MCP output can use this marker to detect that host-channel text is unsigned by Provenant.
+2. The `submit_answer` tool is the only path that returns "official" output to the user. Anything the agent emits through the host's text channel without going through `submit_answer` is **not Provenant-signed**. The audit pack's `run_completed` entry explicitly records whether the run ended via `submit_answer` or without it; `exit_kind` is a deterministic enum field on `EntryKindRunCompleted` with exactly two legal values — `submit_answer` and `host_text_only` — enumerated in [`audit.md`](audit.md#per-entrykind-payload-schema-deterministic-surface-enumeration). The kernel-immutable `submit_answer` tool's output envelope carries a `signature_marker` field (defined below) that the audit pack and `provenant audit pack` prominently display; consumers of MCP output must match the marker to the audit chain/audit pack before treating it as attested.
 
 #### `signature_marker` (definition)
 
-`signature_marker` is a top-level field on the `submit_answer` tool's **output** envelope returned to the host agent on a passing `SubmitAnswer` call. It is **not** an authentication credential — it is a visible, well-known, kernel-emitted string whose presence on user-facing output is the agreed signal that the bytes came through Provenant's enforcement boundary. Its absence on host-channel text is what makes the lack-of-attestation visible to downstream consumers.
+`signature_marker` is a top-level field on the `submit_answer` tool's **output** envelope returned to the host agent on a passing `SubmitAnswer` call. It is **not** an authentication credential — it is a visible, well-known, kernel-emitted string. Its presence on user-facing output is an attestation signal only when it matches the audit chain/audit pack; marker text alone is not sufficient. Its absence on host-channel text is what makes the lack-of-attestation visible to downstream consumers.
 
 Shape:
 
@@ -258,7 +261,7 @@ Shape:
 }
 ```
 
-- The `literal` field is the kernel-rendered string a host SHOULD include verbatim when surfacing the answer. The literal is the user-visible signal; the structured fields are for programmatic verification.
+- The `literal` field is the kernel-rendered string a host SHOULD include verbatim when surfacing the answer. The literal is the user-visible signal; the structured fields are for programmatic verification against the audit chain/audit pack.
 - The `literal` format is part of the kernel-immutable surface: skills cannot override it, hosts cannot rename it, and `provenant audit pack` rejects pack contents whose released-answer text contains a `[PROVENANT-ATTESTED v1 ...]` substring that does not match the chain. This catches Mode B hosts that forge a marker without going through `SubmitAnswer`.
 - Any Mode B host that strips the marker before surfacing text produces output that is, by definition, indistinguishable from text never routed through `submit_answer`; from Provenant's perspective the run terminates with `exit_kind: host_text_only` (the kernel records no `answer_released` entry), and consumers see no marker. The thesis-level scoping in [`../../thesis.md`](../../docs/thesis.md) covers this case: Mode B hosts that strip the marker are not Provenant-attested, period. For deployments where the marker must reach the end user, Mode A is required.
 
@@ -278,7 +281,7 @@ The available tools, their schemas, and the claim/token-reference syntax are enu
 
 The header is byte-identical across all runs (Mode A and Mode B) for a given kernel version and is hashed into `EntryKindPromptSent.deterministic.tool_def_hash`'s parent `prompt_hash`. A Mode B host that strips the header before sending to the model is detectable post-hoc: the model's response will not match the response distribution the kernel-vs-no-kernel-header A/B fixture establishes during Phase 4 conformance testing, and the `provenant mcp-conformance` check explicitly verifies that the host's pulled `provenant.<skill>` MCP prompt resource begins with this header literal. A host that pulls the prompt resource via MCP and then mutates it before model dispatch is out of Provenant's enforcement scope and is documented as such in (4) below.
 3. Skill pack documentation (kernel-immutable header text, included in every Mode B prompt the host pulls via MCP) instructs the model that only `submit_answer` output is released to the user; non-`submit_answer` text is treated as scratch.
-4. For deployments that need architectural non-bypassability of the host text channel itself, Mode A (CLI harness) is the required path. This is documented in [`thesis.md`](../../docs/thesis.md) and called out in [ADR-0007](../adrs/0007-mcp-as-primary-adapter.md) as the consequence of choosing MCP-first.
+4. For deployments that need architectural non-bypassability of the host text channel itself, Mode A (CLI or embedded harness) or another Provenant-owned harness is the required path. Restricting regulated files and values to Provenant-controlled tools/readers mitigates direct raw-file bypass; it does not make arbitrary Mode B host-channel output non-bypassable, and regulated conclusions still require `submit_answer` plus audit verification. This is documented in [`thesis.md`](../../docs/thesis.md) and called out in [ADR-0007](../adrs/0007-mcp-as-primary-adapter.md) as the consequence of choosing MCP-first.
 
 ## Storage
 

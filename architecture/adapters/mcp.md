@@ -74,6 +74,8 @@ Resources are useful for human inspection inside the MCP host. They are not part
 
 In MCP mode, the host (Claude Code, Cursor, etc.) drives the agent loop. Provenant's role is reduced; see [`subsystems/harness.md`](../subsystems/harness.md#the-two-harness-modes).
 
+The official local-agent pattern is enforcement by attestation, not by control of the host's arbitrary text channel. MCP can expose `submit_answer`, prompts, tools, and resources, but it cannot force an MCP host or model to route every assistant message through Provenant. Final regulated conclusions should go through `submit_answer`; the visible marker `[PROVENANT-ATTESTED v1 ...]` is official only when produced by a passing `submit_answer` and matched against the audit chain/audit pack. Host-channel answers that lack verified attestation are non-attested scratch output, even if they were produced in a session that had Provenant tools available.
+
 What Provenant **does** enforce in Mode B:
 - Tool input validation (schema-first).
 - Token minting from tool responses.
@@ -84,9 +86,10 @@ What Provenant **does** enforce in Mode B:
 What Provenant **cannot** enforce in Mode B:
 - That the host's system prompt includes the kernel header (depends on whether the host auto-attaches MCP prompts).
 - That the host actually calls `submit_answer` rather than just emitting text directly.
+- That arbitrary host-channel model output includes, preserves, or respects Provenant's attestation marker.
 - The agent's loop bounds (max_steps, max_wall_clock, max_cost) — those are the host's concern.
 
-For full enforcement, Mode A (the CLI harness) is the recommended deployment. Mode B is recommended for: interactive workflows where the user is already in Claude Code; gradual adoption; experimentation.
+Restricting regulated files and values to Provenant-controlled tools/readers mitigates direct raw-file bypass, but it does not make Mode B host-channel output non-bypassable; regulated conclusions still require `submit_answer` and audit verification. For hard non-bypassable enforcement, use Mode A (the CLI or embedded harness) or another Provenant-owned harness. Mode B is recommended for: interactive workflows where the user is already in Claude Code; gradual adoption; experimentation; and environments where downstream consumers treat unverified host text as non-attested.
 
 ## Authentication
 
@@ -197,6 +200,8 @@ Via the connector marketplace: customer installs the Provenant connector, config
 
 The agent visibly retries `submit_answer` on validator failure — this is the demonstration of enforcement working. See [`example-projects.md`](../../example-projects.md) Demo 2.
 
+In local-agent MCP deployments, the user-facing acceptance rule is simple: a regulated final answer is official only if it came from a passing `submit_answer` and its `[PROVENANT-ATTESTED v1 ...]` marker matches the audit chain/audit pack. Marker text by itself is not proof of attestation; any answer without verified attestation is outside the Provenant enforcement boundary.
+
 ## Streaming and async
 
 - Tool calls: synchronous request/response over MCP.
@@ -209,6 +214,8 @@ The agent visibly retries `submit_answer` on validator failure — this is the d
 |---|---|
 | Kernel header not in the host's system prompt unless the host attaches the MCP prompt | Document prominently; instruct users to invoke `/prompt provenant.<skill>` |
 | Host can emit text outputs without `submit_answer` | Skill pack documentation must clarify that only `submit_answer` outputs are signed |
+| MCP cannot force arbitrary host-channel model output | Treat unmarked text as scratch; require `submit_answer` for regulated conclusions |
+| Regulated files are available outside Provenant | Restrict file/data access to mitigate direct raw-file bypass; use Mode A or a Provenant-owned harness for hard non-bypassable control |
 | No control over the host's loop bounds | Provide our own per-tenant rate limits and cost caps server-side |
 | Some MCP clients don't surface MCP prompts well | Mode A (CLI) is the fallback for production-grade enforcement |
 
