@@ -3,7 +3,7 @@
 /cool You are working in the Provenant repository. Implement or begin the documentation project described in `.planning/documentation/documentation-plan.md` safely.
 
 Objective:
-Create a source-controlled Astro + Starlight documentation site for Provenant, or complete the next smallest safe slice toward that goal if the full project is too large for one session.
+Create a concise, source-controlled Astro + Starlight documentation site for Provenant, or complete the next smallest safe slice toward that goal if the full project is too large for one session. The launch goal is a focused docs site people will actually read, not a 39-page site. Keep the initial public page hierarchy to 12-15 pages, never more than 15 launch pages, and put details inside broader pages unless usage, support questions, newly shipped surfaces, or demonstrated contributor workflow needs justify standalone navigation later.
 
 Required reading before edits:
 - `.planning/documentation/documentation-plan.md`
@@ -27,6 +27,9 @@ Hard requirements:
 - Make the docs site follow the Provenant landing-page design language and keep it highly customizable with HTML/CSS.
 - Because the actual landing-page file is not present in the repo, use `audit/report/html.go` and generated audit report HTML as the discoverable design-token source. Mention future alignment with the actual landing page asset if it is later provided.
 - Keep docs specific to Provenant: finance provenance, captured reads, tokens, audit chain, audit bundles, `submit_answer`, Mode A, Mode B, kernel/runtime boundaries, and current reconciliation examples.
+- Keep the launch IA compact. Do not create separate Start Here, Quickstart, Concept, Reference, Architecture, or Operations pages for every subtopic just because source material exists. Fold related details into sections inside the planned pages unless the documentation plan explicitly calls for a standalone route.
+- Remove the redundant split between many Start Here and Quickstart pages. Use the home page for orientation and the single current-artifacts quickstart for install/test, `read-mint-bundle`, reconciliation, derivation graph, and Go API-only verify/replay.
+- Preserve both reader paths: a non-technical evidence path for controllers, audit leads, compliance officers, and model-risk reviewers; and a technical implementation path for platform engineers, integration authors, and contributors.
 - Clearly distinguish `Implemented now`, `Architecture contract`, `Planned`, and `Deferred` surfaces on every capability page.
 - Do not overclaim MCP Mode B. State that arbitrary host-channel text is not Provenant-attested unless it came from passing `submit_answer` and the marker is verified against the audit chain/audit pack.
 - Do not claim v0 audit evidence is tamper-proof or externally notarized. Use internally tamper-evident language unless source docs have changed.
@@ -39,7 +42,7 @@ Preferred first slice:
 2. Create the Astro + Starlight scaffold in `docs-site/`.
 3. Add the status-label convention and a status matrix page.
 4. Add Provenant theme overrides and any minimal custom Astro components needed for status labels, caveat callouts, source references, and audit-artifact cards.
-5. Add the initial Start Here and Quickstart pages from the plan, using only currently implemented commands.
+5. Add the home page and single current-artifacts quickstart from the plan, using only currently implemented commands.
 6. Add package scripts for docs build/check if a package is introduced.
 7. Add internal link and content-status validation where practical for the first slice.
 8. Run validation.

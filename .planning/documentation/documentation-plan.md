@@ -130,7 +130,11 @@ Planned or architecture-level surfaces that must not be presented as shipped use
 
 ## Information Architecture
 
-Use chronological IA. A reader should be able to move from problem, to concept, to first artifact, to verification, to integration, to architecture details. The site should support two visible reader paths: a non-technical evidence path for controllers, audit leads, compliance officers, and model-risk reviewers; and a technical implementation path for platform engineers, integration authors, and contributors. The same sidebar serves both paths by starting with plain-language framing, moving through runnable artifacts, then branching into task guides, reference, architecture, and operations.
+Use chronological IA, but keep the launch site concise. The goal is a focused docs site people will actually read, not a 39-page reference site on day one. Target 12-15 public pages at launch, with an upper bound of 15 launch pages. Details should live as sections within these pages unless reader behavior, support load, or implementation growth proves they deserve standalone navigation later.
+
+The site should support two visible reader paths: a non-technical evidence path for controllers, audit leads, compliance officers, and model-risk reviewers; and a technical implementation path for platform engineers, integration authors, and contributors. The same sidebar serves both paths by starting with plain-language framing, moving through runnable artifacts, then branching into task guides, compact reference, architecture, and adoption caveats.
+
+Avoid a redundant split between many Start Here pages and many Quickstart pages. The home page should orient readers, and one current-artifacts quickstart should cover install/test, `read-mint-bundle`, the reconciliation fixture, derivation graph demo, and Go API-only verify/replay as sections. Add separate pages only when the topic has a distinct job, audience, or maintenance cadence.
 
 Every planned page below uses this repeated schema:
 
@@ -148,48 +152,33 @@ Non-technical path:
 
 1. `index.md`
 2. `guarantees-and-limits.md`
-3. `quickstart/reconciliation-fixture.md`
-4. `guides/review-an-audit-bundle.md`
-5. `ops/audit-review.md`
-6. `ops/mode-b-attestation.md`
-7. `ops/caveats.md`
-8. `ops/regulatory-context.md`
+3. `quickstart/current-artifacts.md`
+4. `guides/review-audit-evidence.md`
+5. `ops/adoption-caveats.md`
 
 Technical path:
 
 1. `index.md`
-2. `quickstart/install-and-test.md`
-3. `quickstart/read-mint-bundle.md`
-4. `quickstart/verify-and-replay.md`
-5. `concepts/source-readers.md`
-6. `concepts/provenance-tokens.md`
-7. `guides/integrate-go-library.md`
-8. `guides/add-a-source-reader.md`
-9. `guides/add-a-tool-backend.md`
-10. `reference/status-matrix.md`
-11. Architecture deep dives as needed.
+2. `quickstart/current-artifacts.md`
+3. `concepts/provenance-model.md`
+4. `concepts/modes.md`
+5. `guides/integrate-go-library.md`
+6. `guides/extend-source-tools.md`
+7. `reference/status-matrix.md`
+8. `reference/current-surfaces.md`
+9. Architecture pages as needed.
 
-### 1. Start Here
+### 1. Orientation
 
 #### Page: Home
 
 - `Route/path`: `index.md`
 - `Audience`: All readers; especially first-time finance, compliance, and platform evaluators.
 - `Purpose`: Explain Provenant in one sitting without assuming Go, MCP, or agent-framework knowledge.
-- `Content outline`: Plain-language one-paragraph explanation; regulated-finance problem statement; what Provenant is; current mental model from source bytes to audit bundle; who should read which path next; short glossary for captured read, token, audit entry, audit bundle, replay, `submit_answer`, Mode A, and Mode B; status callout for current repository examples.
+- `Content outline`: Plain-language one-paragraph explanation; regulated-finance problem statement; what Provenant is; what Provenant is not; current mental model from source bytes to audit bundle; who should read which path next; short glossary for captured read, token, audit entry, audit bundle, replay, `submit_answer`, Mode A, and Mode B; status callout for current repository examples.
 - `Source material`: `README.md`, `docs/thesis.md`, `architecture/OVERVIEW.md`.
 - `Status label`: `Implemented now` for the repository mental model and examples; `Architecture contract` for broader deployment framing.
-- `Acceptance notes`: A non-engineer can explain what evidence Provenant produces after reading this page; the page does not call Provenant a SaaS, database, agent, logger, or generic guardrail product; every current command claim links to a quickstart.
-
-#### Page: What Provenant Is Not
-
-- `Route/path`: `what-provenant-is-not.md`
-- `Audience`: Buyers, compliance reviewers, integration evaluators, and contributors who need scope boundaries.
-- `Purpose`: Prevent overclaiming and make non-goals explicit before readers reach deeper technical material.
-- `Content outline`: Not a SaaS in v0; not an agent or model; not a database or workflow engine; not a replacement for ERP/GL/extraction systems; not a general chat guardrail; not an external notary; not framework-coupled; what each non-goal means for adoption decisions.
-- `Source material`: `docs/thesis.md`, `README.md`, `docs/KNOWN_TRADE_OFFS.md`, `architecture/OVERVIEW.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page distinguishes optional access surfaces from the library-as-product framing; it explicitly says v0 is not externally notarized or tamper-proof.
+- `Acceptance notes`: A non-engineer can explain what evidence Provenant produces after reading this page; the page does not call Provenant a SaaS, database, agent, logger, or generic guardrail product; every current command claim links to the current-artifacts quickstart.
 
 #### Page: Guarantees And Limits
 
@@ -201,119 +190,29 @@ Technical path:
 - `Status label`: `Architecture contract`.
 - `Acceptance notes`: The page says `internally tamper-evident`, not `tamper-proof`; it says arbitrary Mode B host text is not Provenant-attested unless it came from passing `submit_answer` and the marker verifies against the audit chain or audit pack.
 
-### 2. Quickstarts
+### 2. Current Artifact Quickstart
 
-#### Page: Install And Test
+#### Page: Run Current Artifacts
 
-- `Route/path`: `quickstart/install-and-test.md`
-- `Audience`: Engineers, contributors, and technical evaluators.
-- `Purpose`: Get the repository cloned and validated with the current repo-wide test command.
-- `Content outline`: Prerequisites; clone command; repository layout snapshot; `go test ./...`; expected high-level result; what failures usually mean; next quickstart choices.
-- `Source material`: `README.md`, `go.mod`, current repository tests.
+- `Route/path`: `quickstart/current-artifacts.md`
+- `Audience`: Finance reviewers, compliance reviewers, engineers, and contributors who want a tangible artifact quickly.
+- `Purpose`: Provide the single launch quickstart for current, runnable repository behavior.
+- `Content outline`: Prerequisites; clone command; repository layout snapshot; `go test ./...`; `read-mint-bundle` with `extract.json`; reconciliation fixture command and ZIP entries; derivation graph demo and deterministic trace; Go API-only `bundle.Verify` and `bundle.Replay`; common failure modes; what each artifact is not.
+- `Source material`: `README.md`, `go.mod`, `cmd/provenant`, `access/smoke/smoke_test.go`, `access/cli` tests, `kernel/public/bundle`, `examples/reconciliation/README.md`, `examples/derivation-graph/README.md`, current repository tests.
 - `Status label`: `Implemented now`.
-- `Acceptance notes`: Commands are copy-pasteable from repository root; last verified command is recorded; no docs-site installation assumptions appear on this page until a docs project exists.
-
-#### Page: Read, Mint, Bundle
-
-- `Route/path`: `quickstart/read-mint-bundle.md`
-- `Audience`: Engineers evaluating the minimum Provenant loop.
-- `Purpose`: Show the smallest implemented flow from JSON source bytes to a token and bundle.
-- `Content outline`: What the command demonstrates; request JSON shape; `go run ./cmd/provenant read-mint-bundle --request request.json`; response keys; decoded `bundle_bytes` shape; why `extract.json` is the only reader supported by this CLI surface today; link to smoke tests; common failure modes.
-- `Source material`: `README.md`, `cmd/provenant`, `access/smoke/smoke_test.go`, source reader implementation and tests.
-- `Status label`: `Implemented now`.
-- `Acceptance notes`: The page does not imply CSV/XLSX readers are exposed through `read-mint-bundle`; it labels `extract.json` as the only current reader for this surface.
-
-#### Page: Reconciliation Fixture
-
-- `Route/path`: `quickstart/reconciliation-fixture.md`
-- `Audience`: Finance reviewers, compliance reviewers, and engineers who want a tangible artifact quickly.
-- `Purpose`: Run the deterministic reconciliation example and inspect the ZIP evidence package.
-- `Content outline`: What the fixture does; input files and exact-match behavior; command from `examples/reconciliation`; `--overwrite`; the eight ZIP entries in reader-friendly order; sample `audit.jsonl` and `manifest.json` interpretation; absolute path caveat; failure and edge-case fixture links; what the fixture is not.
-- `Source material`: `README.md`, `examples/reconciliation/README.md`, `examples/reconciliation/`, `access/cli` tests.
-- `Status label`: `Implemented now`.
-- `Acceptance notes`: The page lists exactly the current ZIP artifacts; it avoids describing a complete reconciliation product, fuzzy matching, HTTP endpoint, or MCP tool as current behavior.
-
-#### Page: Verify And Replay
-
-- `Route/path`: `quickstart/verify-and-replay.md`
-- `Audience`: Engineers and audit reviewers who need to validate bundle integrity.
-- `Purpose`: Explain current offline verification and replay using the Go API.
-- `Content outline`: What verify checks; what replay re-derives; Go snippet using `kernel/public/bundle`; `go test ./access/cli`; no standalone CLI verb caveat; captured replay versus fresh-run equivalence; where bundle format reference lives.
-- `Source material`: `README.md`, `kernel/public/bundle`, `access/cli` tests, `architecture/subsystems/audit.md`.
-- `Status label`: `Implemented now`.
-- `Acceptance notes`: The page explicitly states that `bundle.Verify` and `bundle.Replay` are Go API-only today unless implementation changes; no nonexistent `provenant verify` command is documented.
-
-#### Page: Derivation Graph Demo
-
-- `Route/path`: `quickstart/derivation-graph-demo.md`
-- `Audience`: Technical evaluators and finance readers who need to see multi-step lineage.
-- `Purpose`: Show a richer end-to-end demo where a final operating-income value traces back to source rows and derived tokens.
-- `Content outline`: Demo goal; committed CSV datasets; operating-income calculation tree; seed and determinism note; `go test ./examples/derivation-graph/...`; artifact and trace overview; golden regeneration pointer; relationship to provenance-token and audit-bundle concepts.
-- `Source material`: `README.md`, `examples/derivation-graph/README.md`, `examples/derivation-graph/` tests and fixtures.
-- `Status label`: `Implemented now`.
-- `Acceptance notes`: The page keeps the walkthrough grounded in committed demo files and does not generalize the demo into arbitrary financial planning or reconciliation behavior.
+- `Acceptance notes`: Commands are copy-pasteable from repository root; last verified command is recorded; `extract.json` is labeled as the only current reader for `read-mint-bundle`; the page lists exactly the current reconciliation ZIP artifacts; no nonexistent standalone verify CLI is documented; no complete reconciliation product, fuzzy matching, HTTP endpoint, or MCP tool is presented as current behavior.
 
 ### 3. Concepts
 
-#### Page: Provenance Boundary
+#### Page: Provenance Model
 
-- `Route/path`: `concepts/provenance-boundary.md`
-- `Audience`: All readers, with emphasis on model-risk and platform evaluators.
-- `Purpose`: Explain why Provenant treats provenance as an enforcement boundary rather than an observability log.
-- `Content outline`: Logging-after-the-fact problem; single exit as the boundary; why fail-closed matters; what a Provenant-signed answer means; examples of claims that should be rejected; links to `submit_answer`, audit chain, and modes.
-- `Source material`: `docs/thesis.md`, `architecture/subsystems/guards.md`, `architecture/README.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page avoids implying Provenant controls arbitrary host text in Mode B; it routes that caveat to `concepts/modes.md` and `ops/mode-b-attestation.md`.
-
-#### Page: Source Readers
-
-- `Route/path`: `concepts/source-readers.md`
-- `Audience`: Engineers, source-reader authors, and technical auditors.
-- `Purpose`: Define source bytes, declared hashes, selectors, `CapturedRead`, and `ReadResult`.
-- `Content outline`: Source-byte contract; declared SHA-256; selector fields; captured-read identity and origin; reader name/version; output hash; implemented reader status by surface; how source readers feed token minting; diagrams for source bytes to captured read.
-- `Source material`: `README.md`, `architecture/subsystems/tools.md`, `architecture/tools/extract/README.md`, current reader tests.
-- `Status label`: `Implemented now` for existing extract readers and fixture paths; `Architecture contract` for general reader-extension rules.
-- `Acceptance notes`: The page separates `extract.json` in `read-mint-bundle` from `extract.csv_rows` and `extract.spreadsheet` in the reconciliation fixture.
-
-#### Page: Provenance Tokens
-
-- `Route/path`: `concepts/provenance-tokens.md`
-- `Audience`: Engineers, audit reviewers, and finance readers who need per-number lineage.
-- `Purpose`: Explain how consequential values become kernel-minted tokens.
-- `Content outline`: Token purpose; binding to captured reads; canonical decimal and unit; run and tenant binding; derived values and parent token IDs; normalizer visibility; fail-closed minting; examples from read-mint-bundle, reconciliation, and derivation graph.
-- `Source material`: `README.md`, `architecture/subsystems/kernel.md`, `architecture/subsystems/audit.md`, `examples/derivation-graph/README.md`.
-- `Status label`: `Implemented now` for current token shapes in examples; `Architecture contract` for full token graph semantics.
-- `Acceptance notes`: Numeric examples use canonical decimal strings and avoid `float64` framing; tenant/run boundary language matches architecture docs.
-
-#### Page: Audit Chain
-
-- `Route/path`: `concepts/audit-chain.md`
-- `Audience`: Audit reviewers, compliance readers, and engineers.
-- `Purpose`: Explain the hash-chained audit log and deterministic payload rules.
-- `Content outline`: Audit entry anatomy; sequence, kind, previous hash, current hash; deterministic versus non-deterministic payload fields; canonical hash input; internal tamper-evidence; sample `token_mint` entry; what breaks verification; why this is not external notarization.
-- `Source material`: `README.md`, `architecture/subsystems/audit.md`, `docs/KNOWN_TRADE_OFFS.md`, reconciliation output examples.
-- `Status label`: `Implemented now` for current audit JSONL examples; `Architecture contract` for full entry-kind model.
-- `Acceptance notes`: The page uses `tamper-detectable by verifying the internal hash chain`; it includes the no-external-notary caveat inline.
-
-#### Page: Audit Bundles
-
-- `Route/path`: `concepts/audit-bundles.md`
-- `Audience`: Finance reviewers, compliance reviewers, and engineers.
-- `Purpose`: Describe the self-contained evidence package emitted by the current examples and the architecture.
-- `Content outline`: Bundle snapshot; bundle bytes and SHA-256; run descriptor; captured reads; tokens; audit JSONL; companion artifacts in reconciliation ZIP; verify and replay; limitations of offline replay; storage is caller-owned in library mode.
-- `Source material`: `README.md`, `architecture/subsystems/audit.md`, `architecture/subsystems/storage.md`, `examples/reconciliation/README.md`.
-- `Status label`: `Implemented now` for current bundle shape and reconciliation artifacts; `Architecture contract` for broader storage stance.
-- `Acceptance notes`: The page does not claim externally witnessed bundles; it distinguishes bundle bytes from where a host stores them.
-
-#### Page: Submit Answer
-
-- `Route/path`: `concepts/submit-answer.md`
-- `Audience`: Engineers, integrators, and compliance readers reviewing release semantics.
-- `Purpose`: Explain the single release exit and how claims are grounded before output is considered Provenant-attested.
-- `Content outline`: Why `submit_answer` exists; claim extraction; claim-to-token grounding; validators and guard severity; fail-closed outcome; signature marker semantics; what a rejected answer means; relationship to Mode A and Mode B.
-- `Source material`: `docs/thesis.md`, `architecture/subsystems/guards.md`, `architecture/subsystems/harness.md`, `architecture/subsystems/audit.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page only uses `Provenant-signed` or `Provenant-attested` for output that passed `submit_answer` and can be verified against the chain or pack.
+- `Route/path`: `concepts/provenance-model.md`
+- `Audience`: All readers, with emphasis on model-risk reviewers, technical auditors, and platform evaluators.
+- `Purpose`: Explain the core Provenant model from source bytes to captured reads, tokens, audit chain, bundles, replay, and `submit_answer`.
+- `Content outline`: Why provenance is an enforcement boundary rather than an observability log; source-byte contract; declared SHA-256; selectors; `CapturedRead` and `ReadResult`; token purpose and canonical decimal/unit handling; derived token lineage; audit entry anatomy and hash chaining; audit bundle snapshot; verify and replay limits; why `submit_answer` exists; claim grounding and fail-closed release; examples from current artifacts.
+- `Source material`: `README.md`, `docs/thesis.md`, `architecture/README.md`, `architecture/subsystems/kernel.md`, `architecture/subsystems/audit.md`, `architecture/subsystems/guards.md`, `architecture/subsystems/tools.md`, `architecture/tools/extract/README.md`, `architecture/subsystems/storage.md`, `examples/reconciliation/README.md`, `examples/derivation-graph/README.md`, current reader tests.
+- `Status label`: `Implemented now` for current example shapes; `Architecture contract` for broader token graph, reader-extension, and release semantics.
+- `Acceptance notes`: The page separates `extract.json` in `read-mint-bundle` from `extract.csv_rows` and `extract.spreadsheet` in the reconciliation fixture; numeric examples use canonical decimal strings and avoid `float64` framing; the page says `tamper-detectable by verifying the internal hash chain`; `Provenant-signed` or `Provenant-attested` is used only for output that passed `submit_answer` and can be verified against the chain or pack.
 
 #### Page: Modes
 
@@ -325,37 +224,17 @@ Technical path:
 - `Status label`: `Architecture contract`.
 - `Acceptance notes`: The page contains a prominent Mode B warning and does not imply MCP can force arbitrary host-channel output through Provenant.
 
-### 4. How-To Guides
+### 4. Guides
 
-#### Page: Add A Source Reader
+#### Page: Review Audit Evidence
 
-- `Route/path`: `guides/add-a-source-reader.md`
-- `Audience`: Contributors and integration engineers adding new extraction paths.
-- `Purpose`: Provide a task-oriented checklist for implementing a source reader without weakening provenance.
-- `Content outline`: Prerequisites and source docs; reader contract; selector design; captured-read fields; output hash; reader name/version; mintable path implications; tests; status and surface-exposure checklist; stop conditions.
-- `Source material`: `architecture/subsystems/tools.md`, `architecture/tools/extract/README.md`, `.agents/engineer.md`, existing reader code and tests.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The guide makes clear that adding a reader implementation is not the same as exposing it through every CLI/runtime surface.
-
-#### Page: Add A Tool Backend
-
-- `Route/path`: `guides/add-a-tool-backend.md`
-- `Audience`: Tool authors, platform engineers, and contributors.
-- `Purpose`: Explain how to add or evaluate a tool backend while preserving schema-first validation and token minting.
-- `Content outline`: `ToolBackend` contract; input and output schemas; credentials and credential IDs; `mintable_paths`; backend-owned numeric normalization; built-in normalizers; conformance tests; audit entries; failure behavior; security review checklist.
-- `Source material`: `architecture/subsystems/tools.md`, `architecture/tools/README.md`, `.agents/engineer.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The guide states tools cannot construct tokens directly and that invalid backend output must fail closed.
-
-#### Page: Write A Skill Pack
-
-- `Route/path`: `guides/write-a-skill-pack.md`
-- `Audience`: Skill authors, integrators, and contributors.
-- `Purpose`: Describe how skill packs should be structured and where v0 extensibility stops.
-- `Content outline`: Pack purpose; prompts; tools; guard configuration; examples; bounds; built-in validators and normalizers; pack digest and future signing; no custom validators or sandboxed code in v0; supply-chain status; testing and review checklist.
-- `Source material`: `architecture/subsystems/skills.md`, `architecture/adrs/0006-skill-pack-format.md`, `docs/KNOWN_TRADE_OFFS.md`, `architecture/subsystems/audit.md`.
-- `Status label`: `Architecture contract` with `Deferred` callouts for custom validators, WASM/plugin loading, hosted registry, and signing beyond local digest status.
-- `Acceptance notes`: The guide does not claim skill-pack signing or hosted registry exists today unless implementation confirms it.
+- `Route/path`: `guides/review-audit-evidence.md`
+- `Audience`: Controllers, audit leads, compliance reviewers, and model-risk reviewers.
+- `Purpose`: Provide a practical, non-technical review flow for inspecting evidence artifacts.
+- `Content outline`: What artifact to start with; manifest and bundle hash; captured reads; tokens; audit JSONL; `report.md` and `report.json`; replay output; what passes, what fails, and what remains a business judgment; escalation checklist; Mode B marker caveat.
+- `Source material`: `README.md`, `examples/reconciliation/README.md`, `architecture/subsystems/audit.md`, `docs/KNOWN_TRADE_OFFS.md`, `docs/thesis.md`.
+- `Status label`: `Implemented now` for current reconciliation artifacts; `Architecture contract` for generic reviewer workflow.
+- `Acceptance notes`: The guide explains evidence artifacts before internals, avoids legal advice, and links Mode B interpretation to `ops/adoption-caveats.md`.
 
 #### Page: Integrate The Go Library
 
@@ -367,87 +246,17 @@ Technical path:
 - `Status label`: `Architecture contract`.
 - `Acceptance notes`: The guide preserves the pure-Go kernel boundary and does not introduce database, network, CLI, or MCP types into kernel examples.
 
-#### Page: Use MCP Safely
+#### Page: Extend Source And Tool Surfaces
 
-- `Route/path`: `guides/use-mcp-safely.md`
-- `Audience`: MCP host authors, integration engineers, and compliance evaluators.
-- `Purpose`: Explain how to reason about MCP integration without overstating Mode B.
-- `Content outline`: Current implementation status check; MCP as optional equal adapter; Mode B host-driven loop; host-channel text warning; conformance self-declaration; when to choose Mode A instead; audit-pack interpretation; stop conditions for unsigned host text.
-- `Source material`: `architecture/adapters/mcp.md`, `architecture/subsystems/harness.md`, `architecture/adrs/0010-mcp-equal-not-primary.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract` unless current code exposes a specific MCP setup flow; specific setup steps must be `Implemented now` only if verified.
-- `Acceptance notes`: The guide always includes the Mode B stop warning and never presents MCP as architecturally primary.
-
-#### Page: Review An Audit Bundle
-
-- `Route/path`: `guides/review-an-audit-bundle.md`
-- `Audience`: Controllers, audit leads, compliance reviewers, and model-risk reviewers.
-- `Purpose`: Provide a practical, non-technical review flow for inspecting evidence artifacts.
-- `Content outline`: What artifact to start with; manifest and bundle hash; captured reads; tokens; audit JSONL; `report.md` and `report.json`; replay output; what passes, what fails, and what remains a business judgment; escalation checklist; Mode B marker caveat.
-- `Source material`: `README.md`, `examples/reconciliation/README.md`, `architecture/subsystems/audit.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Implemented now` for current reconciliation artifacts; `Architecture contract` for generic reviewer workflow.
-- `Acceptance notes`: The guide explains evidence artifacts before internals and avoids legal-advice language.
+- `Route/path`: `guides/extend-source-tools.md`
+- `Audience`: Contributors, source-reader authors, tool authors, integration engineers, and skill authors.
+- `Purpose`: Provide one task-oriented extension guide for source readers, tool backends, and skill packs without multiplying launch pages.
+- `Content outline`: Prerequisites and source docs; source-reader contract; selector design; captured-read fields; output hash; reader name/version; surface-exposure checklist; `ToolBackend` contract; input and output schemas; credentials and credential IDs; `mintable_paths`; backend-owned numeric normalization; tools cannot construct tokens directly; skill-pack format; prompts, tools, guard configuration, bounds; built-in validators and normalizers; deferred custom validators, WASM/plugin loading, hosted registry, and signing beyond local digest status; tests and stop conditions.
+- `Source material`: `architecture/subsystems/tools.md`, `architecture/tools/README.md`, `architecture/tools/extract/README.md`, `architecture/subsystems/skills.md`, `architecture/adrs/0006-skill-pack-format.md`, `.agents/engineer.md`, existing reader code and tests, `docs/KNOWN_TRADE_OFFS.md`.
+- `Status label`: `Architecture contract` with `Deferred` callouts for custom validators, WASM/plugin loading, hosted registry, and signing beyond local digest status.
+- `Acceptance notes`: The guide makes clear that adding a reader implementation is not the same as exposing it through every CLI/runtime surface; invalid backend output must fail closed; skill-pack signing or hosted registry must not be claimed as current behavior unless implementation confirms it.
 
 ### 5. Reference
-
-#### Page: CLI Reference
-
-- `Route/path`: `reference/cli.md`
-- `Audience`: Engineers and contributors.
-- `Purpose`: List current CLI commands accurately and leave planned commands out of the current surface.
-- `Content outline`: Generation or synchronization method; `read-mint-bundle`; `reconcile`; flags and examples; known absent commands; tests that cover CLI behavior; last verified command.
-- `Source material`: `README.md`, `cmd/provenant`, `access/cli`, command help output if generated.
-- `Status label`: `Implemented now` for commands confirmed in code.
-- `Acceptance notes`: The page does not list planned audit-pack, HTTP, MCP, or token-issuance CLI flows as current behavior.
-
-#### Page: Go API Reference
-
-- `Route/path`: `reference/go-api.md`
-- `Audience`: Go engineers and contributors.
-- `Purpose`: Orient readers to stable public Go packages without duplicating generated package docs.
-- `Content outline`: Public package map; `kernel/public/bundle`; `kernel/public/memio`; source reader and token surfaces; import-boundary warning; links to generated docs if added later; examples that compile.
-- `Source material`: `README.md`, `kernel/public/`, `architecture/subsystems/kernel.md`, `architecture/OVERVIEW.md`.
-- `Status label`: `Implemented now` for packages present in code; `Architecture contract` for public-surface rules.
-- `Acceptance notes`: The page links to canonical Go docs or source for signatures and does not invent APIs.
-
-#### Page: Bundle Format
-
-- `Route/path`: `reference/bundle-format.md`
-- `Audience`: Engineers, audit reviewers, and tool authors.
-- `Purpose`: Document the current bundle schema and companion reconciliation artifacts.
-- `Content outline`: Bundle format identifier; top-level fields; run descriptor; captured reads; tokens; audit JSONL; bundle hash; reconciliation ZIP companions; manifest artifact hashes; compatibility and generation notes.
-- `Source material`: `README.md`, `kernel/public/bundle`, `architecture/subsystems/audit.md`, `examples/reconciliation/README.md`.
-- `Status label`: `Implemented now`.
-- `Acceptance notes`: The page uses current fixture output or generated reference data and fails stale checks if generation is introduced.
-
-#### Page: Audit Entry Kinds
-
-- `Route/path`: `reference/audit-entry-kinds.md`
-- `Audience`: Engineers, reviewers, and contributors.
-- `Purpose`: Provide a table of audit entry kinds with deterministic and non-deterministic payload expectations.
-- `Content outline`: Generation status; entry kind table; per-kind deterministic payload summary; non-deterministic fields; hash-input inclusion rules; links to schemas; update procedure.
-- `Source material`: `architecture/subsystems/audit.md`, generated enum/source tables if available.
-- `Status label`: `Architecture contract` unless generated from current code, then generated rows can be `Implemented now`.
-- `Acceptance notes`: Prefer generation from canonical tables where possible; manual pages must be labeled manually synchronized.
-
-#### Page: Error Codes
-
-- `Route/path`: `reference/error-codes.md`
-- `Audience`: Engineers, support operators, and contributors.
-- `Purpose`: Provide canonical error-code meanings and update workflow.
-- `Content outline`: Code namespace rules; generated or synchronized table; common errors from quickstarts; failure fixture mapping; how to add a code; drift check procedure.
-- `Source material`: `architecture/subsystems/audit.md`, `kernel/public/errorcode`, `examples/reconciliation/failures/`, `.agents/engineer.md`.
-- `Status label`: `Implemented now` if generated from source; otherwise `Architecture contract` with manual-sync caveat.
-- `Acceptance notes`: The page does not hand-invent codes; every code maps back to the canonical architecture table or generated source.
-
-#### Page: Tool Categories
-
-- `Route/path`: `reference/tool-categories.md`
-- `Audience`: Tool authors, integrators, and technical evaluators.
-- `Purpose`: Summarize tool categories and distinguish implemented fixture tools from architecture-level categories.
-- `Content outline`: Category table for `ledger`, `extract`, `reconcile`, `calc`, `policy`, `external`, `match`, and `dedupe`; implemented readers and fixture tools; planned/deferred backend surfaces; mintable path expectations; links to per-tool architecture docs.
-- `Source material`: `architecture/subsystems/tools.md`, `architecture/tools/**`, `README.md`, current tool code and tests.
-- `Status label`: Mixed; each row must carry its own status label.
-- `Acceptance notes`: The table clearly separates current `extract.json`, `extract.csv_rows`, `extract.spreadsheet`, reconciliation fixture, and derivation graph tooling from broader planned tool categories.
 
 #### Page: Status Matrix
 
@@ -459,7 +268,17 @@ Technical path:
 - `Status label`: `Implemented now` for the page itself once maintained; individual rows carry all four labels.
 - `Acceptance notes`: This page is created before broad page authoring and acts as the site-wide overclaim guard.
 
-### 6. Architecture Deep Dive
+#### Page: Current Surfaces Reference
+
+- `Route/path`: `reference/current-surfaces.md`
+- `Audience`: Engineers, reviewers, support operators, tool authors, and contributors.
+- `Purpose`: Compactly document current CLI, Go API, bundle format, audit entry kinds, error codes, and tool categories without creating six launch reference pages.
+- `Content outline`: Generation or synchronization method; current CLI commands `read-mint-bundle` and `reconcile`; known absent commands; public Go package map; `kernel/public/bundle`; `kernel/public/memio`; bundle format identifier and top-level fields; reconciliation ZIP companions; audit entry kind table or link; error-code table or link; tool category table; update procedure; last verified commands.
+- `Source material`: `README.md`, `cmd/provenant`, `access/cli`, `kernel/public/`, `kernel/public/bundle`, `kernel/public/errorcode`, `architecture/subsystems/kernel.md`, `architecture/subsystems/audit.md`, `architecture/subsystems/tools.md`, `architecture/tools/**`, `examples/reconciliation/README.md`, current tool code and tests, command help output if generated.
+- `Status label`: `Implemented now` for rows confirmed in code; `Architecture contract` for manually synchronized architecture rows; mixed rows carry row-level labels.
+- `Acceptance notes`: The page does not list planned audit-pack, HTTP, MCP, token-issuance CLI, or non-Go binding flows as current behavior; signatures link to canonical Go docs or source; tables do not hand-invent codes or entry kinds; generated rows fail stale checks if generation is introduced.
+
+### 6. Architecture
 
 #### Page: Architecture Overview
 
@@ -471,65 +290,25 @@ Technical path:
 - `Status label`: `Architecture contract`.
 - `Acceptance notes`: The page links back to canonical architecture docs rather than becoming a divergent source of truth.
 
-#### Page: Kernel Boundary
+#### Page: Kernel, Runtime, And Storage
 
-- `Route/path`: `architecture/kernel-boundary.md`
-- `Audience`: Contributors and platform engineers.
-- `Purpose`: Make the pure-Go kernel boundary and allowed public surface concrete.
-- `Content outline`: Allowed public API types; forbidden imports; injected interfaces; `TransactionalScope`; `memio`; no I/O; token/audit atomicity; contributor checklist.
-- `Source material`: `architecture/OVERVIEW.md`, `architecture/subsystems/kernel.md`, `.agents/engineer.md`, ADR-0009, ADR-0011.
+- `Route/path`: `architecture/kernel-runtime-storage.md`
+- `Audience`: Contributors, integrators, adapter authors, platform engineers, and operators.
+- `Purpose`: Make the pure-Go kernel boundary, runtime responsibilities, adapter stance, and storage-as-deployment-concern model concrete in one page.
+- `Content outline`: Allowed public API types; forbidden imports; injected interfaces; `TransactionalScope`; `memio`; no kernel I/O; token/audit atomicity; runtime owns I/O; adapters translate, not enforce; CLI, MCP, HTTP overview; LangChain and OpenAI adapter slots; adapter equality; no MCP primacy; library emits bytes; host decides persistence; runtime SQLite/Postgres projections; S3-compatible blob storage; HITL pause/resume responsibilities; `RunState` snapshot; bundle retention considerations; contributor checklist.
+- `Source material`: `architecture/OVERVIEW.md`, `architecture/subsystems/kernel.md`, `architecture/subsystems/storage.md`, `architecture/adapters/cli.md`, `architecture/adapters/mcp.md`, `architecture/adapters/http.md`, `architecture/adapters/langchain.md`, `architecture/adapters/openai.md`, `.agents/engineer.md`, ADR-0009, ADR-0010, ADR-0011, `docs/KNOWN_TRADE_OFFS.md`.
 - `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page preserves all kernel public-surface prohibitions and routes implementation details to canonical docs.
+- `Acceptance notes`: The page preserves all kernel public-surface prohibitions; does not introduce database, network, CLI, or MCP types into kernel examples; does not present HTTP, LangChain, OpenAI, or production MCP packaging as shipped unless implementation confirms it; distinguishes current code from runtime persistence architecture and keeps kernel storage-free.
 
-#### Page: Runtime And Adapters
+#### Page: Security, Determinism, And Trade-Offs
 
-- `Route/path`: `architecture/runtime-and-adapters.md`
-- `Audience`: Integrators, adapter authors, and platform engineers.
-- `Purpose`: Explain runtime responsibilities and equal adapter stance.
-- `Content outline`: Runtime owns I/O; adapters translate, not enforce; CLI, MCP, HTTP overview; LangChain and OpenAI adapter slots; adapter equality; no MCP primacy; deterministic parity expectations; latency budget.
-- `Source material`: `architecture/OVERVIEW.md`, `architecture/adapters/cli.md`, `architecture/adapters/mcp.md`, `architecture/adapters/http.md`, `architecture/adapters/langchain.md`, `architecture/adapters/openai.md`, ADR-0010.
-- `Status label`: `Architecture contract` with current implementation callouts where code confirms surfaces.
-- `Acceptance notes`: The page does not present HTTP, LangChain, OpenAI, or production MCP packaging as shipped unless implementation confirms it.
-
-#### Page: Storage
-
-- `Route/path`: `architecture/storage.md`
-- `Audience`: Platform engineers, operators, and contributors.
-- `Purpose`: Explain storage as a deployment concern and not a kernel concern.
-- `Content outline`: Library emits bytes; host decides persistence; runtime SQLite/Postgres projections; S3-compatible blob storage; HITL pause/resume responsibilities; `RunState` snapshot; no database requirement; bundle retention considerations.
-- `Source material`: `architecture/subsystems/storage.md`, `architecture/OVERVIEW.md`, ADR-0011, `docs/KNOWN_TRADE_OFFS.md`.
+- `Route/path`: `architecture/security-determinism-tradeoffs.md`
+- `Audience`: Security reviewers, platform engineers, compliance teams, technical evaluators, and model-risk readers.
+- `Purpose`: Summarize the threat model, deterministic replay model, and accepted limitations in one architecture page.
+- `Content outline`: Tenant isolation; prompt-injection defense; credential identity and handling; schema-first validation; fail-closed defaults; root-compromise limitation; internal tamper-evidence; supply-chain status; deterministic payloads; non-deterministic envelope fields; canonical JSON and hash construction; numeric canonicalization; parallel sibling ordering; captured replay; streaming and split-turn deferral; external-source fresh-run drift; live observability caveat; self-declared host conformance; locale and normalizer limits; case-bank correction caveat; skill-pack extensibility; library-mode HITL persistence; security review checklist.
+- `Source material`: `architecture/cross-cutting/security.md`, `architecture/subsystems/guards.md`, `architecture/subsystems/audit.md`, `architecture/subsystems/harness.md`, `docs/KNOWN_TRADE_OFFS.md`, ADR-0005.
 - `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page distinguishes current code from runtime persistence architecture and keeps kernel storage-free.
-
-#### Page: Security
-
-- `Route/path`: `architecture/security.md`
-- `Audience`: Security reviewers, platform engineers, and compliance teams.
-- `Purpose`: Summarize the threat model and security controls relevant to adoption.
-- `Content outline`: Tenant isolation; prompt-injection defense; credential identity and handling; schema-first validation; fail-closed defaults; root-compromise limitation; internal tamper-evidence; supply-chain status; security review checklist.
-- `Source material`: `architecture/cross-cutting/security.md`, `architecture/subsystems/guards.md`, `architecture/subsystems/audit.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: Root-equivalent host compromise is scoped accurately and not hidden.
-
-#### Page: Determinism
-
-- `Route/path`: `architecture/determinism.md`
-- `Audience`: Engineers, reviewers, and model-risk readers.
-- `Purpose`: Explain replay determinism, audit hash input, and known determinism limits.
-- `Content outline`: Deterministic payloads; non-deterministic envelope fields; canonical JSON and hash construction; numeric canonicalization; parallel sibling ordering; captured replay; streaming and split-turn deferral; external-source fresh-run drift; verification commands.
-- `Source material`: `architecture/subsystems/audit.md`, `architecture/subsystems/harness.md`, `docs/KNOWN_TRADE_OFFS.md`, ADR-0005.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page clearly separates captured deterministic replay from fresh-run equivalence across changing external sources.
-
-#### Page: Trade-Offs
-
-- `Route/path`: `architecture/trade-offs.md`
-- `Audience`: Technical evaluators, compliance reviewers, and contributors.
-- `Purpose`: Provide a human-readable index into accepted limitations.
-- `Content outline`: How to read accepted trade-offs; internal-only tamper evidence; streaming and split-turn deferral; live observability caveat; self-declared host conformance; locale and normalizer limits; external-source version drift; case-bank correction caveat; skill-pack extensibility; library-mode HITL persistence; links to original entries.
-- `Source material`: `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page summarizes without retroactively editing or weakening accepted trade-off language.
+- `Acceptance notes`: Root-equivalent host compromise is scoped accurately and not hidden; the page clearly separates captured deterministic replay from fresh-run equivalence across changing external sources; accepted trade-offs are summarized without retroactively editing or weakening their source language.
 
 #### Page: ADR Index
 
@@ -541,82 +320,49 @@ Technical path:
 - `Status label`: `Architecture contract`.
 - `Acceptance notes`: The page notes ADR-0010 supersedes MCP-primary framing and ADR-0011 establishes storage as deployment concern.
 
-### 7. Operations And Compliance
+### 7. Adoption And Compliance
 
-#### Page: Audit Review
+#### Page: Adoption Caveats
 
-- `Route/path`: `ops/audit-review.md`
-- `Audience`: Controllers, audit leads, compliance officers, and model-risk reviewers.
-- `Purpose`: Provide a plain-language operating procedure for reviewing audit artifacts.
-- `Content outline`: Review goals; artifact checklist; manifest and hash checks; captured-read inspection; token lineage inspection; audit chain verification; replay interpretation; business-judgment review; escalation outcomes; recordkeeping suggestions.
-- `Source material`: `README.md`, `examples/reconciliation/README.md`, `architecture/subsystems/audit.md`, `docs/thesis.md`.
-- `Status label`: `Implemented now` for current fixture artifacts; `Architecture contract` for general operating procedure.
-- `Acceptance notes`: The page explains evidence artifacts before internals and avoids legal advice.
-
-#### Page: Deployment Shapes
-
-- `Route/path`: `ops/deployment-shapes.md`
-- `Audience`: Operators, platform engineers, security reviewers, and compliance evaluators.
-- `Purpose`: Compare library mode, CLI mode, MCP/runtime mode, and future/deferred deployment surfaces.
-- `Content outline`: Library mode; CLI mode; MCP/runtime mode; stateless versus persistent runtime; storage choices; air-gapped and single-tenant framing; Mode A versus Mode B selection; deferred SaaS and non-Go binding notes; status table.
-- `Source material`: `architecture/OVERVIEW.md`, `architecture/cross-cutting/deployment.md`, `docs/thesis.md`, `docs/KNOWN_TRADE_OFFS.md`.
+- `Route/path`: `ops/adoption-caveats.md`
+- `Audience`: Buyers, compliance reviewers, operators, platform engineers, MCP host authors, model-risk reviewers, audit leads, and security reviewers.
+- `Purpose`: Consolidate deployment shapes, Mode B attestation interpretation, accepted caveats, and regulatory context that affect adoption decisions.
+- `Content outline`: Library mode; CLI mode; MCP/runtime mode; stateless versus persistent runtime; storage choices; air-gapped and single-tenant framing; Mode A versus Mode B selection; what `[PROVENANT-ATTESTED v1 ...]` means; what must be verified against the audit chain or audit pack; host-channel text that bypasses `submit_answer`; `host_text_only` interpretation; self-declared conformance; when Mode A is required; internal-only tamper evidence; no external notary; streaming and split-turn deferral; external-source drift; skill-pack extensibility; library-mode HITL persistence; no hosted SaaS in v0; deferred SaaS and non-Go binding notes; non-legal-advice regulatory context; reconstructability and reviewability; model-risk review questions; what remains the deployer's responsibility.
+- `Source material`: `architecture/OVERVIEW.md`, `architecture/cross-cutting/deployment.md`, `architecture/subsystems/harness.md`, `architecture/adapters/mcp.md`, `architecture/references.md`, `docs/thesis.md`, `docs/KNOWN_TRADE_OFFS.md`, `README.md`.
 - `Status label`: `Architecture contract` with current implementation callouts.
-- `Acceptance notes`: The page does not claim multi-tenant SaaS, hosted registry, or non-Go bindings are current behavior.
+- `Acceptance notes`: The page contains the strongest Mode B caveat in the site and is cross-linked from all Mode B or MCP pages; it does not claim multi-tenant SaaS, hosted registry, or non-Go bindings are current behavior; caveats remain prominent rather than buried below marketing or setup material; it includes `This is not legal advice` near the top and does not claim regulatory approval.
 
-#### Page: Mode B Attestation
+### 8. Contributor Guardrails
 
-- `Route/path`: `ops/mode-b-attestation.md`
-- `Audience`: Compliance reviewers, MCP host authors, and platform operators.
-- `Purpose`: Give precise rules for interpreting `[PROVENANT-ATTESTED v1 ...]` and host text.
-- `Content outline`: What the marker means; what must be verified against the audit chain or audit pack; host-channel text that bypasses `submit_answer`; `host_text_only` interpretation; self-declared conformance; when Mode A is required; reviewer checklist.
-- `Source material`: `architecture/subsystems/harness.md`, `architecture/adapters/mcp.md`, `docs/thesis.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page contains the strongest Mode B caveat in the site and is cross-linked from all Mode B or MCP pages.
+Do not create a standalone contributor page in the launch docs set. Fold contributor-facing accuracy rules into the maintained planning prompt and, where public readers benefit, into the `reference/status-matrix.md` maintenance section.
 
-#### Page: Caveats
+Contributor guardrails to preserve:
 
-- `Route/path`: `ops/caveats.md`
-- `Audience`: Buyers, compliance reviewers, operators, and technical evaluators.
-- `Purpose`: Consolidate limitations that affect buyer, reviewer, or operator interpretation.
-- `Content outline`: Internal-only tamper evidence; no external notary; Mode B self-declared conformance; streaming and split-turn deferral; external-source drift; skill-pack extensibility; library-mode HITL persistence; no hosted SaaS in v0; no legal advice; how to decide whether each caveat matters.
-- `Source material`: `docs/KNOWN_TRADE_OFFS.md`, `docs/thesis.md`, `architecture/OVERVIEW.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page keeps caveats prominent rather than burying them below marketing or setup material.
+- Required status labels.
+- Source-reference requirement.
+- Last-verified command rule.
+- Overclaim checklist.
+- Mode B warning rule.
+- Tamper-evidence language rule.
+- Regulatory-language rule.
+- Generated-reference workflow.
+- Local docs commands after scaffold exists.
 
-#### Page: Regulatory Context
-
-- `Route/path`: `ops/regulatory-context.md`
-- `Audience`: Compliance officers, model-risk reviewers, audit leads, and buyers.
-- `Purpose`: Frame why Provenant exists in SR 11-7 and FINRA 2026 contexts without making legal claims.
-- `Content outline`: Non-legal-advice banner; reconstructability; reviewability; internal tamper detection; model-risk review questions; what Provenant evidence can help answer; what remains the deployer's responsibility; source references.
-- `Source material`: `docs/thesis.md`, `architecture/references.md`, `README.md`, `docs/KNOWN_TRADE_OFFS.md`.
-- `Status label`: `Architecture contract`.
-- `Acceptance notes`: The page includes `This is not legal advice` near the top and does not claim regulatory approval.
-
-### 8. Contributing To Docs
-
-#### Page: Docs Contribution Guide
-
-- `Route/path`: `contributing/docs.md`
-- `Audience`: Contributors and maintainers writing or reviewing docs pages.
-- `Purpose`: Keep future docs changes accurate, source-grounded, and status-labeled.
-- `Content outline`: Required status labels; source-reference requirement; last-verified command rule; overclaim checklist; Mode B warning rule; tamper-evidence language rule; regulatory-language rule; generated-reference workflow; local docs commands after scaffold exists.
-- `Source material`: This plan, `goal-prompt.md`, `README.md`, `docs/KNOWN_TRADE_OFFS.md`, `architecture/OVERVIEW.md`.
-- `Status label`: `Planned` until docs site tooling exists; then `Implemented now` for the contribution process.
-- `Acceptance notes`: The guide makes every capability page include a status label and source-reference section.
+Future expansion: add `contributing/docs.md` only after the launch site exists and contributor workflow needs justify a standalone public page. Until then, these rules remain governed by this plan, `goal-prompt.md`, and the status matrix/update procedure.
 
 ## Navigation Design
 
 Recommended Starlight sidebar order:
 
-- Start Here
-- Quickstarts
-- Concepts
-- How-To Guides
-- Reference
-- Architecture
-- Operations And Compliance
-- Contributing To Docs
+- Orientation: `index.md`, `guarantees-and-limits.md`
+- Current Artifact Quickstart: `quickstart/current-artifacts.md`
+- Concepts: `concepts/provenance-model.md`, `concepts/modes.md`
+- Guides: `guides/review-audit-evidence.md`, `guides/integrate-go-library.md`, `guides/extend-source-tools.md`
+- Reference: `reference/status-matrix.md`, `reference/current-surfaces.md`
+- Architecture: `architecture/overview.md`, `architecture/kernel-runtime-storage.md`, `architecture/security-determinism-tradeoffs.md`, `architecture/adrs.md`
+- Adoption And Compliance: `ops/adoption-caveats.md`
+
+This launch sidebar is 15 pages and is the complete planned public page set for launch. Future expansion is optional and should be driven by usage data, support questions, newly shipped surfaces, or demonstrated contributor workflow needs, not by a desire to mirror every internal architecture file as a public page.
 
 Each page should include:
 
@@ -662,7 +408,7 @@ Done when:
 
 ### Phase 1: Reader Journey
 
-- Write Start Here, Quickstarts, and core Concepts pages.
+- Write the orientation pages, the single current-artifacts quickstart, and the compact core concept pages.
 - Port only current, runnable examples first.
 - Add caveats inline on Mode B, tamper evidence, and Go API-only verify/replay.
 
@@ -673,7 +419,7 @@ Done when:
 
 ### Phase 2: Engineering Guides
 
-- Write source reader, tool backend, skill pack, and Go library integration guides.
+- Write the Go library integration guide and the consolidated source/tool/skill extension guide.
 - Mark guides as architecture contract where current implementation is not complete.
 - Add implementation checklists and stop conditions.
 
@@ -684,7 +430,7 @@ Done when:
 
 ### Phase 3: Reference Generation
 
-- Generate or synchronize CLI reference, error codes, entry kinds, bundle format, and tool category status.
+- Generate or synchronize the compact current-surfaces reference sections for CLI, error codes, entry kinds, bundle format, Go API, and tool category status.
 - Add stale-generation checks if generation scripts are created.
 
 Done when:
@@ -694,13 +440,13 @@ Done when:
 
 ### Phase 4: Operations And Compliance
 
-- Write audit review, deployment shapes, Mode B attestation, caveats, and regulatory-context pages.
+- Write the audit evidence review guide and consolidated adoption caveats page, including deployment shapes, Mode B attestation, accepted caveats, and regulatory context.
 - Review with a compliance-audience lens for overclaims.
 
 Done when:
 
 - Non-technical users can inspect an audit artifact and understand what it proves.
-- The caveat pages explicitly cover all accepted v0 limitations that affect buyer or reviewer interpretation.
+- The adoption caveats page explicitly covers all accepted v0 limitations that affect buyer or reviewer interpretation.
 
 ### Phase 5: Polish And Release
 
