@@ -36,10 +36,10 @@ Package `kernel/public` is the v0 first-class contract (ADR-0009). It defines th
 
 **Core types:**
 
-- `Run` — a single provenance run, carrying run ID, tenant ID, and as-of timestamp.
-- `Token` — a minted provenance token with canonical decimal value, unit, and captured-read binding.
-- `CapturedRead` — a record of one source read: reader name, reader version, source path or URI, and SHA-256 of the canonicalized output.
-- `AuditEntry` — one hash-chained entry in the audit log (seq, kind, payload, prev_hash, hash).
+- `Run` — a single provenance run, carrying run ID, tenant ID, and lifecycle status.
+- `Token` — a minted provenance token with canonical decimal value, unit, and either a captured-read binding (leaf tokens) or derivation lineage (derived/computed tokens; a token has either a mint source OR a derivation).
+- `CapturedRead` — a record of one source read: reader name, reader version, source path, and SHA-256 of the canonicalized output.
+- `AuditEntry` — one hash-chained entry in the audit log (seq, kind, deterministic payload, prev_hash, hash, plus run_id, tenant_id, and at).
 
 **Entry points** (see README and kernel sources for full signatures — do not infer them from this page):
 
@@ -51,8 +51,8 @@ Package `kernel/public` is the v0 first-class contract (ADR-0009). It defines th
 - `Store` — token and run persistence.
 - `AuditSink` — audit entry persistence.
 - `TransactionalScope` — transactional boundaries across Store and AuditSink writes.
-- `SourceResolver` — resolves a source URI to a readable byte stream.
-- `SourceReader` — reads and canonicalizes a source into a `CapturedRead`.
+- `SourceResolver` — resolves a logical source path to in-memory source bytes.
+- `SourceReader` — reads and canonicalizes a source; returns a `ReadResult` that carries both the extracted output and the `CapturedRead`.
 - `Clock` — provides the current time for as-of stamping.
 
 **Sub-packages:**
