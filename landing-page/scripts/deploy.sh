@@ -8,8 +8,10 @@ cd "${PROJECT_DIR}"
 
 # Load .env if present (never fail if absent)
 if [[ -f .env ]]; then
+  set -a
   # shellcheck source=/dev/null
   source .env
+  set +a
 fi
 
 # Validate required credentials
