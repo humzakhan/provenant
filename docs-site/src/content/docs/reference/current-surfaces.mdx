@@ -1,0 +1,128 @@
+---
+title: Current Surfaces
+description: Compact inventory of every CLI verb, Go package, source reader, and example shipped in the current Provenant repository — plus what is planned or deferred.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" />
+
+Compact, scannable inventory of what Provenant ships today. See the [Status Matrix](/reference/status-matrix/) for label definitions and maintenance rules.
+
+---
+
+## CLI Commands
+
+All commands are registered in `access/cli` and are <StatusBadge status="Implemented now" />.
+
+| Command | What it does |
+|---|---|
+| `read-mint-bundle` | Read one JSON source → mint one token → emit bundle. |
+| `reconcile` | Deterministic CSV/XLSX reconciliation fixture → ZIP report. |
+| `run start` | Open a new runfile. |
+| `run finish` | Mark a runfile as finished. |
+| `run fail` | Mark a runfile as failed. |
+| `read-mint` | Read a source and mint into a runfile. |
+| `calc` | Derive a token via a calc op and inputs. |
+| `submit-answer` | Record a labeled answer in the audit trail. |
+| `verify` | Check bundle integrity and hash chain. |
+| `replay` | Verify and reconstruct in-memory state. |
+| `pack` | Build a JCS-canonical audit pack from a bundle and sidecars. |
+| `trace` | Walk a token's lineage to leaf sources. |
+| `audit-html` | Render an audit pack as a self-contained HTML report. |
+
+The quickstart features `read-mint-bundle`, `reconcile`, `verify`, and `replay`. All commands are present in code and listed here as their public reference.
+
+---
+
+## Go Public Packages
+
+All packages are under `github.com/provenant/provenant/…` and are <StatusBadge status="Implemented now" />. See [Integrate the Go Library](/guides/integrate-go-library/) for usage details.
+
+| Package | Contents |
+|---|---|
+| `kernel/public` | Core types `Run`, `Token`, `CapturedRead`, `AuditEntry`; entry points `ReadAndMint`, `MintFromCapturedRead`; injected interfaces `Store`, `AuditSink`, `TransactionalScope`, `SourceResolver`, `SourceReader`, `Clock`. |
+| `kernel/public/bundle` | `Verify`, `Replay`, `Emit`, type `State` — offline bundle operations, no network required. |
+| `kernel/public/derive` | `Derive` — compose tokens through filter and calculation operations. |
+| `kernel/public/memio` | `NewBinding` — in-memory binding, the library-mode default. |
+| `kernel/public/trace` | `Trace` — walk a token's derivation lineage to leaf sources. |
+
+---
+
+## Source Readers
+
+| Reader | Package | Status |
+|---|---|---|
+| `extract.json` | `kernel/public/extractjson` | <StatusBadge status="Implemented now" /> |
+| `extract.csv_rows` | `kernel/public/extractcsvrows` | <StatusBadge status="Implemented now" /> |
+| `extract.spreadsheet` | `kernel/public/extractspreadsheet` | <StatusBadge status="Implemented now" /> (exercised via `reconcile`; not wired to `read-mint-bundle`) |
+| `extract.jsonl` | `kernel/public/extractjsonl` | <StatusBadge status="Implemented now" /> (exercised via `reconcile`; not wired to `read-mint-bundle`) |
+| `extract.bank_statement` | — | <StatusBadge status="Planned" /> |
+| `extract.invoice` | — | <StatusBadge status="Planned" /> |
+| `extract.receipt` | — | <StatusBadge status="Planned" /> |
+| `extract.kv_pairs` | — | <StatusBadge status="Planned" /> |
+
+Document-AI readers (`bank_statement`, `invoice`, `receipt`, `kv_pairs`) are spec only; no implementation ships in v0.
+
+---
+
+## Examples and Artifacts
+
+| Artifact | Status | Description |
+|---|---|---|
+| Reconciliation fixture | <StatusBadge status="Implemented now" /> | Emits the 8-entry ZIP: `report.md`, `report.json`, `mismatches.csv`, `captured_reads.json`, `tokens.json`, `audit.jsonl`, `bundle.json`, `manifest.json`. See [Review Audit Evidence](/guides/review-audit-evidence/). |
+| Derivation-graph demo | <StatusBadge status="Implemented now" /> | Committed golden bundle and golden trace backed by CSV test data. See [Run Current Artifacts](/quickstart/current-artifacts/). |
+
+---
+
+## Not Shipped
+
+### Planned
+
+| Surface | Status |
+|---|---|
+| HTTP `POST /v1/reconcile` endpoint | <StatusBadge status="Planned" /> |
+| Production MCP packaging and marketplace flows | <StatusBadge status="Planned" /> |
+| Reconciliation planner (column inference) | <StatusBadge status="Planned" /> |
+| Fuzzy and AI-assisted matching | <StatusBadge status="Planned" /> |
+| Document-AI readers | <StatusBadge status="Planned" /> |
+
+### Deferred
+
+| Surface | Status |
+|---|---|
+| Non-Go bindings | <StatusBadge status="Deferred" /> |
+| External notarization and third-party witness | <StatusBadge status="Deferred" /> |
+| Hosted registry and pack signing (beyond local digest) | <StatusBadge status="Deferred" /> |
+| Custom validators, WASM, and plugin loading | <StatusBadge status="Deferred" /> |
+| Complete end-user reconciliation product | <StatusBadge status="Deferred" /> |
+| Regulatory interpretation | <StatusBadge status="Deferred" /> |
+
+### Architecture Contract
+
+| Surface | Status |
+|---|---|
+| Mode A `submit_answer` enforcement | <StatusBadge status="Architecture contract" /> |
+| Mode B / MCP host-channel text | <StatusBadge status="Architecture contract" /> |
+| Runtime storage bindings (SQLite/Postgres/S3) | <StatusBadge status="Architecture contract" /> |
+
+---
+
+## Next
+
+- [Status Matrix](/reference/status-matrix/): Label definitions and maintenance rules for every surface.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart for `read-mint-bundle`, `reconcile`, `verify`, and `replay`.
+- [Integrate the Go Library](/guides/integrate-go-library/): How to embed `kernel/public` in a Go host.
+- [Review Audit Evidence](/guides/review-audit-evidence/): Offline path to verify and replay a bundle.
+- [Modes](/concepts/modes/): Mode A vs. Mode B, who owns the loop, and what each mode enforces.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current implemented examples, quickstart commands, and explicit non-support list.' },
+  { label: 'access/cli', href: 'https://github.com/provenant/provenant/tree/main/access/cli', note: 'All registered CLI commands and their request/response shapes.' },
+  { label: 'kernel/public', href: 'https://github.com/provenant/provenant/tree/main/kernel/public', note: 'Core types, entry points, injected interfaces, and sub-packages.' },
+  { label: 'examples/reconciliation/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/reconciliation/README.md', note: 'Reconciliation fixture description, ZIP artifact list, and non-support list.' },
+  { label: 'examples/derivation-graph/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/derivation-graph/README.md', note: 'Derivation trace demo, golden bundle, and golden trace artifacts.' },
+]} />

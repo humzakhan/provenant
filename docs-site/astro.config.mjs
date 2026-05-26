@@ -36,7 +36,10 @@ export default defineConfig({
         },
         {
           label: 'Reference',
-          items: [{ label: 'Status Matrix', link: '/reference/status-matrix/' }],
+          items: [
+            { label: 'Status Matrix', link: '/reference/status-matrix/' },
+            { label: 'Current Surfaces', link: '/reference/current-surfaces/' },
+          ],
         },
       ],
     }),
