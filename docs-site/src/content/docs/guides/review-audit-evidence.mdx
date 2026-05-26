@@ -1,0 +1,196 @@
+---
+title: Review Audit Evidence
+description: A practical, offline path for auditors and compliance reviewers to verify a Provenant run's evidence and understand exactly what it does and does not prove.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+import AuditArtifactCard from '../../../components/AuditArtifactCard.astro';
+
+<StatusBadge status="Implemented now" />
+
+This guide gives audit leads, compliance reviewers, and model-risk controllers a concrete, offline path to verify the evidence produced by a Provenant run and understand precisely what that evidence does and does not prove. Provenant is a Go provenance enforcement layer for regulated finance — not a SaaS product, agent, database, model, logger, or workflow engine. The evidence it emits is a hash-chained audit bundle that can be verified and replayed without network access. The central question this guide answers: **can I independently verify this run's evidence, and what can I conclude from it?**
+
+## What You Are Reviewing
+
+A Provenant reconciliation run produces `report.zip`. This ZIP contains exactly eight artifacts:
+
+<div class="artifact-grid">
+  <AuditArtifactCard name="report.md" description="Human-readable run summary: result count and outcome counts. The starting point for a narrative review." />
+  <AuditArtifactCard name="report.json" description="Machine-readable counts and per-result evidence. Useful for automated checks or import into a review tool." />
+  <AuditArtifactCard name="mismatches.csv" description="Rows for non-matched results. Each row represents a reconciliation item that did not find an exact match." />
+  <AuditArtifactCard name="captured_reads.json" description="CapturedRead records: reader name, reader version, source path or URI, and SHA-256 of the canonicalized output. Establishes which sources were read and with which reader implementation." />
+  <AuditArtifactCard name="tokens.json" description="Minted tokens: canonical decimal values, unit, run ID, tenant ID, as-of timestamp, and captured-read binding. Every numeric value in the run has exactly one token with verifiable lineage." />
+  <AuditArtifactCard name="audit.jsonl" description="Hash-chained audit entries. Each line is a JSONL record with seq, kind, payload, prev_hash, and hash. Any internal edit breaks the chain." />
+  <AuditArtifactCard name="bundle.json" description="Canonical audit bundle: run record, all captured reads, all minted tokens, and the full audit chain combined. The SHA-256 of this file is the run fingerprint." />
+  <AuditArtifactCard name="manifest.json" description="bundle_hash (SHA-256 of bundle.json) and per-sidecar SHA-256 for each of the other seven artifacts. Use this to confirm the ZIP has not been altered since it was produced." />
+</div>
+
+## The Reviewer Path
+
+<StatusBadge status="Implemented now" />
+
+The following procedure uses only commands that are implemented in the current CLI surface (`access/cli`) and covered by fixture tests. Run all commands from the repository root unless a step says otherwise.
+
+**Prerequisites:** Go installed for the module version in `go.mod`. Optional: `jq` for inspecting JSON artifacts.
+
+```bash
+git clone https://github.com/provenant/provenant
+cd provenant
+go test ./...
+```
+
+---
+
+**Step 1 — Open the ZIP and confirm membership.**
+
+Extract `report.zip` and confirm it contains exactly these eight entries:
+
+```text
+report.md
+report.json
+mismatches.csv
+captured_reads.json
+tokens.json
+audit.jsonl
+bundle.json
+manifest.json
+```
+
+No additional files should be present. Fewer than eight entries indicates a failed or partial run.
+
+---
+
+**Step 2 — Verify the manifest hashes.**
+
+Open `manifest.json`. Confirm:
+
+- `bundle_hash` equals the SHA-256 of `bundle.json`.
+- Each entry in `artifacts[].sha256` matches the SHA-256 of its corresponding ZIP member.
+
+This step confirms the ZIP's contents match what was recorded at run time. Any mismatch indicates the archive has been altered after production.
+
+---
+
+**Step 3 — Run `verify`.**
+
+Create a request file pointing at `bundle.json`:
+
+```json
+{
+  "bundle_path": "bundle.json"
+}
+```
+
+Save it as `verify-request.json`, then run:
+
+```bash
+go run ./cmd/provenant verify --request verify-request.json
+```
+
+`verify` calls `bundle.Verify`, which checks format, audit-chain hash linkage, and sequence continuity across every entry. A passing result confirms the bundle bytes have not been internally altered since production. A failure identifies exactly where the chain breaks.
+
+---
+
+**Step 4 — Run `replay`.**
+
+Using the same request file:
+
+```bash
+go run ./cmd/provenant replay --request verify-request.json
+```
+
+`replay` calls `bundle.Replay`, which re-derives every token from the captured reads in the bundle and confirms the derived values are consistent with the minted tokens. Replay is fully offline — it operates only on the captured bytes in the bundle and does not re-contact any external source.
+
+---
+
+**Step 5 — Inspect `audit.jsonl`.**
+
+Open `audit.jsonl` and confirm:
+
+- `seq` values are strictly increasing, starting at 1 with no gaps.
+- `prev_hash` of each entry equals the `hash` of the preceding entry (the first entry's `prev_hash` is the zero hash).
+- `kind` values cover expected event types: `token_mint`, `token_derive`, `run_started`, `run_completed`.
+
+This is the raw hash-chain that `verify` checks programmatically. Manual inspection here lets you confirm the sequence and kinds match the run's declared scope.
+
+---
+
+**Step 6 (optional) — Trace a derived token.**
+
+If you want to inspect the leaf contributions to a derived token (for example `operating_income` in the derivation-graph demo), create a dedicated request file that includes both required fields — `bundle_path` and `token_id`:
+
+```json
+{
+  "bundle_path": "bundle.json",
+  "token_id": "<token-id-from-tokens.json>"
+}
+```
+
+Save it as `trace-request.json`, then run:
+
+```bash
+go run ./cmd/provenant trace --request trace-request.json
+```
+
+The trace output shows how each leaf value flows through filter and calculation operations to produce the final derived value, confirming the derivation path recorded in the bundle.
+
+---
+
+**Step 7 (optional) — Produce a self-contained HTML report.**
+
+To produce an offline, no-network HTML report for distribution or archival:
+
+```bash
+go run ./cmd/provenant pack --bundle bundle.json --out audit.pack.json
+go run ./cmd/provenant audit-html --pack audit.pack.json --out report.html
+```
+
+`pack` bundles the evidence into a distributable pack (`audit.pack.json`). `audit-html` consumes that pack and produces a self-contained HTML file (`report.html`) that can be opened in any browser without a network connection.
+
+---
+
+## What the Evidence Proves vs. Does Not Prove
+
+<CaveatCallout title="Verify checks integrity, not business correctness" tone="warn">
+  `bundle.Verify` checks hash-chain linkage and bundle integrity. It does NOT prove that the business reconciliation rule applied was the correct rule, or that the right source data was used. Correctness is a separately measured metric and is not guaranteed by integrity verification alone.
+</CaveatCallout>
+
+<CaveatCallout title="Internally tamper-evident, not externally tamper-proof" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. Do not describe v0 evidence as externally attested or tamper-proof. External notarization is <StatusBadge status="Deferred" />.
+</CaveatCallout>
+
+<CaveatCallout title="Replay is offline re-derivation, not a re-run of external sources" tone="warn">
+  `bundle.Replay` re-derives tokens from captured bytes stored in the bundle. It does not re-contact external sources or re-execute business logic against live data. If the original source changed after the run, replay still uses the captured read from the bundle — it answers whether the captured inputs reproduce the same outputs, not whether the original sources are still the same.
+</CaveatCallout>
+
+<CaveatCallout title="Examples are proof fixtures, not a complete product" tone="warn">
+  The reconciliation fixture and derivation-graph demo prove the provenance path works. They are intentionally small demonstrations. They do not infer columns, perform fuzzy matching, read remote files, expose a UI, or run LLM reasoning. They are not a complete reconciliation or derivation product.
+</CaveatCallout>
+
+<CaveatCallout title="Hard non-bypassable enforcement requires Mode A" tone="warn">
+  The non-bypassable `submit_answer` exit is an <StatusBadge status="Architecture contract" />. Mode A (CLI or embedded harness, where the substrate owns the loop) is the required deployment shape for hard enforcement. In Mode B (MCP or host-driven adapter), the host must honor this contract; Provenant cannot enforce it unilaterally across an untrusted host channel. See [Modes](/concepts/modes/) for the full boundary.
+</CaveatCallout>
+
+## Not Legal Advice
+
+<CaveatCallout title="Regulatory material is context, not legal advice" tone="warn">
+  Documentation references to regulatory frameworks (MiFID II, SR 11-7, and similar) are context, not legal advice or regulatory approval of any deployment. This guide does not assert that the evidence described satisfies any regulation. Reviewers and their organizations are responsible for their own legal and regulatory assessment.
+</CaveatCallout>
+
+## Next
+
+- [Provenance Model](/concepts/provenance-model/): How numbers are captured, minted, recorded, and verified — the vocabulary behind each artifact.
+- [Modes](/concepts/modes/): Mode A vs. Mode B, who owns the loop, and what each mode enforces.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart for producing the artifacts this guide reviews.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current quickstart commands, runnable examples, and explicit non-support list.' },
+  { label: 'examples/reconciliation/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/reconciliation/README.md', note: 'ZIP artifact list, reconciliation fixture description, and non-support list.' },
+  { label: 'examples/derivation-graph/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/derivation-graph/README.md', note: 'Derivation trace demo, golden bundle, and golden trace artifacts.' },
+  { label: 'architecture/subsystems/audit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/audit.md', note: 'Hash-chained audit chain design, entry structure, and tamper-detection scope.' },
+]} />
