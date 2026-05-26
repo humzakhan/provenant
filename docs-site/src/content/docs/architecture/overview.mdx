@@ -1,0 +1,106 @@
+---
+title: Architecture Overview
+description: A compact public map of Provenant's layered architecture — kernel, runtime, access surfaces, and subsystems — with links to the canonical architecture docs.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" />
+
+**The library/kernel is the product.** Access surfaces and storage are deployment concerns. This page summarizes Provenant's layered architecture and links to the canonical architecture docs in the repository `architecture/` tree. It does not replace them.
+
+The canonical architecture docs are the authoritative source for design rationale, interface contracts, and ADR decisions. This page is an entry point for platform engineers, architects, and compliance or model-risk reviewers who need a public map of the layers.
+
+## The Four Layers
+
+### 1. Kernel
+
+<StatusBadge status="Implemented now" />
+
+The kernel is the pure provenance engine. Its public surface has no I/O, no storage requirement, and no network or database imports — enforced by an import-guard test. It mints provenance tokens, runs guards and validators, and emits a self-contained audit bundle as bytes.
+
+The kernel ships a first-class in-memory binding (`kernel/public/memio`) as the library-mode default. All I/O is provided through injected interfaces, keeping the kernel surface pure and testable without any runtime dependency.
+
+See [`architecture/OVERVIEW.md`](https://github.com/provenant/provenant/blob/main/architecture/OVERVIEW.md) and [`architecture/README.md`](https://github.com/provenant/provenant/blob/main/architecture/README.md) for the full kernel boundary definition.
+
+### 2. Runtime Layer
+
+<StatusBadge status="Architecture contract" />
+
+The runtime layer is optional and is the only place I/O is implementation-specific. It owns persistent storage bindings — SQLite, Postgres, S3 — and access-surface hosting. Runtime storage bindings are <StatusBadge status="Architecture contract" />.
+
+The runtime layer is **forbidden from enforcement logic**. It must call the kernel's pipeline and may never re-decide a `submit_answer`. Enforcement belongs to the kernel alone.
+
+See [ADR-0011](https://github.com/provenant/provenant/blob/main/architecture/adrs/0011-storage-is-a-deployment-concern.md): storage is a deployment concern, not a kernel concern.
+
+### 3. Access Surfaces
+
+CLI, MCP, and HTTP are thin shells over the same kernel public Go surface. They are **equal first-class adapters** — none is primary (ADR-0010).
+
+| Surface | Mode | Status |
+|---|---|---|
+| CLI | Mode A — harness owns the loop | <StatusBadge status="Implemented now" /> |
+| MCP | Mode B — host owns the loop | <StatusBadge status="Architecture contract" /> |
+| HTTP reconcile endpoint | Mode B | <StatusBadge status="Planned" /> |
+| Production MCP marketplace flows | Mode B | <StatusBadge status="Planned" /> |
+
+The mode boundary is determined by **who owns the agent loop**, not by which surface is used. See [Modes](/concepts/modes/) for a full explanation of the Mode A / Mode B enforcement boundary.
+
+### 4. Subsystems
+
+The kernel composes several subsystems. Each is documented in the `architecture/` tree:
+
+- **Tool registry** — schema validation and token minting; tools are the only mechanism by which numbers enter the agent.
+- **Skill packs** — prompt templates, guards, and eval configuration; they operate within the kernel-immutable header and do not control the enforcement pipeline.
+- **Audit and bundle** — hash-chained JSONL audit log; the bundle is the canonical self-contained byte sequence for a complete run, supporting offline `Verify` and `Replay`. See [Provenance Model](/concepts/provenance-model/) for how captures, tokens, and the chain fit together.
+
+## Canonical Invariants
+
+The following invariants are non-configurable and load-bearing. They are defined in the repository README core-invariants section and the ADRs below — this page links to them rather than rewriting them.
+
+- **Non-bypassable exit** — `submit_answer` is the single regulated exit. There is no path by which a final answer reaches the user without passing the full validator pipeline. (ADR-0002)
+- **Fail-closed default** — any error in the enforcement pipeline produces a rejection, not a pass.
+- **Schema-first validation** — tool inputs are validated against published JSON schemas before any token is minted.
+- **Replay-deterministic outputs** — bundle bytes are sufficient to re-derive tokens offline; no external source re-contact is required.
+
+See [`architecture/README.md`](https://github.com/provenant/provenant/blob/main/architecture/README.md) for the canonical invariant list and rationale.
+
+## What Provenant Does NOT Provide (v0)
+
+- Does not persist data or require a database — the in-memory binding is the default.
+- Does not open network sockets, files, or database connections at the kernel surface.
+- Does not write the agent's prompts — skill packs provide templates, but the kernel-immutable header is not overridable by skill content.
+- Does not pick the model — v0 verifies Claude.
+- Does not run your GL, ERP, sanctions, FX, or data-extraction systems — it wraps them as registered tools.
+- No hosted SaaS, web HITL UI, hosted skill registry, BoN-MAV, or LangChain/OpenAI adapters in v0.
+- Does not defend against a maliciously root-compromised host — Provenant provides tamper detection, not tamper prevention.
+
+## Caveats
+
+<CaveatCallout title="Internally tamper-evident, not externally tamper-proof" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. Do not describe v0 evidence as externally attested or tamper-proof.
+</CaveatCallout>
+
+<CaveatCallout title="Mode B host-channel text is not officially attested without submit_answer" tone="warn">
+  In Mode B (MCP or HTTP), host-channel text is NOT an official regulated conclusion unless it comes through a passing `submit_answer` AND is verified against the audit chain or audit pack. A `[PROVENANT-ATTESTED ...]` marker appearing in host-channel text is not sufficient by itself. For deployments where unsigned host text is unacceptable, Mode A is required.
+</CaveatCallout>
+
+<SourceReferences items={[
+  { label: 'architecture/OVERVIEW.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/OVERVIEW.md', note: 'Library, runtime, access-surface, and storage layer boundaries.' },
+  { label: 'architecture/README.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/README.md', note: 'Canonical invariants: non-bypassable exit, fail-closed, schema-first, replay-deterministic.' },
+  { label: 'architecture/adrs/0010-mcp-equal-not-primary.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0010-mcp-equal-not-primary.md', note: 'ADR-0010 (Accepted): CLI, MCP, and HTTP are equal first-class adapters; MCP is not primary.' },
+  { label: 'architecture/adrs/0011-storage-is-a-deployment-concern.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0011-storage-is-a-deployment-concern.md', note: 'ADR-0011: storage bindings belong in the runtime layer, not the kernel.' },
+  { label: 'architecture/adrs/0002-submit-answer-as-single-exit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md', note: 'ADR-0002: submit_answer as the non-bypassable single regulated exit point.' },
+]} />
+
+## Next
+
+- [Provenance Model](/concepts/provenance-model/): How numbers are captured, minted, recorded, and verified.
+- [Modes](/concepts/modes/): Mode A vs Mode B — who owns the loop and what each enforces.
+- [Integrate the Go Library](/guides/integrate-go-library/): Embedding the kernel in a Go agent.
+- [Current Surfaces](/reference/current-surfaces/): What is runnable today.
+- [Status Matrix](/reference/status-matrix/): Every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
