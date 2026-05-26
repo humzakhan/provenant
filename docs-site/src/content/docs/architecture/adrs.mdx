@@ -29,9 +29,9 @@ Architecture Decision Records (ADRs) capture a bounded design decision, its cont
 
 ## Superseded Decisions
 
-Three supersession relationships are in effect:
+Two ADRs are fully superseded — 0007 by 0010 (MCP equal, not primary) and 0008 by 0011 (storage is a deployment concern). Separately, 0009 amends the out-of-scope clause of 0001 to add the Go public surface.
 
-- **0007 → 0010 (MCP equal, not primary).** ADR-0007 framed MCP as the primary adapter. ADR-0010 supersedes it: CLI, MCP, and HTTP are equal first-class adapters with no architectural primacy.
+- **0007 → 0010 (MCP equal, not primary).** ADR-0007 framed MCP as the primary adapter. ADR-0010 supersedes it: MCP, HTTP, and CLI are equal first-class adapters with no architectural primacy.
 - **0008 → 0011 (storage is a deployment concern).** ADR-0008 framed Postgres as the canonical transactional store. ADR-0011 supersedes it: the kernel has no storage requirement; persistence is a deployment choice.
 - **0001 out-of-scope clause amended by 0009 (Go public surface).** ADR-0001 originally treated a public Go kernel API as out of scope. ADR-0009 amends that clause: the kernel public Go surface is a v0 first-class surface.
 
