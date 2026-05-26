@@ -10,7 +10,10 @@ export default defineConfig({
       sidebar: [
         {
           label: 'Orientation',
-          items: [{ label: 'Home', link: '/' }],
+          items: [
+            { label: 'Home', link: '/' },
+            { label: 'Guarantees and Limits', link: '/guarantees-and-limits/' },
+          ],
         },
         {
           label: 'Current Artifact Quickstart',
