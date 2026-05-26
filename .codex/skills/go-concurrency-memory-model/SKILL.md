@@ -1,1 +1,0 @@
-../../../.agents/skills/go-concurrency-memory-model/SKILL.md

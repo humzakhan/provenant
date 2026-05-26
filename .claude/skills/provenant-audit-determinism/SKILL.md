@@ -1,1 +1,0 @@
-../../../.agents/skills/provenant-audit-determinism/SKILL.md

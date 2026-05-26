@@ -1,1 +1,0 @@
-../../../.agents/skills/provenant-kernel-boundary/SKILL.md

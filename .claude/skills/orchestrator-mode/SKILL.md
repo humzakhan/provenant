@@ -1,1 +1,0 @@
-../../../.agents/skills/orchestrator-mode/claude.md
