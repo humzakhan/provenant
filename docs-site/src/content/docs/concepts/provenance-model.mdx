@@ -1,0 +1,148 @@
+---
+title: Provenance Model
+description: How a number's lineage is captured, minted, recorded, and verified in Provenant — what the evidence is and how to inspect it.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+import AuditArtifactCard from '../../../components/AuditArtifactCard.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" />
+
+Provenant is a Go provenance enforcement layer for regulated finance. It records where output numbers came from, mints tokens from captured reads, writes a hash-chained audit trail, and emits audit bundle bytes that can be verified and replayed offline. It is not a SaaS product, agent, database, model, logger, or workflow engine.
+
+This page explains what the provenance evidence is, how each piece comes to exist, and how to inspect it yourself. The intended audience is platform engineers, audit leads, and compliance or model-risk reviewers.
+
+## The Provenance Chain
+
+Every number that reaches a final answer travels through the following path:
+
+```text
+source bytes -> SourceReader.Read -> CapturedRead + ReadResult
+                                   -> kernel.MintToken
+                                   -> hash-chained audit entry
+                                   -> bundle.Snapshot
+                                   -> bundle.Verify / bundle.Replay
+```
+
+Each step produces a verifiable artifact. Nothing is inferred; nothing is implicit. The bundle bytes are the complete evidence for a run.
+
+## Core Objects
+
+### Captured Read
+
+<StatusBadge status="Implemented now" />
+
+A `CapturedRead` is the stable record of a single source read. It carries:
+
+- **Source path or origin URI** — where the bytes came from.
+- **Reader name and version** — which `SourceReader` implementation produced the output.
+- **Output hash** — SHA-256 of the canonicalized output, enabling deterministic replay.
+
+A captured read is the anchor for every token derived from that source. If replay is requested, the kernel re-derives tokens from the captured read, not from the original external source.
+
+### Provenance Token
+
+<StatusBadge status="Implemented now" />
+
+A provenance token is the kernel-issued value that binds a number to its lineage. Minting is the only way a token comes to exist — there is no back-door assignment. Each token carries:
+
+- **Canonical decimal value** — never a floating-point approximation.
+- **Unit or currency.**
+- **Run ID and tenant ID.**
+- **As-of timestamp.**
+- **Source binding** — tool call, tool version, output path, and origin URI, linking the token back to a captured read or derivation.
+
+### How Numbers Enter
+
+<StatusBadge status="Implemented now" /> (token grounding) &nbsp; <StatusBadge status="Architecture contract" /> (`submit_answer` non-bypassable exit)
+
+Tools are the only mechanism by which numbers enter the agent. The registry — not the tool itself — mints one token per declared mintable path. Every numeric value in a final answer must map to exactly one provenance token with verifiable lineage back to a captured read. Ungrounded numbers are rejected at `submit_answer` by the guards subsystem.
+
+The non-bypassable `submit_answer` exit is an architecture contract. Mode A (CLI or embedded harness, where the substrate owns the loop) is the required deployment shape for hard enforcement. In Mode B (MCP or host-driven adapter), the host must honor this contract; Provenant cannot enforce it unilaterally across an untrusted host channel.
+
+### Audit Chain Entry
+
+<StatusBadge status="Implemented now" />
+
+Each event in a run produces one hash-chained JSONL record. A record contains:
+
+- `seq` — monotonically increasing sequence number.
+- `kind` — event type (for example, token mint).
+- `payload` — deterministic payload; the deterministic portion of the entry is what the hash chain covers.
+- `prev_hash` — SHA-256 of the previous entry.
+- `hash` — SHA-256 of this entry including `prev_hash`.
+
+Any edit to an earlier entry breaks the hash linkage. `bundle.Verify` detects the break. The chain is internally tamper-evident.
+
+### Audit Bundle
+
+<StatusBadge status="Implemented now" />
+
+The audit bundle is the canonical byte sequence for a complete run. It contains:
+
+- The run record.
+- All `CapturedRead` records.
+- All minted tokens.
+- The full audit JSONL chain.
+
+The SHA-256 of the bundle bytes is the run fingerprint. Both `bundle.Verify` and `bundle.Replay` operate only on bundle bytes — no network access is required.
+
+### Verify vs Replay
+
+<StatusBadge status="Implemented now" />
+
+Both operations are fully offline and require only the bundle bytes.
+
+**`bundle.Verify`** checks hash-chain linkage across every audit entry and confirms the bundle fingerprint. It answers: have these bytes been altered?
+
+**`bundle.Replay`** re-derives every token from the captured reads in the bundle and confirms the derived values are consistent with the minted tokens. It answers: do the captured inputs reproduce the same outputs?
+
+Replay is offline re-derivation from captured bytes. It does not re-contact external sources. If the original source changes after the run, replay still uses the captured read from the bundle.
+
+## Inspect the Evidence Yourself
+
+The reconciliation fixture produces these artifacts in `report.zip`:
+
+<div class="artifact-grid">
+  <AuditArtifactCard name="captured_reads.json" description="CapturedRead records: reader name, version, source path, and output hash for each source read." />
+  <AuditArtifactCard name="tokens.json" description="Minted tokens: canonical decimal values, unit, run ID, tenant ID, as-of, and captured-read binding." />
+  <AuditArtifactCard name="audit.jsonl" description="Hash-chained audit entries covering every event in the run." />
+  <AuditArtifactCard name="bundle.json" description="Canonical audit bundle: run, captured reads, tokens, and audit chain combined." />
+  <AuditArtifactCard name="manifest.json" description="Bundle SHA-256 fingerprint and per-artifact hashes." />
+</div>
+
+For commands to produce these artifacts and run `verify` and `replay` against them, see [Run Current Artifacts](/quickstart/current-artifacts/).
+
+## Limits
+
+<CaveatCallout title="Verify checks integrity, not business correctness" tone="warn">
+  `bundle.Verify` checks hash-chain linkage and bundle integrity. It does NOT prove that the business rule applied was the correct rule, or that the right source data was used. Correctness is a separately measured metric.
+</CaveatCallout>
+
+<CaveatCallout title="Internally tamper-evident, not externally tamper-proof" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. Do not describe v0 evidence as externally attested or tamper-proof.
+</CaveatCallout>
+
+<CaveatCallout title="Examples are proof fixtures, not a complete product" tone="warn">
+  The reconciliation fixture and derivation-graph demo prove the provenance path works. They are intentionally small. They do not infer columns, perform fuzzy matching, read remote files, expose a UI, or run LLM reasoning.
+</CaveatCallout>
+
+## Next
+
+- [Home](/): Orientation, mental model, and glossary.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart for the current repository examples.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current mental model, runnable examples, and explicit non-support list.' },
+  { label: 'architecture/subsystems/kernel.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/kernel.md', note: 'Kernel provenance path: captured reads, token minting, and bundle emission.' },
+  { label: 'architecture/subsystems/audit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/audit.md', note: 'Hash-chained audit chain design and entry structure.' },
+  { label: 'architecture/subsystems/guards.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/guards.md', note: 'Guards subsystem enforcing token-level grounding at submit_answer.' },
+  { label: 'architecture/subsystems/tools.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/tools.md', note: 'Tools as the only entry mechanism for numbers; registry-controlled minting.' },
+  { label: 'architecture/adrs/0004-token-level-grounding.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0004-token-level-grounding.md', note: 'Token-level grounding contract and rejection of ungrounded numbers.' },
+  { label: 'architecture/adrs/0002-submit-answer-as-single-exit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md', note: 'submit_answer as the single regulated exit point and Mode A enforcement shape.' },
+]} />
