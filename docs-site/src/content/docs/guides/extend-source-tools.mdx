@@ -20,12 +20,12 @@ This guide explains Provenant's reader, tool, and skill extension model: what th
 
 <StatusBadge status="Implemented now" />
 
-A source reader implements the `SourceReader` interface from `kernel/public`. Its `Read` method accepts source bytes and returns a `ReadResult` that carries two things:
+A source reader implements the `SourceReader` interface from `kernel/public`. Its `Read` method accepts a `context.Context`, a `Run`, `SourceBytes`, and a `SourceSelector`, and returns `(ReadResult, error)`. The `ReadResult` carries two things:
 
 - The **extracted output** — the structured data the kernel will use for token minting.
 - A **`CapturedRead`** — the stable, hash-anchored record of this read: reader name, reader version, source path, and SHA-256 of the canonicalized output. This is the evidence artifact that survives in the audit bundle.
 
-Four built-in readers ship in v0 (Go packages under `kernel/public/extract*`):
+Four built-in readers ship in v0, implemented in Go packages `kernel/public/extractjson`, `kernel/public/extractcsvrows`, `kernel/public/extractspreadsheet`, and `kernel/public/extractjsonl`:
 
 | Reader name | Format | Status |
 |---|---|---|
@@ -50,6 +50,7 @@ The `ToolBackend` interface specifies:
 - **Input schema / output schema** — JSON schemas; malformed traffic is rejected before the tool is called.
 - **Mintable paths** — the declared set of output paths the registry will mint tokens for.
 - **Determinism class** — whether the tool is deterministic (replay-safe) or non-deterministic (requires captured output for offline replay).
+- **Credentials** — the logical `CredentialRef` values the backend will use when dispatched; pure-Go tools such as `calc.*` return an empty slice.
 - **Call** — the execution entry point.
 
 This interface is specified in the architecture. In v0, the registry is internal to the kernel and only kernel-built tools are registered. There is no external tool registration API in v0.
@@ -64,7 +65,7 @@ Tool **categories** describe what a tool does. Tool **backends** describe how a 
 
 | Category | Purpose | Status |
 |---|---|---|
-| `calc` | Pure arithmetic and aggregation | <StatusBadge status="Implemented now" /> |
+| `calc` | Pure arithmetic and aggregation | <StatusBadge status="Implemented now" /> — arithmetic ops run through the kernel derivation engine (`kernel/public/derive`), not through the agent-facing `ToolBackend` registry dispatch surface |
 | `extract` | Source reading and canonicalization | <StatusBadge status="Implemented now" /> (four built-in readers) |
 | `ledger` | General ledger balance and transaction queries | <StatusBadge status="Architecture contract" /> |
 | `external` | External reference data (FX rates, sanctions lists) | <StatusBadge status="Architecture contract" /> |
@@ -81,14 +82,14 @@ The following named backends appear in the architecture. None are shipping as ca
 
 | Backend | Category | Status |
 |---|---|---|
-| Textract | `extract` | <StatusBadge status="Planned" /> — described in the architecture as the v0 reference backend for document extraction; not available as a callable backend today |
+| Textract | `extract` | <StatusBadge status="Planned" /> — described in the architecture design as the reference backend for document extraction; it is not a shipped v0 component and is not callable today |
 | NetSuite | `ledger` | <StatusBadge status="Planned" /> |
 | QuickBooks | `ledger` | <StatusBadge status="Planned" /> |
 | Azure Document Intelligence | `extract` | <StatusBadge status="Planned" /> |
 | OFAC sanctions (broader coverage) | `external` | <StatusBadge status="Planned" /> |
 | pgvector | `match` / `policy` | <StatusBadge status="Planned" /> |
 
-**`calc` tools are implemented in pure Go** and are available now. <StatusBadge status="Implemented now" />
+**`calc` arithmetic operations are implemented in pure Go** and are available now. They run through the kernel's derivation engine (`kernel/public/derive`) rather than through the agent-facing `ToolBackend` registry dispatch surface — `calc` is not a registered `ToolBackend` and does not use `MintablePaths`. <StatusBadge status="Implemented now" />
 
 ---
 
