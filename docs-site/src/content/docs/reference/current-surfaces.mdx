@@ -57,8 +57,8 @@ All packages are under `github.com/provenant/provenant/…` and are <StatusBadge
 |---|---|---|
 | `extract.json` | `kernel/public/extractjson` | <StatusBadge status="Implemented now" /> |
 | `extract.csv_rows` | `kernel/public/extractcsvrows` | <StatusBadge status="Implemented now" /> |
-| `extract.spreadsheet` | `kernel/public/extractspreadsheet` | <StatusBadge status="Implemented now" /> |
-| `extract.jsonl` | `kernel/public/extractjsonl` | <StatusBadge status="Implemented now" /> |
+| `extract.spreadsheet` | `kernel/public/extractspreadsheet` | <StatusBadge status="Implemented now" /> (exercised via `reconcile`; not wired to `read-mint-bundle`) |
+| `extract.jsonl` | `kernel/public/extractjsonl` | <StatusBadge status="Implemented now" /> (exercised via `reconcile`; not wired to `read-mint-bundle`) |
 | `extract.bank_statement` | — | <StatusBadge status="Planned" /> |
 | `extract.invoice` | — | <StatusBadge status="Planned" /> |
 | `extract.receipt` | — | <StatusBadge status="Planned" /> |
@@ -107,7 +107,6 @@ Document-AI readers (`bank_statement`, `invoice`, `receipt`, `kv_pairs`) are spe
 | Mode A `submit_answer` enforcement | <StatusBadge status="Architecture contract" /> |
 | Mode B / MCP host-channel text | <StatusBadge status="Architecture contract" /> |
 | Runtime storage bindings (SQLite/Postgres/S3) | <StatusBadge status="Architecture contract" /> |
-| Internally tamper-evident audit chain | <StatusBadge status="Architecture contract" /> |
 
 ---
 
