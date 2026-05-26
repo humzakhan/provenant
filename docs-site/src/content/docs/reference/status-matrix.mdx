@@ -1,0 +1,64 @@
+---
+title: Status Matrix
+description: Compact launch matrix for implemented, contracted, planned, and deferred Provenant surfaces.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" />
+
+This matrix is the overclaim guard for the launch docs. Row labels describe the current repository evidence or the architecture status, not a hosted product promise.
+
+## Label Definitions
+
+- <StatusBadge status="Implemented now" /> verified by current code, examples, tests, or commands.
+- <StatusBadge status="Architecture contract" /> specified in architecture docs but not necessarily exposed as a current user workflow.
+- <StatusBadge status="Planned" /> expected work, not current behavior.
+- <StatusBadge status="Deferred" /> explicitly out of current phase or v0 scope.
+
+## Matrix
+
+| Surface | Status | Current public wording |
+|---|---|---|
+| Go kernel provenance path | <StatusBadge status="Implemented now" /> | Current code mints tokens from captured reads and emits bundle bytes. |
+| `go test ./...` repository check | <StatusBadge status="Implemented now" /> | Primary verification command from the repository README. |
+| CLI `read-mint-bundle` with `extract.json` | <StatusBadge status="Implemented now" /> | Current quickstart command for one JSON source, one token, and one bundle. |
+| CLI `reconcile` fixture | <StatusBadge status="Implemented now" /> | Current deterministic CSV/XLSX fixture, not a complete reconciliation product. |
+| Reconciliation ZIP artifacts | <StatusBadge status="Implemented now" /> | `report.md`, `report.json`, `mismatches.csv`, `captured_reads.json`, `tokens.json`, `audit.jsonl`, `bundle.json`, `manifest.json`. |
+| Derivation graph demo | <StatusBadge status="Implemented now" /> | Current test-backed demo with committed CSV data, golden bundle, and golden trace. |
+| CLI `verify` and `replay` | <StatusBadge status="Implemented now" /> | Top-level commands in `access/cli`, covered by fixture tests and aligned README quickstart wording. |
+| Bundle `Verify` and `Replay` | <StatusBadge status="Implemented now" /> | Current Go API in `kernel/public/bundle`; CLI `verify` and `replay` call the same implemented bundle path. |
+| Additional low-level CLI verbs in `access/cli` | <StatusBadge status="Implemented now" /> | Present in code/tests, but full public reference is deferred to the current-surfaces page. |
+| Internally tamper-evident audit chain | <StatusBadge status="Implemented now" /> | Hash-chain verification can detect internal edits to bundle/audit bytes. |
+| External notarization or third-party witness | <StatusBadge status="Deferred" /> | Not present in v0. Do not call v0 evidence externally attested or tamper-proof. |
+| Mode A `submit_answer` enforcement | <StatusBadge status="Architecture contract" /> | Required shape for hard non-bypassable regulated output. |
+| Mode B / MCP host-channel text | <StatusBadge status="Architecture contract" /> | Marker verification is necessary, but v0 host conformance is self-declared; untested hosts can complete as `host_text_only`. |
+| Production MCP packaging and marketplace connector flows | <StatusBadge status="Planned" /> | Architecture docs describe the surface; do not present it as shipped by this quickstart. |
+| HTTP reconciliation endpoint | <StatusBadge status="Planned" /> | README explicitly says no current `POST /v1/reconcile` endpoint. |
+| Runtime SQLite/Postgres/S3 bindings | <StatusBadge status="Architecture contract" /> | Storage is a deployment concern outside the kernel; packaging details are not part of this slice. |
+| Non-Go bindings | <StatusBadge status="Deferred" /> | Future binding work; v0 embedded path is Go-only. |
+| Hosted registry and skill-pack signing beyond local digest status | <StatusBadge status="Deferred" /> | Do not claim hosted registry or full signing as current behavior. |
+| Custom validators, WASM, or plugin loading | <StatusBadge status="Deferred" /> | v0 uses built-in validators and normalizers. |
+| Complete end-user reconciliation product | <StatusBadge status="Deferred" /> | Current reconciliation is a fixture, not a product with inference, UI, or fuzzy matching. |
+| Regulatory interpretation | <StatusBadge status="Deferred" /> | Docs provide context, not legal advice or regulatory approval. |
+
+## Maintenance Rules
+
+- Use one of the four labels above near the top of every capability page.
+- Add source references for every capability claim.
+- Prefer `internally tamper-evident`; do not use `tamper-proof`.
+- Treat Mode B host text as scratch unless `submit_answer` passed and the marker verifies against the audit chain or audit pack; require Mode A when unsigned host text is unacceptable.
+- Keep regulatory language as context, not legal advice.
+- Keep launch IA at or below 15 public pages.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current implemented examples and explicit non-support list.' },
+  { label: 'docs/KNOWN_TRADE_OFFS.md', href: 'https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md', note: 'Accepted v0 limitations.' },
+  { label: 'architecture/OVERVIEW.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/OVERVIEW.md', note: 'Library, runtime, access-surface, and storage boundaries.' },
+  { label: 'architecture/subsystems/harness.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/harness.md', note: 'Mode A and Mode B enforcement boundary.' },
+  { label: 'architecture/adapters/mcp.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adapters/mcp.md', note: 'MCP limits and attestation wording.' },
+  { label: 'access/cli', href: 'https://github.com/provenant/provenant/tree/main/access/cli', note: 'Current CLI code surface.' },
+]} />

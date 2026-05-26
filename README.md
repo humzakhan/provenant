@@ -192,7 +192,7 @@ Note: `extract.csv_rows` and `extract.spreadsheet` are available as kernel reade
 
 ## Verifying a Bundle
 
-`bundle.Verify` and `bundle.Replay` are Go API only today. There is no CLI verb for standalone bundle verification. The CLI tests exercise both in [`access/cli`](access/cli).
+`bundle.Verify` and `bundle.Replay` are available through Go APIs and the top-level `verify` and `replay` CLI commands in [`access/cli`](access/cli). CLI tests cover both commands.
 
 To verify or replay a bundle in Go:
 

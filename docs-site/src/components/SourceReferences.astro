@@ -1,0 +1,25 @@
+---
+interface SourceReference {
+  href: string;
+  label: string;
+  note: string;
+}
+
+interface Props {
+  items?: SourceReference[];
+}
+
+const { items = [] } = Astro.props;
+---
+
+<section class="source-references">
+  <h2 id="source-references">Source references</h2>
+  <div class="source-ref-grid">
+    {items.map((item) => (
+      <a class="source-ref-card" href={item.href}>
+        <strong>{item.label}</strong>
+        <span>{item.note}</span>
+      </a>
+    ))}
+  </div>
+</section>
