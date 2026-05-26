@@ -2,3 +2,12 @@
 *.swp
 .idea/
 .vscode/
+docs-site/node_modules/
+docs-site/dist/
+docs-site/.astro/
+docs-site/.starlight/
+docs-site/.env
+docs-site/.env.*
+docs-site/*.local
+docs-site/*.log
+docs-site/logs/

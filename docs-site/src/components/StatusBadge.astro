@@ -1,0 +1,10 @@
+---
+interface Props {
+  status: 'Implemented now' | 'Architecture contract' | 'Planned' | 'Deferred';
+}
+
+const { status } = Astro.props;
+const className = `status-badge status-${String(status).toLowerCase().replaceAll(' ', '-')}`;
+---
+
+<span class={className}>{status}</span>
