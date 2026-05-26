@@ -55997,7 +55997,8 @@ var srcCards = [
     name: "fixture://broken/expenses.csv",
     ext: "csv",
     sourceID: "row\\u003D300-300 col\\u003Damount",
-    sourcePath: "",
+    sourcePath: "fixture://broken/expenses.csv",
+    localHref: "",
     sha256: "55434143aea14b98…"
   },
   
@@ -56005,7 +56006,8 @@ var srcCards = [
     name: "fixture://broken/payroll.csv",
     ext: "csv",
     sourceID: "row\\u003D93-93 col\\u003Dbonus",
-    sourcePath: "",
+    sourcePath: "fixture://broken/payroll.csv",
+    localHref: "",
     sha256: "b917b2d0bbd86f7e…"
   },
   
@@ -56013,7 +56015,8 @@ var srcCards = [
     name: "fixture://broken/refunds.csv",
     ext: "csv",
     sourceID: "row\\u003D39-39 col\\u003Damount",
-    sourcePath: "",
+    sourcePath: "fixture://broken/refunds.csv",
+    localHref: "",
     sha256: "9f55962a5ece4603…"
   },
   
@@ -56021,7 +56024,8 @@ var srcCards = [
     name: "fixture://broken/revenue.csv",
     ext: "csv",
     sourceID: "row\\u003D73-73 col\\u003Damount",
-    sourcePath: "",
+    sourcePath: "fixture://broken/revenue.csv",
+    localHref: "",
     sha256: "68a8ce3338c835c9…"
   },
   
@@ -56036,8 +56040,8 @@ function openSlideOver(idx) {
   var d = srcCards[idx];
   if (!d) { return; }
   var fileLink = '';
-  if (d.sourcePath && d.sourcePath.indexOf('/') === 0) {
-    fileLink = '<a href="file://' + d.sourcePath + '" style="color:var(--green)">Open file &rarr;</a>';
+  if (d.localHref) {
+    fileLink = '<a href="' + escH(d.localHref) + '" style="color:var(--green)">Open file &rarr;</a>';
   }
   slideContent.innerHTML =
     '<div class="slide-over-header">' +

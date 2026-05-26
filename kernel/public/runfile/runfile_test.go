@@ -16,12 +16,12 @@ import (
 	"testing"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/derive"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
-	"github.com/provenant/provenant/kernel/public/runfile"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/derive"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 // ---------------------------------------------------------------------------

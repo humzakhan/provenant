@@ -10,8 +10,8 @@ import (
 	"strings"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/reconcile/request"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/reconcile/request"
 )
 
 func TestRouteSupportedFormats(t *testing.T) {

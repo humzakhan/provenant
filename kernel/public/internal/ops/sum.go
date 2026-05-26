@@ -3,8 +3,8 @@ package ops
 import (
 	"fmt"
 
+	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/shopspring/decimal"
-	kernel "github.com/provenant/provenant/kernel/public"
 )
 
 // Sum implements the calc.sum op: 1..N inputs of the same unit,

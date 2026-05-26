@@ -10,11 +10,11 @@ import (
 	"strings"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/extractcsvrows"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/extractjsonl"
-	"github.com/provenant/provenant/kernel/public/extractspreadsheet"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/extractcsvrows"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/extractjsonl"
+	"github.com/humzakhan/provenant/kernel/public/extractspreadsheet"
 )
 
 func TestStructuredReaderPositiveMatrix(t *testing.T) {

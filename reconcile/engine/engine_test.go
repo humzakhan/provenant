@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/provenant/provenant/reconcile/request"
-	"github.com/provenant/provenant/reconcile/router"
+	"github.com/humzakhan/provenant/reconcile/request"
+	"github.com/humzakhan/provenant/reconcile/router"
 )
 
 func TestReconcileExactOutcomes(t *testing.T) {

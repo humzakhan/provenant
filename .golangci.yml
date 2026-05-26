@@ -1,0 +1,18 @@
+linters:
+  enable:
+    - govet
+    - staticcheck
+    - errcheck
+    - ineffassign
+    - unused
+    - gofmt
+    - goimports
+    - misspell
+  disable-all: false
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/humzakhan/provenant
+
+issues:
+  max-same-issues: 0

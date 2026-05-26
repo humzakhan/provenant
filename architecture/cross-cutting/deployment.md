@@ -23,8 +23,8 @@ The host application imports `kernel/public/...` as a Go module dependency, opti
 ```go
 // Minimal library-mode invocation
 import (
-    "github.com/provenant/provenant/kernel/public"
-    "github.com/provenant/provenant/kernel/public/memio"
+    "github.com/humzakhan/provenant/kernel/public"
+    "github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 io := memio.New()  // ships an in-process Store + AuditSink + BlobStore + TransactionalScope
@@ -42,7 +42,7 @@ If the host needs HITL pause/resume across process boundaries, the host serializ
 If you are embedding the kernel as a Go library, local dev is a four-line example. No daemons, no containers, no ports.
 
 ```go
-import "github.com/provenant/provenant/kernel/public"
+import "github.com/humzakhan/provenant/kernel/public"
 
 result, _ := kernel.Run(ctx, input)
 bundle := result.Bundle

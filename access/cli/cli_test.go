@@ -18,13 +18,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/provenant/provenant/access/cli"
-	"github.com/provenant/provenant/access/corepath"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
-	reconrequest "github.com/provenant/provenant/reconcile/request"
+	"github.com/humzakhan/provenant/access/cli"
+	"github.com/humzakhan/provenant/access/corepath"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
+	reconrequest "github.com/humzakhan/provenant/reconcile/request"
 )
 
 func TestRunnerReadMintBundleSmoke(t *testing.T) {

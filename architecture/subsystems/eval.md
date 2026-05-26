@@ -122,7 +122,7 @@ Case content:
   "draft_answer": {...},
   "final_answer": {...},
   "human_correction": {
-    "reviewer": "humza@example.com",
+    "reviewer": "reviewer@example.com",
     "changes": [
       {"field": "unmatched_residual", "before": "237.42", "after": "237.42", "kind": "approved"}
     ],

@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // rowShapedReaders is the closed set of reader names whose output is row-shaped

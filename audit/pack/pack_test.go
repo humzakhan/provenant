@@ -10,11 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/provenant/provenant/audit/pack"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
+	"github.com/humzakhan/provenant/audit/pack"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 // ---------------------------------------------------------------------------

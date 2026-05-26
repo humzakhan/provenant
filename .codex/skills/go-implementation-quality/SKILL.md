@@ -1,1 +1,0 @@
-../../../.agents/skills/go-implementation-quality/SKILL.md

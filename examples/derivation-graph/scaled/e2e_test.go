@@ -56,13 +56,13 @@ import (
 	"github.com/gowebpki/jcs"
 	"github.com/shopspring/decimal"
 
-	"github.com/provenant/provenant/access/cli"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/trace"
-	"github.com/provenant/provenant/audit/pack"
-	"github.com/provenant/provenant/audit/report"
-	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
+	"github.com/humzakhan/provenant/access/cli"
+	"github.com/humzakhan/provenant/audit/pack"
+	"github.com/humzakhan/provenant/audit/report"
+	"github.com/humzakhan/provenant/examples/derivation-graph/internal/testsupport"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/trace"
 )
 
 // fixedScaledTime is the deterministic clock used for all CLI invocations.
@@ -399,17 +399,17 @@ func TestScaledFauxbooksHTMLReport(t *testing.T) {
 
 // scaledTokenIDs holds the IDs of the key derived tokens produced by the demo.
 type scaledTokenIDs struct {
-	totalSalaries       string
-	totalBonuses        string
-	totalPayroll        string
-	totalExpenses       string
-	totalOpex           string
-	grossRevenueBatch1  string
-	grossRevenueBatch2  string
-	grossRevenue        string
-	totalRefunds        string
-	netRevenue          string
-	operatingIncome     string
+	totalSalaries      string
+	totalBonuses       string
+	totalPayroll       string
+	totalExpenses      string
+	totalOpex          string
+	grossRevenueBatch1 string
+	grossRevenueBatch2 string
+	grossRevenue       string
+	totalRefunds       string
+	netRevenue         string
+	operatingIncome    string
 }
 
 // runScaledDemo executes the full scaled derivation-graph CLI sequence and returns
@@ -528,7 +528,7 @@ func mintScaledCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath string, 
 // ---------------------------------------------------------------------------
 
 // TestScaledFauxbooksArtifact builds the pack and writes report.html (with
-// absolute file:// paths) plus the four source CSVs into the artifact directory.
+// relative source hrefs) plus the four source CSVs into the artifact directory.
 // Gated by BUILD_ARTIFACT=1 so it does not run on every CI invocation.
 // This test does NOT diff against a golden — it just writes the artifact directory.
 func TestScaledFauxbooksArtifact(t *testing.T) {
@@ -567,7 +567,7 @@ func TestScaledFauxbooksArtifact(t *testing.T) {
 	csvFiles := []string{"expenses.csv", "payroll.csv", "refunds.csv", "revenue.csv"}
 	testsupport.CopyDataDirToArtifact(t, dataDir, artifactDir, csvFiles...)
 
-	// Write report.html with absolute file:// paths.
+	// Write report.html with relative source hrefs (filenames co-located with the report).
 	if err := report.WriteArtifactReport(artifactDir, &doc); err != nil {
 		t.Fatalf("WriteArtifactReport: %v", err)
 	}

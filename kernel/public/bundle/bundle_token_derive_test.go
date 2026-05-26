@@ -12,10 +12,10 @@ import (
 	"time"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 // buildDeriveState constructs a bundle.State that contains one real leaf

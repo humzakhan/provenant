@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/internal/derivation"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/internal/derivation"
 )
 
 // validPayload returns a representative well-formed payload for table-driven use.

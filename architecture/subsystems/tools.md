@@ -24,7 +24,7 @@ Status: **v0 / load-bearing**
 
 ## Tool interface
 
-The kernel-public type name for this interface is `ToolBackend` (matches [`architecture.md`](../OVERVIEW.md) section 3.1 and [`implementation-plan.md`](../../.planning/implementation-plan.md) Phase 0 public-surface list); the heading uses the prose term "tool" but the Go type is `ToolBackend`.
+The kernel-public type name for this interface is `ToolBackend` (matches [`architecture.md`](../OVERVIEW.md) section 3.1); the heading uses the prose term "tool" but the Go type is `ToolBackend`.
 
 ```go
 package tools
@@ -33,7 +33,7 @@ import (
     "context"
     "encoding/json"
 
-    "github.com/provenant/provenant/internal/provenance"
+    "github.com/humzakhan/provenant/internal/provenance"
 )
 
 type ToolBackend interface {

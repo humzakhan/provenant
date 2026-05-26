@@ -13,12 +13,12 @@ import (
 	"testing"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/memio"
-	"github.com/provenant/provenant/reconcile/engine"
-	"github.com/provenant/provenant/reconcile/provenance"
-	"github.com/provenant/provenant/reconcile/router"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/memio"
+	"github.com/humzakhan/provenant/reconcile/engine"
+	"github.com/humzakhan/provenant/reconcile/provenance"
+	"github.com/humzakhan/provenant/reconcile/router"
 )
 
 func TestWriteIncludesRequiredEntriesAndExactBundle(t *testing.T) {

@@ -3,8 +3,8 @@ package router
 import (
 	"encoding/json"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/reconcile/request"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/reconcile/request"
 )
 
 const defaultMaxFileBytes int64 = 8 << 20

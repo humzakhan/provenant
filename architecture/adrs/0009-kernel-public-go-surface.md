@@ -6,7 +6,7 @@ Supersedes: the "Out of scope" clause of [ADR-0001](0001-go-as-kernel-language.m
 
 ## Context
 
-[ADR-0001](0001-go-as-kernel-language.md) was written when "code-level embedding" was explicitly out of scope. Subsequently, the thesis was sharpened (see [`thesis.md`](../../docs/thesis.md) "Dual-mode pluggability is a first-class property") to require that Provenant be usable in two architecturally distinct shapes: runtime-level (MCP/HTTP/CLI) and code-level (embedded library/SDK). [`architecture.md`](../OVERVIEW.md) sections 3.1 and 3.4 codify a kernel public surface that consumers can call directly as a Go library; a deferred future phase in [`implementation-plan.md`](../../.planning/implementation-plan.md) covers non-Go binding work (FFI or sidecar). The ADR-0001 out-of-scope clause is now in direct contradiction with the spec.
+[ADR-0001](0001-go-as-kernel-language.md) was written when "code-level embedding" was explicitly out of scope. Subsequently, the thesis was sharpened (see [`thesis.md`](../../docs/thesis.md) "Dual-mode pluggability is a first-class property") to require that Provenant be usable in two architecturally distinct shapes: runtime-level (MCP/HTTP/CLI) and code-level (embedded library/SDK). [`architecture.md`](../OVERVIEW.md) sections 3.1 and 3.4 codify a kernel public surface that consumers can call directly as a Go library; a deferred future phase covers non-Go binding work (FFI or sidecar). The ADR-0001 out-of-scope clause is now in direct contradiction with the spec.
 
 ## Decision
 
@@ -14,7 +14,7 @@ The Provenant kernel provides a **Go-only public API** as a v0 first-class surfa
 
 Non-Go hosts reach the kernel through the runtime layer in v0 (sidecar / MCP / HTTP). A non-Go binding (FFI or strict-latency sidecar) is a Phase 5 deliverable. The choice between FFI and sidecar is gated on Phase 0-4 ergonomics learnings and is itself an ADR concern (Phase 5a).
 
-The kernel's public Go API is the surface that the import-guard check ([`implementation-plan.md`](../../.planning/implementation-plan.md) Phase 0) constrains: no `net/*`, `database/sql`, MCP/HTTP/CLI types are permitted in any package transitively reachable from the public API.
+The kernel's public Go API is the surface that the import-guard check constrains: no `net/*`, `database/sql`, MCP/HTTP/CLI types are permitted in any package transitively reachable from the public API.
 
 ## Rationale
 
@@ -37,11 +37,11 @@ The kernel's public Go API is the surface that the import-guard check ([`impleme
 
 **Keep the ADR-0001 out-of-scope clause; add a private internal Go API for the runtime layer only.** Rejected — see Rationale: two parallel surfaces silently diverge, and the thesis claim depends on them being the same.
 
-**Defer Go public surface to v0.5.** Rejected - Phase 0 of [`implementation-plan.md`](../../.planning/implementation-plan.md) already carves out the public surface as the first phase. Deferral would re-do that work and stall every downstream Go-host integration partner.
+**Defer Go public surface to v0.5.** Rejected — the public surface was carved out as the first phase milestone. Deferral would re-do that work and stall every downstream Go-host integration partner.
 
 ## References
 
 - [`thesis.md`](../../docs/thesis.md) — dual-mode pluggability requirement
 - [`architecture.md`](../OVERVIEW.md) §3.1, §3.4, §5.1 — kernel public surface and runtime/embedded equivalence
-- [`implementation-plan.md`](../../.planning/implementation-plan.md) Phase 0 and Deferred Future Phases - kernel public surface carve-out; non-Go binding
+- [`ROADMAP.md`](../../ROADMAP.md) — phased build plan; kernel public surface carve-out; non-Go binding (deferred)
 - [ADR-0001](0001-go-as-kernel-language.md) — superseded out-of-scope clause

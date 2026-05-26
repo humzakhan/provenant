@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/provenant/provenant/access/cli"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/access/cli"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // newAuditHTMLRunner returns a Runner with a fixed clock for audit-html tests.

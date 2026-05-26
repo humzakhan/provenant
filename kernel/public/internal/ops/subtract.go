@@ -3,7 +3,7 @@ package ops
 import (
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Subtract implements the calc.subtract op: exactly 2 inputs, same unit,

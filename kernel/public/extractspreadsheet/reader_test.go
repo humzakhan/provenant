@@ -12,8 +12,8 @@ import (
 	"strings"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/internal/testxlsx"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/internal/testxlsx"
 )
 
 func TestReaderReadRejectsDuplicateWorkbookRelationshipIDs(t *testing.T) {

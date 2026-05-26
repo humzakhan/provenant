@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 const schemaVersion = "provenant.sources/v1"
@@ -45,17 +45,17 @@ type Registry struct {
 
 // registryDoc is the on-disk JSON shape of a sources config file.
 type registryDoc struct {
-	SchemaVersion string                `json:"schema_version"`
-	Sources       map[string]entryDoc   `json:"sources"`
+	SchemaVersion string              `json:"schema_version"`
+	Sources       map[string]entryDoc `json:"sources"`
 }
 
 // entryDoc is the on-disk JSON shape of one source entry.
 type entryDoc struct {
-	Reader     string                 `json:"reader"`
-	Path       string                 `json:"path"`
-	Selector   kernel.SourceSelector  `json:"selector"`
-	OutputPath string                 `json:"output_path"`
-	Unit       string                 `json:"unit,omitempty"`
+	Reader     string                `json:"reader"`
+	Path       string                `json:"path"`
+	Selector   kernel.SourceSelector `json:"selector"`
+	OutputPath string                `json:"output_path"`
+	Unit       string                `json:"unit,omitempty"`
 }
 
 // Load decodes a registry from r. The reader must contain a valid

@@ -2,6 +2,23 @@
 *.swp
 .idea/
 .vscode/
+
+# Go build artifacts
+*.test
+*.out
+/provenant
+/dist/
+/bin/
+
+# Test coverage
+coverage.txt
+coverage.html
+*.coverprofile
+
+# Environment files
+.env
+.env.*
+
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/provenant/provenant/access/sources"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/access/sources"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // ---------------------------------------------------------------------------
@@ -167,15 +167,15 @@ var missingFieldCases = []struct {
 }{
 	{
 		name: "missing_reader",
-		doc: `{"schema_version":"provenant.sources/v1","sources":{"s":{"path":"./f.csv","selector":{"row_window":"1:"},"output_path":"$.v"}}}`,
+		doc:  `{"schema_version":"provenant.sources/v1","sources":{"s":{"path":"./f.csv","selector":{"row_window":"1:"},"output_path":"$.v"}}}`,
 	},
 	{
 		name: "missing_path",
-		doc: `{"schema_version":"provenant.sources/v1","sources":{"s":{"reader":"extract.csv_rows","selector":{"row_window":"1:"},"output_path":"$.v"}}}`,
+		doc:  `{"schema_version":"provenant.sources/v1","sources":{"s":{"reader":"extract.csv_rows","selector":{"row_window":"1:"},"output_path":"$.v"}}}`,
 	},
 	{
 		name: "missing_output_path",
-		doc: `{"schema_version":"provenant.sources/v1","sources":{"s":{"reader":"extract.csv_rows","path":"./f.csv","selector":{"row_window":"1:"}}}}`,
+		doc:  `{"schema_version":"provenant.sources/v1","sources":{"s":{"reader":"extract.csv_rows","path":"./f.csv","selector":{"row_window":"1:"}}}}`,
 	},
 }
 

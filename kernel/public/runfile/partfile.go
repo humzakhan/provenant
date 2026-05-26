@@ -14,8 +14,8 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
 
 // partRecord is one line in the .part JSONL streaming file.
@@ -484,4 +484,3 @@ func auditHash(prevHash []byte, seq uint64, runID, tenantID string, kind kernel.
 	h.Write(hashInput)
 	return h.Sum(nil)
 }
-

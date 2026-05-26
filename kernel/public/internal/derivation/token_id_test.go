@@ -3,7 +3,7 @@ package derivation_test
 import (
 	"testing"
 
-	"github.com/provenant/provenant/kernel/public/internal/derivation"
+	"github.com/humzakhan/provenant/kernel/public/internal/derivation"
 )
 
 func TestDeriveTokenIDDeterministic(t *testing.T) {
@@ -54,11 +54,11 @@ func TestDeriveTokenIDDistinct(t *testing.T) {
 
 	// Each case differs by exactly one field from the base; every ID must be unique.
 	type vector struct {
-		name          string
-		run, tenant   string
-		op            string
-		inputs        []string
-		value, unit   string
+		name        string
+		run, tenant string
+		op          string
+		inputs      []string
+		value, unit string
 	}
 	tests := []vector{
 		{"base", "run_1", "tenant_1", "calc.add", []string{"tok_a", "tok_b"}, "200.000000000", "USD"},

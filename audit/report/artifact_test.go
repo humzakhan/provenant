@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/provenant/provenant/audit/pack"
-	"github.com/provenant/provenant/audit/report"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/audit/pack"
+	"github.com/humzakhan/provenant/audit/report"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // ---------------------------------------------------------------------------
@@ -84,8 +84,8 @@ func docWithFixturePath(t *testing.T, sourcePath string) *pack.Document {
 // ---------------------------------------------------------------------------
 
 // TestWriteArtifactReport_RewritesFixturePaths verifies that a fixture:// path
-// is rewritten to an absolute file:// path when the matching CSV is present
-// in the artifact directory.
+// is rewritten to a relative basename href when the matching CSV is present
+// in the artifact directory, producing href="foo.csv" (not file:// + abs path).
 func TestWriteArtifactReport_RewritesFixturePaths(t *testing.T) {
 	dir := t.TempDir()
 
@@ -110,11 +110,16 @@ func TestWriteArtifactReport_RewritesFixturePaths(t *testing.T) {
 	}
 	html := string(data)
 
-	// The absolute file:/// path (three slashes = file:// + /abs/path) must appear.
-	wantLink := "file://" + csvPath
-	if !strings.Contains(html, wantLink) {
+	// The relative basename must appear as an href (no file:// prefix).
+	wantHref := `href="foo.csv"`
+	if !strings.Contains(html, wantHref) {
 		t.Errorf("expected %q to appear in report.html; got (excerpt):\n%s",
-			wantLink, excerpt(html, "sourcePath"))
+			wantHref, excerpt(html, "sourcePath"))
+	}
+
+	// No absolute machine path should appear.
+	if strings.Contains(html, dir) {
+		t.Errorf("absolute artifact dir path %q should not appear in report.html", dir)
 	}
 
 	// The fixture:// URI must NOT appear in any href attribute.
@@ -151,15 +156,13 @@ func TestWriteArtifactReport_SkipsMissingFile(t *testing.T) {
 	}
 	html := string(data)
 
-	// No href or sourcePath pointing at bar.csv via file:// should appear.
-	// The JS template contains a literal 'file://' string as code — we check
-	// that the absolute path to bar.csv does not appear in any link or data.
-	if strings.Contains(html, "file:///") && strings.Contains(html, "bar.csv") {
-		t.Error("unexpected absolute file:/// link to missing bar.csv found in report.html")
+	// No href linking to bar.csv should appear since the file is not present.
+	if strings.Contains(html, `href="bar.csv"`) {
+		t.Error("unexpected href link to missing bar.csv found in report.html")
 	}
-	// Confirm the sourcePath JS field for the card is an empty string (not a path).
-	if strings.Contains(html, `sourcePath: "/`) && strings.Contains(html, "bar.csv") {
-		t.Error("sourcePath field contains an unexpected absolute path for missing bar.csv")
+	// The localHref JS field must be empty when the file is absent.
+	if strings.Contains(html, `localHref: "bar.csv"`) {
+		t.Error("localHref JS field is non-empty for missing bar.csv")
 	}
 
 	// fixture:// must not appear in any href.
@@ -169,21 +172,24 @@ func TestWriteArtifactReport_SkipsMissingFile(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// TestWriteArtifactReport_PreservesAbsolutePaths
+// TestWriteArtifactReport_OmitsPathNotInArtifactDir
 // ---------------------------------------------------------------------------
 
-// TestWriteArtifactReport_PreservesAbsolutePaths verifies that an already-absolute
-// SourcePath that exists on disk is left untouched.
-func TestWriteArtifactReport_PreservesAbsolutePaths(t *testing.T) {
-	// Write the source file at an absolute path outside of the artifact dir.
+// TestWriteArtifactReport_OmitsPathNotInArtifactDir verifies that a SourcePath
+// whose basename does not exist inside the artifact directory produces no link
+// (SourcePath is set to ""), even if the file exists elsewhere on disk.
+// WriteArtifactReport only links files co-located with report.html.
+func TestWriteArtifactReport_OmitsPathNotInArtifactDir(t *testing.T) {
+	// Write the source file at a path outside of the artifact dir.
 	srcDir := t.TempDir()
 	srcCSV := filepath.Join(srcDir, "real.csv")
 	if err := os.WriteFile(srcCSV, []byte("id,amount\n1,10.00\n"), 0o644); err != nil {
 		t.Fatalf("WriteFile(real.csv): %v", err)
 	}
 
+	// Artifact dir does NOT contain real.csv.
 	dir := t.TempDir()
-	doc := docWithFixturePath(t, srcCSV) // already absolute
+	doc := docWithFixturePath(t, srcCSV)
 
 	if err := report.WriteArtifactReport(dir, doc); err != nil {
 		t.Fatalf("WriteArtifactReport: %v", err)
@@ -195,9 +201,13 @@ func TestWriteArtifactReport_PreservesAbsolutePaths(t *testing.T) {
 	}
 	html := string(data)
 
-	wantLink := "file://" + srcCSV
-	if !strings.Contains(html, wantLink) {
-		t.Errorf("expected %q in report.html when SourcePath is already absolute", wantLink)
+	// No href="real.csv" should appear since real.csv is not in dir.
+	if strings.Contains(html, `href="real.csv"`) {
+		t.Error("unexpected link to real.csv that is not co-located in the artifact dir")
+	}
+	// No machine-specific absolute path should appear.
+	if strings.Contains(html, srcDir) {
+		t.Errorf("absolute srcDir path %q should not appear in report.html", srcDir)
 	}
 }
 

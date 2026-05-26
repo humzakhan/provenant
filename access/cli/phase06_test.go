@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/provenant/provenant/access/cli"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/access/cli"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
 
 func newPhase06Runner() cli.Runner {

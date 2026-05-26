@@ -1,1 +1,0 @@
-../../../.agents/skills/go-io-performance/SKILL.md

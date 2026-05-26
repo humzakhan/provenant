@@ -7,9 +7,9 @@ import (
 	"io"
 	"os"
 
-	"github.com/provenant/provenant/access/sources"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/runfile"
+	"github.com/humzakhan/provenant/access/sources"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 // readMintRequest is the JSON body for the `read-mint` verb.

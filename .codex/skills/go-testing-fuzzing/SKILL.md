@@ -1,1 +1,0 @@
-../../../.agents/skills/go-testing-fuzzing/SKILL.md

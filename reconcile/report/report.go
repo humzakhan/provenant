@@ -13,10 +13,10 @@ import (
 	"sort"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/reconcile/engine"
-	"github.com/provenant/provenant/reconcile/provenance"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/reconcile/engine"
+	"github.com/humzakhan/provenant/reconcile/provenance"
 )
 
 var zipModified = time.Date(1980, 1, 1, 0, 0, 0, 0, time.UTC)

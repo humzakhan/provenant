@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"io"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/derive"
-	"github.com/provenant/provenant/kernel/public/runfile"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/derive"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 const maxCalcInputs = 1000

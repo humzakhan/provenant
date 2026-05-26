@@ -1,37 +1,31 @@
 package report
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
-	"github.com/provenant/provenant/audit/pack"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/audit/pack"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
-// WriteArtifactReport renders an HTML report for doc where any non-absolute
-// SourcePath (e.g. "fixture://foo.csv") is rewritten to an absolute path
-// under dir, matching files copied alongside the report. The rendered bytes
-// are written to filepath.Join(dir, "report.html").
+// WriteArtifactReport renders an HTML report for doc where any SourcePath
+// referencing a file co-located with the report is rewritten to a relative
+// basename (e.g. "payroll.csv"), so that href links in the HTML resolve
+// correctly relative to the report's own directory when opened in a browser.
+// The rendered bytes are written to filepath.Join(dir, "report.html").
 //
 // Semantics:
 //   - dir must be an existing directory (returns error otherwise).
 //   - The input doc is not mutated; a shallow clone of CapturedReads is used.
-//   - For each CapturedRead whose SourcePath is not filepath.IsAbs()-true,
-//     the path is replaced with filepath.Join(dir, filepath.Base(stripScheme(SourcePath))).
-//     If the resulting file does not exist on disk, the path is left empty
-//     (so the renderer skips the file:// link gracefully).
+//   - For each CapturedRead, the basename is derived by stripping any scheme
+//     prefix (e.g. "fixture://foo.csv" → "foo.csv") and taking filepath.Base.
+//     If a file with that basename exists beside the report in dir, SourcePath
+//     is set to just that basename (a relative path). Otherwise it is set to ""
+//     so the renderer renders no link.
 //   - Calls RenderHTML on the cloned doc and writes to filepath.Join(dir, "report.html").
 func WriteArtifactReport(dir string, doc *pack.Document) error {
-	// Resolve dir to an absolute path so all generated file:// links are absolute.
-	absDir, err := filepath.Abs(dir)
-	if err != nil {
-		return fmt.Errorf("report.WriteArtifactReport: resolve dir %q: %w", dir, err)
-	}
-	dir = absDir
-
 	info, err := os.Stat(dir)
 	if err != nil {
 		return fmt.Errorf("report.WriteArtifactReport: stat dir %q: %w", dir, err)
@@ -46,14 +40,7 @@ func WriteArtifactReport(dir string, doc *pack.Document) error {
 	copy(reads, doc.CapturedReads)
 
 	for i, cr := range reads {
-		if filepath.IsAbs(cr.SourcePath) {
-			// Already absolute — check existence; if present, keep as-is.
-			if _, err := os.Stat(cr.SourcePath); errors.Is(err, os.ErrNotExist) {
-				reads[i].SourcePath = ""
-			}
-			continue
-		}
-		// Non-absolute (e.g. "fixture://foo.csv"): strip scheme and derive local path.
+		// Derive the local basename by stripping any scheme prefix.
 		base := filepath.Base(stripScheme(cr.SourcePath))
 		if base == "" || base == "." {
 			reads[i].SourcePath = ""
@@ -65,7 +52,9 @@ func WriteArtifactReport(dir string, doc *pack.Document) error {
 			reads[i].SourcePath = ""
 			continue
 		}
-		reads[i].SourcePath = candidate
+		// Set to relative basename only — the HTML renderer produces href="payroll.csv"
+		// which resolves relative to report.html in the same directory.
+		reads[i].SourcePath = base
 	}
 	cloned.CapturedReads = reads
 

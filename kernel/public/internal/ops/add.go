@@ -3,7 +3,7 @@ package ops
 import (
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Add implements the calc.add op: exactly 2 inputs, same unit,

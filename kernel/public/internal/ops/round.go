@@ -3,7 +3,7 @@ package ops
 import (
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Round implements the round.half_even op: exactly 1 input.

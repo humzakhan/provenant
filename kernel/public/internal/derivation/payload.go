@@ -10,7 +10,7 @@ import (
 	"io"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Errors returned by Decode and Encode when the payload is malformed.

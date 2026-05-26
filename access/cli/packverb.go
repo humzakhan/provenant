@@ -8,7 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
-	auditpack "github.com/provenant/provenant/audit/pack"
+	auditpack "github.com/humzakhan/provenant/audit/pack"
 )
 
 // packResponse is written to stdout on `pack` success.

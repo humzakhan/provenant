@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/reconcile/request"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/reconcile/request"
 )
 
 func resolveSelector(file request.FileConfig, source []byte) (kernel.SourceSelector, error) {
