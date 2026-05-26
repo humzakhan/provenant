@@ -20,15 +20,15 @@ This page maps the boundary between Provenant's pure kernel, the optional runtim
 
 <StatusBadge status="Implemented now" />
 
-The kernel is the pure provenance engine. Its public Go surface (ADR-0009) has **no I/O at the public boundary** — no `net/*`, no `database/sql`, no DB driver imports anywhere transitively reachable from `kernel/`. This is not a convention: it is enforced by a CI import-guard check and a public-API snapshot test. The kernel mints provenance tokens, runs guards and validators, and emits a self-contained audit bundle as bytes.
+The kernel is the pure provenance engine. Its public Go surface (ADR-0009) has **no I/O at the public boundary** — no `net/*`, no `database/sql`, no DB driver imports anywhere transitively reachable from `kernel/`. This is not a convention: it is enforced by a CI import-guard check. The kernel mints provenance tokens, runs guards and validators, and emits a self-contained audit bundle as bytes.
 
-**All I/O is injected.** The kernel defines six interfaces that the host provides at initialization:
+**All I/O is injected.** The kernel defines seven interfaces that the host provides at initialization:
 
 | Interface | Responsibility |
 |---|---|
 | `Store` | Token and run persistence. |
 | `AuditSink` | Audit entry persistence. |
-| `BlobStore` | Binary blob storage for captured reads. |
+| `CapturedReadStore` | Records and reads captured source-read evidence for a run. |
 | `TransactionalScope` | Transactional boundaries across `Store` and `AuditSink` writes. |
 | `SourceResolver` | Resolves a logical source path to in-memory source bytes. |
 | `SourceReader` | Reads and canonicalizes a source; returns a `ReadResult` carrying the extracted output and a `CapturedRead`. |
@@ -86,6 +86,8 @@ host.Persist(bundle) → disk | S3 | a DB column | nowhere
 **Why the storage choice does not change the audit evidence.** The deterministic audit-chain bytes are a function of the kernel inputs — source reads, token minting order, validation outcomes. They do not depend on which storage backend the host uses. Byte-identity is between access surfaces, not between databases.
 
 **ADR-0008 supersession.** ADR-0008 ("Postgres as the canonical store") is superseded by ADR-0011. Postgres is now one optional runtime binding, not a kernel requirement. The ADR-0008 schema rationale remains useful reference for anyone writing a Postgres binding, but Postgres is not required to run the kernel.
+
+**No persistent binding required for stateless mode.** A deployment that runs with HITL disabled — including the batch bundle-emitting CLI mode described in ADR-0011 and the OVERVIEW — needs no persistent storage binding at all. It runs against the in-memory binding (`memio`), the kernel writes nothing to disk, and the bundle bytes are the sole output. The host decides whether to write them anywhere.
 
 **Non-Go bindings** are <StatusBadge status="Deferred" />. In v0, the embedded path is Go-only. Non-Go hosts use the runtime layer via MCP or HTTP sidecar.
 
