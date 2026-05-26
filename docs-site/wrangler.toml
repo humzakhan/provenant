@@ -1,0 +1,5 @@
+# Cloudflare Pages project config for the Provenant docs site.
+# Deployed as a static site via `npm run deploy` (wrangler pages deploy).
+# `name` must match your Cloudflare Pages project name exactly — a mismatch causes a deploy-time error.
+name = "provenant-docs"
+pages_build_output_dir = "dist"

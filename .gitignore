@@ -8,6 +8,7 @@ docs-site/.astro/
 docs-site/.starlight/
 docs-site/.env
 docs-site/.env.*
+docs-site/.wrangler/
 docs-site/*.local
 docs-site/*.log
 docs-site/logs/
