@@ -28,7 +28,10 @@ export default defineConfig({
         },
         {
           label: 'Guides',
-          items: [{ label: 'Review Audit Evidence', link: '/guides/review-audit-evidence/' }],
+          items: [
+            { label: 'Review Audit Evidence', link: '/guides/review-audit-evidence/' },
+            { label: 'Integrate the Go Library', link: '/guides/integrate-go-library/' },
+          ],
         },
         {
           label: 'Reference',
