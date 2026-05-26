@@ -422,7 +422,8 @@ var srcCards = [
     name: "data.json",
     ext: "json",
     sourceID: "ptr\\u003D/a",
-    sourcePath: "",
+    sourcePath: "fixture://data.json",
+    localHref: "",
     sha256: "aaaa000000000000…"
   },
   
@@ -437,8 +438,8 @@ function openSlideOver(idx) {
   var d = srcCards[idx];
   if (!d) { return; }
   var fileLink = '';
-  if (d.sourcePath && d.sourcePath.indexOf('/') === 0) {
-    fileLink = '<a href="file://' + d.sourcePath + '" style="color:var(--green)">Open file &rarr;</a>';
+  if (d.localHref) {
+    fileLink = '<a href="' + escH(d.localHref) + '" style="color:var(--green)">Open file &rarr;</a>';
   }
   slideContent.innerHTML =
     '<div class="slide-over-header">' +

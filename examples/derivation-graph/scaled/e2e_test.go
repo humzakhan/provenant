@@ -528,7 +528,7 @@ func mintScaledCSVRowTokens(t *testing.T, runner cli.Runner, bundlePath string, 
 // ---------------------------------------------------------------------------
 
 // TestScaledFauxbooksArtifact builds the pack and writes report.html (with
-// absolute file:// paths) plus the four source CSVs into the artifact directory.
+// relative source hrefs) plus the four source CSVs into the artifact directory.
 // Gated by BUILD_ARTIFACT=1 so it does not run on every CI invocation.
 // This test does NOT diff against a golden — it just writes the artifact directory.
 func TestScaledFauxbooksArtifact(t *testing.T) {
@@ -567,7 +567,7 @@ func TestScaledFauxbooksArtifact(t *testing.T) {
 	csvFiles := []string{"expenses.csv", "payroll.csv", "refunds.csv", "revenue.csv"}
 	testsupport.CopyDataDirToArtifact(t, dataDir, artifactDir, csvFiles...)
 
-	// Write report.html with absolute file:// paths.
+	// Write report.html with relative source hrefs (filenames co-located with the report).
 	if err := report.WriteArtifactReport(artifactDir, &doc); err != nil {
 		t.Fatalf("WriteArtifactReport: %v", err)
 	}

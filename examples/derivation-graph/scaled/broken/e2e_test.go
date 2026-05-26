@@ -783,7 +783,7 @@ func TestBrokenFauxbooksArtifact(t *testing.T) {
 	csvFiles := []string{"expenses.csv", "payroll.csv", "refunds.csv", "revenue.csv"}
 	testsupport.CopyDataDirToArtifact(t, brokenDataDir, artifactDir, csvFiles...)
 
-	// Write report.html with absolute file:// paths.
+	// Write report.html with relative source hrefs (filenames co-located with the report).
 	if err := report.WriteArtifactReport(artifactDir, &doc); err != nil {
 		t.Fatalf("WriteArtifactReport: %v", err)
 	}

@@ -29,17 +29,7 @@ func RenderHTML(doc *pack.Document) ([]byte, error) {
 		return nil, fmt.Errorf("report: build template data: %w", err)
 	}
 
-	tmpl, err := template.New("audit").Funcs(template.FuncMap{
-		"fileURL": func(path string) template.URL {
-			if path == "" || !filepath.IsAbs(path) {
-				return template.URL("")
-			}
-			return template.URL("file://" + path)
-		},
-		"hasFileURL": func(path string) bool {
-			return path != "" && filepath.IsAbs(path)
-		},
-	}).Parse(htmlTemplate)
+	tmpl, err := template.New("audit").Parse(htmlTemplate)
 	if err != nil {
 		return nil, fmt.Errorf("report: parse template: %w", err)
 	}
@@ -117,8 +107,9 @@ type treeNode struct {
 	Contribution   string
 	IndentPx       int
 	IsLeaf         bool
-	SourcePath     string // absolute path if available, "" otherwise
+	SourcePath     string // raw path from CapturedRead (may include scheme)
 	SourceName     string
+	LocalHref      string // relative href for browser link; empty if no local file or scheme URI
 }
 
 // sourceCard represents one source file in the visual card grid (Plain tab).
@@ -126,11 +117,12 @@ type sourceCard struct {
 	Name       string
 	Ext        string       // file extension without dot, e.g. "csv"
 	SourceID   string       // selector or tool identifier
-	SourcePath string       // absolute path for file:// link (may be empty)
+	SourcePath string       // raw path from CapturedRead (may include scheme)
 	SHA256     string       // truncated sha256
 	RowCount   string       // human description of rows
 	Total      string       // sum value if available
 	Index      int          // 0-based for JS panel id
+	LocalHref  string       // relative href for browser link; empty if no local file or scheme URI
 }
 
 type capturedReadRow struct {
@@ -292,18 +284,15 @@ func buildTemplateData(doc *pack.Document) (*templateData, error) {
 			} else {
 				ext = "file"
 			}
-			absPath := ""
-			if filepath.IsAbs(cr.SourcePath) {
-				absPath = cr.SourcePath
-			}
 			card := &sourceCard{
 				Name:       name,
 				Ext:        ext,
 				SourceID:   sel,
-				SourcePath: absPath,
+				SourcePath: cr.SourcePath,
 				SHA256:     shaShort,
 				RowCount:   "—",
 				Index:      len(cardOrder),
+				LocalHref:  localHref(cr.SourcePath),
 			}
 			cardsByKey[key] = card
 			cardOrder = append(cardOrder, key)
@@ -482,9 +471,7 @@ func buildDerivationTree(rootID string, tokensByID map[string]kernel.Token, read
 			// Leaf token: try to find source path from the captured read.
 			if tok.Source.CapturedReadID != "" {
 				if cr, found := readsByID[tok.Source.CapturedReadID]; found {
-					if filepath.IsAbs(cr.SourcePath) {
-						sourcePath = cr.SourcePath
-					}
+					sourcePath = cr.SourcePath
 					if cr.SourceName != "" {
 						sourceName = cr.SourceName
 					} else {
@@ -493,7 +480,7 @@ func buildDerivationTree(rootID string, tokensByID map[string]kernel.Token, read
 				}
 			}
 			// Fallback: use TokenSource.SourcePath.
-			if sourcePath == "" && filepath.IsAbs(tok.Source.SourcePath) {
+			if sourcePath == "" && tok.Source.SourcePath != "" {
 				sourcePath = tok.Source.SourcePath
 			}
 		}
@@ -508,6 +495,7 @@ func buildDerivationTree(rootID string, tokensByID map[string]kernel.Token, read
 			IsLeaf:         isLeaf,
 			SourcePath:     sourcePath,
 			SourceName:     sourceName,
+			LocalHref:      localHref(sourcePath),
 		})
 		if tok.Derivation == nil {
 			return
@@ -598,6 +586,18 @@ func formatSelector(s kernel.SourceSelector) string {
 		return "bytes=" + s.ByteSpan
 	}
 	return "(default)"
+}
+
+// localHref returns path as a relative href suitable for a browser link when
+// path is a plain filesystem path (no "://" scheme). If path is empty or
+// contains "://", it returns "" so the caller renders no link.
+// This distinguishes local files (e.g. "payroll.csv") from scheme URIs
+// (e.g. "fixture://payroll.csv") which must not produce clickable links.
+func localHref(path string) string {
+	if path == "" || strings.Contains(path, "://") {
+		return ""
+	}
+	return path
 }
 
 // buildAuditChainSection returns the per-entry rows and prev-hash continuity status.
@@ -834,8 +834,8 @@ button{font-family:inherit;cursor:pointer}
       <div class="src-card-name">{{.Name}}</div>
       <div class="src-card-id">{{.SourceID}}</div>
       <div class="src-card-meta">sha256 {{.SHA256}}</div>
-      {{if .SourcePath}}
-      <a class="src-card-link" href="file://{{.SourcePath}}" onclick="event.stopPropagation()">view file &rarr;</a>
+      {{if .LocalHref}}
+      <a class="src-card-link" href="{{.LocalHref}}" onclick="event.stopPropagation()">view file &rarr;</a>
       {{end}}
     </div>
     {{end}}
@@ -873,8 +873,8 @@ button{font-family:inherit;cursor:pointer}
       {{if .Operation}}<span class="chain-arrow">&larr;</span><span class="chain-op">{{.Operation}}</span>{{end}}
       <span class="mono" style="color:var(--faint);font-size:11px">{{.TokenID}}</span>
       {{if .IsLeaf}}
-        {{if .SourcePath}}
-        <a class="view-btn" href="file://{{.SourcePath}}">view file &rarr;</a>
+        {{if .LocalHref}}
+        <a class="view-btn" href="{{.LocalHref}}">view file &rarr;</a>
         {{end}}
       {{end}}
     </div>
@@ -1049,6 +1049,7 @@ var srcCards = [
     ext: {{.Ext | js}},
     sourceID: {{.SourceID | js}},
     sourcePath: {{.SourcePath | js}},
+    localHref: {{.LocalHref | js}},
     sha256: {{.SHA256 | js}}
   }{{/* no trailing comma needed — JS parses arrays with trailing commas but avoid for compat */}},
   {{end}}
@@ -1063,8 +1064,8 @@ function openSlideOver(idx) {
   var d = srcCards[idx];
   if (!d) { return; }
   var fileLink = '';
-  if (d.sourcePath && d.sourcePath.indexOf('/') === 0) {
-    fileLink = '<a href="file://' + d.sourcePath + '" style="color:var(--green)">Open file &rarr;</a>';
+  if (d.localHref) {
+    fileLink = '<a href="' + escH(d.localHref) + '" style="color:var(--green)">Open file &rarr;</a>';
   }
   slideContent.innerHTML =
     '<div class="slide-over-header">' +
