@@ -47,6 +47,7 @@ export default defineConfig({
             { label: 'Overview', link: '/architecture/overview/' },
             { label: 'Kernel, Runtime, and Storage', link: '/architecture/kernel-runtime-storage/' },
             { label: 'Security, Determinism, and Trade-offs', link: '/architecture/security-determinism-tradeoffs/' },
+            { label: 'Decision Records', link: '/architecture/adrs/' },
           ],
         },
       ],

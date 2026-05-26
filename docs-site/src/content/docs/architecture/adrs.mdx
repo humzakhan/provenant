@@ -1,0 +1,49 @@
+---
+title: Decision Records
+description: A concise index of Provenant's Architecture Decision Records — status, supersession, and links to the canonical ADR files in the repository architecture/adrs/ tree.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Architecture contract" />
+
+Architecture Decision Records (ADRs) capture a bounded design decision, its context, and its accepted outcome. This page indexes all 11 Provenant ADRs with status and supersession; the canonical records live in the repository [`architecture/adrs/`](https://github.com/provenant/provenant/tree/main/architecture/adrs) tree.
+
+## Decision Index
+
+| ADR | Title | Status | Decision |
+|---|---|---|---|
+| [0001](https://github.com/provenant/provenant/blob/main/architecture/adrs/0001-go-as-kernel-language.md) | Go as the kernel language | Accepted (scope-amended by 0009) | The kernel is implemented in Go; in-process adapters are Go. |
+| [0002](https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md) | `submit_answer` as the single exit | Accepted | The agent's only path to a user-visible answer is a single `submit_answer`; all other output is unsigned/unverified. |
+| [0003](https://github.com/provenant/provenant/blob/main/architecture/adrs/0003-fail-closed-default.md) | Fail-closed by default | Accepted | Every kernel join point defaults to denial on error or uncertainty. |
+| [0004](https://github.com/provenant/provenant/blob/main/architecture/adrs/0004-token-level-grounding.md) | Token-level grounding (not document-level citation) | Accepted | Grounding is per-value: every numeric in the final answer maps to exactly one provenance token. |
+| [0005](https://github.com/provenant/provenant/blob/main/architecture/adrs/0005-determinism-faithfulness-independent.md) | Determinism and faithfulness as independent metrics | Accepted | Report four separate metrics (trajectory determinism, decision determinism, faithfulness, accuracy), not one accuracy number. |
+| [0006](https://github.com/provenant/provenant/blob/main/architecture/adrs/0006-skill-pack-format.md) | Skill pack as the unit of workflow | Accepted | The unit of workflow is a versioned skill pack loaded by the kernel. |
+| [0007](https://github.com/provenant/provenant/blob/main/architecture/adrs/0007-mcp-as-primary-adapter.md) | MCP as the primary adapter | Superseded by 0010 | (Superseded) MCP was framed as the primary adapter. |
+| [0008](https://github.com/provenant/provenant/blob/main/architecture/adrs/0008-postgres-as-canonical-store.md) | Postgres as the canonical transactional store | Superseded by 0011 | (Superseded) Postgres was framed as the canonical store. |
+| [0009](https://github.com/provenant/provenant/blob/main/architecture/adrs/0009-kernel-public-go-surface.md) | Kernel public Go surface as v0 first-class | Accepted (supersedes the out-of-scope clause of 0001) | The kernel provides a Go-only public API as a v0 first-class surface. |
+| [0010](https://github.com/provenant/provenant/blob/main/architecture/adrs/0010-mcp-equal-not-primary.md) | MCP, HTTP, and CLI are equal first-class adapters | Accepted (supersedes 0007) | The three adapters have no architectural primacy; all are thin shells over the kernel public Go surface. |
+| [0011](https://github.com/provenant/provenant/blob/main/architecture/adrs/0011-storage-is-a-deployment-concern.md) | Storage is a deployment concern, not a kernel concern | Accepted (supersedes 0008) | The kernel has no storage requirement; persistence is a deployment choice. |
+
+## Superseded Decisions
+
+Two ADRs are fully superseded — 0007 by 0010 (MCP equal, not primary) and 0008 by 0011 (storage is a deployment concern). Separately, 0009 amends the out-of-scope clause of 0001 to add the Go public surface.
+
+- **0007 → 0010 (MCP equal, not primary).** ADR-0007 framed MCP as the primary adapter. ADR-0010 supersedes it: MCP, HTTP, and CLI are equal first-class adapters with no architectural primacy.
+- **0008 → 0011 (storage is a deployment concern).** ADR-0008 framed Postgres as the canonical transactional store. ADR-0011 supersedes it: the kernel has no storage requirement; persistence is a deployment choice.
+- **0001 out-of-scope clause amended by 0009 (Go public surface).** ADR-0001 originally treated a public Go kernel API as out of scope. ADR-0009 amends that clause: the kernel public Go surface is a v0 first-class surface.
+
+<SourceReferences items={[
+  { label: 'architecture/README.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/README.md', note: 'Canonical ADR summary table and architecture reference index.' },
+  { label: 'architecture/adrs/', href: 'https://github.com/provenant/provenant/tree/main/architecture/adrs', note: 'Canonical ADR files — all 11 records with full context and rationale.' },
+]} />
+
+## Next
+
+- [Architecture Overview](/architecture/overview/): Four-layer map and canonical invariants.
+- [Kernel, Runtime, and Storage](/architecture/kernel-runtime-storage/): Precise boundary between kernel, runtime layer, and storage.
+- [Security, Determinism, and Trade-offs](/architecture/security-determinism-tradeoffs/): Security model, determinism semantics, and v0 trade-offs.
+- [Status Matrix](/reference/status-matrix/): Every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
