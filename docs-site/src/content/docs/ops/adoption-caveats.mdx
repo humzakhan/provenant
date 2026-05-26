@@ -54,7 +54,7 @@ Work through this checklist before treating any Provenant output as an official 
 Run both verification steps against the bundle produced by the run:
 
 - **`verify`** — calls `bundle.Verify`, which checks format, audit-chain hash linkage, and sequence continuity across every entry. A passing result confirms the bundle bytes have not been internally altered since production.
-- **`replay`** — calls `bundle.Replay`, which re-derives every token from the captured reads in the bundle. Replay is fully offline; it does not re-contact external sources.
+- **`replay`** — calls `bundle.Replay`, which re-derives every token from the captured reads in the bundle. Replay is fully offline; it does not re-contact external sources. Note: replay re-derives from captured bytes only — it does not guarantee that two fresh runs on different deployments produce identical chains (see [Replay is offline and captured-deterministic](#replay-is-offline-and-captured-deterministic--not-cross-deployment-equivalent) below).
 
 See [Review Audit Evidence](/guides/review-audit-evidence/) for the full step-by-step procedure.
 
@@ -82,7 +82,7 @@ A regulated conclusion is **official only when**:
 ### Audit evidence is internally tamper-evident, not externally tamper-proof
 
 <CaveatCallout title="Internally tamper-evident, not externally tamper-proof or notarized" tone="warn">
-  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. A root-equivalent actor with direct write access to the database or bundle storage can construct a new valid chain from scratch. The chain detects edits made after the fact; it does not prevent a root-equivalent actor from replacing it entirely. Do not describe v0 evidence as externally attested or tamper-proof.
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. A maliciously root-compromised host (a root-equivalent actor with direct write access to the database or bundle storage) can construct a new valid chain from scratch; the chain detects edits, it does not prevent a root actor. Do not describe v0 evidence as externally attested or tamper-proof.
 </CaveatCallout>
 
 If you need stronger guarantees, the documented operational mitigation is to **replicate audit logs to a separate write-once store and have a separate team run periodic chain verification**. External notarization is <StatusBadge status="Deferred" />.
