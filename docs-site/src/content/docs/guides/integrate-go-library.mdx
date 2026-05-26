@@ -1,0 +1,154 @@
+---
+title: Integrate the Go Library
+description: How to embed Provenant as a Go library (Mode A) — what the public surface is, how the kernel's injected substrate works, and how to verify evidence — and what stays the host's responsibility.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" />
+
+This guide shows a platform engineer how to embed Provenant as a Go library. Provenant is a Go provenance enforcement layer for regulated finance — not a SaaS product, agent, database, model, logger, or workflow engine. **The library is the core product.** CLI, MCP, and HTTP are thin access surfaces around the same kernel. Embedding the library directly (Mode A) is the shape that gives hard, non-bypassable enforcement — the substrate owns the loop, and no host-channel text can bypass it. See [Modes](/concepts/modes/) for the full Mode A / Mode B boundary.
+
+**Should you embed the Go library?** Embed it when unsigned host-channel text is unacceptable in your regulatory context, when you need the substrate to own the agent loop, or when you are building a custom Go agent and can inject the kernel's interfaces directly.
+
+---
+
+## Install and Import
+
+The module path is `github.com/provenant/provenant`.
+
+```bash
+go get github.com/provenant/provenant
+```
+
+The Go public surface is the v0 first-class contract. <StatusBadge status="Implemented now" />
+
+Non-Go bindings are <StatusBadge status="Deferred" />. In v0, the embedded path is Go-only. Non-Go hosts use the runtime layer (MCP or HTTP sidecar).
+
+---
+
+## The Public Surface
+
+Package `kernel/public` is the v0 first-class contract (ADR-0009). It defines the core types and entry points for interacting with the kernel. Do not reach into internal packages; only the identifiers below are part of the versioned contract.
+
+**Core types:**
+
+- `Run` — a single provenance run, carrying run ID, tenant ID, and lifecycle status.
+- `Token` — a minted provenance token with canonical decimal value, unit, and either a captured-read binding (leaf tokens) or derivation lineage (derived/computed tokens; a token has either a mint source OR a derivation).
+- `CapturedRead` — a record of one source read: reader name, reader version, source path, and SHA-256 of the canonicalized output.
+- `AuditEntry` — one hash-chained entry in the audit log (seq, kind, deterministic payload, prev_hash, hash, plus run_id, tenant_id, and at).
+
+**Entry points** (see README and kernel sources for full signatures — do not infer them from this page):
+
+- `ReadAndMint` — the primary minting entry point. Reads a source, captures it, and mints a token. Its signature accepts the injected substrate interfaces; consult the kernel sources.
+- `MintFromCapturedRead` — mints a token from an already-captured read, for hosts that perform capture separately.
+
+**Injected interfaces** (the substrate you provide — see next section):
+
+- `Store` — token and run persistence.
+- `AuditSink` — audit entry persistence.
+- `TransactionalScope` — transactional boundaries across Store and AuditSink writes.
+- `SourceResolver` — resolves a logical source path to in-memory source bytes.
+- `SourceReader` — reads and canonicalizes a source; returns a `ReadResult` that carries both the extracted output and the `CapturedRead`.
+- `Clock` — provides the current time for as-of stamping.
+
+**Sub-packages:**
+
+- `kernel/public/bundle` — `Verify`, `Replay`, `Emit`, and type `State`. Offline bundle operations; no network required. <StatusBadge status="Implemented now" />
+- `kernel/public/derive` — `Derive`. Composes tokens through filter and calculation operations.
+- `kernel/public/memio` — `NewBinding`. The in-memory binding that is the library-mode default.
+
+---
+
+## Verify and Replay Evidence (Offline)
+
+Bundle verification and replay are fully offline. They operate only on the captured bytes in the bundle and do not contact any external source.
+
+```go
+import (
+    "log"
+    "os"
+
+    "github.com/provenant/provenant/kernel/public/bundle"
+)
+
+data, err := os.ReadFile("bundle.json")
+if err != nil {
+    log.Fatalf("read bundle: %v", err)
+}
+if err := bundle.Verify(data); err != nil {
+    log.Fatalf("bundle tampered or invalid: %v", err)
+}
+state, err := bundle.Replay(data)
+if err != nil {
+    log.Fatalf("replay failed: %v", err)
+}
+_ = state
+```
+
+`bundle.Verify(bundleBytes []byte) error` checks format, audit-chain hash linkage, and sequence continuity across every entry. A passing result confirms the bundle bytes have not been internally altered since production.
+
+`bundle.Replay(bundleBytes []byte) (bundle.State, error)` re-derives every token from the captured reads in the bundle and confirms the derived values are consistent with the minted tokens.
+
+`bundle.Emit(state bundle.State) ([]byte, error)` serializes a `bundle.State` back to bundle bytes.
+
+<StatusBadge status="Implemented now" />
+
+---
+
+## The Substrate You Inject (Mode A Embedding)
+
+The kernel is pure — it has no I/O, no storage, and no external dependencies. You provide the substrate by implementing and injecting the six interfaces from `kernel/public`: `Store`, `AuditSink`, `TransactionalScope`, `SourceResolver`, `SourceReader`, and `Clock`.
+
+**The in-memory default** is `memio.NewBinding` from `kernel/public/memio`. This binding implements all required interfaces in memory. When you use `memio`, the run is entirely in-memory and the bundle bytes are the artifact — there is no persistence layer underneath. This is the correct starting point for embedding and for use cases where the host takes responsibility for persisting the bundle bytes it receives.
+
+`ReadAndMint` and `MintFromCapturedRead` are the entry points into the kernel's mint path. They accept the injected substrate interfaces and produce tokens and audit entries through them. Consult the README and `kernel/public` sources for their full signatures.
+
+Mode A gives **hard, non-bypassable enforcement** because the substrate owns the loop. There is no path by which a final answer reaches the user without passing through the kernel's exit point. See [Modes](/concepts/modes/) for the comparison with Mode B.
+
+---
+
+## Storage Is Yours, Not the Kernel's
+
+<CaveatCallout title="The kernel has no storage requirement" tone="warn">
+  The kernel ships only the in-memory `memio` binding. Persistent bindings — SQLite, Postgres, S3 — live in `runtime/…` outside the kernel and are optional. If you need cross-process persistence or HITL (human-in-the-loop) state that survives process restarts, your host is responsible for persisting the bundle bytes and for any storage wiring. The kernel has no opinion on where or how bundles are stored.
+
+  Runtime storage bindings are <StatusBadge status="Architecture contract" />. They are specified by the storage architecture (ADR-0011); packaging and shipping details are outside v0.
+</CaveatCallout>
+
+The boundary is deliberate (ADR-0011): storage is a deployment concern. The kernel's job is to produce a correct, tamper-evident bundle. Your deployment's job is to decide where that bundle lives.
+
+---
+
+## v0 Scope Limits
+
+<CaveatCallout title="v0 Go-library limits" tone="warn">
+  The following are explicitly out of v0 scope for the embedded path:
+
+  - The embedded path is **Go-only**. Non-Go hosts use the runtime layer (MCP or HTTP sidecar); non-Go bindings are <StatusBadge status="Deferred" />.
+  - v0 is **single-tenant only**. Multi-tenant packaging is deferred.
+  - v0 audit evidence is **internally tamper-evident**, not externally tamper-proof. Provenant can detect internal edits to bundle or audit bytes. It does not provide external notarization, third-party witnessing, or tamper-proof guarantees.
+  - Persistent runtime storage bindings (SQLite, Postgres, S3) are <StatusBadge status="Architecture contract" /> — specified but not shipped in v0.
+</CaveatCallout>
+
+---
+
+## Next
+
+- [Provenance Model](/concepts/provenance-model/): How numbers are captured, minted, recorded, and verified — the vocabulary behind each type.
+- [Modes](/concepts/modes/): Mode A vs. Mode B, who owns the loop, and what each mode enforces.
+- [Review Audit Evidence](/guides/review-audit-evidence/): How auditors and compliance reviewers verify and replay a bundle produced by an embedded run.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart showing `bundle.Verify` and `bundle.Replay` as Go API usage.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Module path, runnable examples, and Go API quickstart.' },
+  { label: 'architecture/adrs/0009-kernel-public-go-surface.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0009-kernel-public-go-surface.md', note: 'ADR-0009: kernel/public as the v0 first-class versioned Go contract.' },
+  { label: 'architecture/adrs/0011-storage-is-a-deployment-concern.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0011-storage-is-a-deployment-concern.md', note: 'ADR-0011: storage is outside the kernel; persistent bindings live in runtime/….' },
+  { label: 'architecture/subsystems/kernel.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/kernel.md', note: 'Kernel subsystem design: pure core, injected substrate, and public surface.' },
+  { label: 'architecture/subsystems/storage.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/storage.md', note: 'Storage subsystem: deployment-concern boundary and optional runtime bindings.' },
+]} />
