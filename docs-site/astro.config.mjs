@@ -45,6 +45,7 @@ export default defineConfig({
           label: 'Architecture',
           items: [
             { label: 'Overview', link: '/architecture/overview/' },
+            { label: 'Kernel, Runtime, and Storage', link: '/architecture/kernel-runtime-storage/' },
           ],
         },
       ],
