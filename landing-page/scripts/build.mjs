@@ -41,7 +41,7 @@ try {
     collapseWhitespace: true,
     removeComments: true,
     minifyCSS: true,
-    minifyJS: true,
+    minifyJS: { ecma: 2020 },
     removeRedundantAttributes: true,
     removeScriptTypeAttributes: true,
     removeStyleLinkTypeAttributes: true,
