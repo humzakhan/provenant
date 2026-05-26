@@ -53,7 +53,7 @@ A provenance token is the kernel-issued value that binds a number to its lineage
 - **Unit or currency.**
 - **Run ID and tenant ID.**
 - **As-of timestamp.**
-- **Source binding** — tool call, reader version, source path, and origin URI, linking the token back to a captured read or derivation.
+- **Source binding** — tool call, tool version, output path, and origin URI, linking the token back to a captured read or derivation.
 
 ### How Numbers Enter
 
@@ -71,7 +71,7 @@ Each event in a run produces one hash-chained JSONL record. A record contains:
 
 - `seq` — monotonically increasing sequence number.
 - `kind` — event type (for example, token mint).
-- `payload` — the event data.
+- `payload` — deterministic payload; the deterministic portion of the entry is what the hash chain covers.
 - `prev_hash` — SHA-256 of the previous entry.
 - `hash` — SHA-256 of this entry including `prev_hash`.
 
