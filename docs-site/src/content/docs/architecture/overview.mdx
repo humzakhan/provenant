@@ -10,6 +10,8 @@ import SourceReferences from '../../../components/SourceReferences.astro';
 
 <StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" />
 
+Status varies by layer: the kernel provenance path is implemented now; the full runtime, storage bindings, and Mode A/B enforcement are architecture contracts.
+
 **The library/kernel is the product.** Access surfaces and storage are deployment concerns. This page summarizes Provenant's layered architecture and links to the canonical architecture docs in the repository `architecture/` tree. It does not replace them.
 
 The canonical architecture docs are the authoritative source for design rationale, interface contracts, and ADR decisions. This page is an entry point for platform engineers, architects, and compliance or model-risk reviewers who need a public map of the layers.
@@ -42,12 +44,12 @@ CLI, MCP, and HTTP are thin shells over the same kernel public Go surface. They 
 
 | Surface | Mode | Status |
 |---|---|---|
-| CLI | Mode A — harness owns the loop | <StatusBadge status="Implemented now" /> |
-| MCP | Mode B — host owns the loop | <StatusBadge status="Architecture contract" /> |
+| CLI | Mode A — harness owns the loop | <StatusBadge status="Implemented now" /> — verify, replay, and reconcile commands ship today |
+| MCP | Mode B — host owns the loop | <StatusBadge status="Architecture contract" /> — the Mode B host-channel enforcement contract is specified; MCP as a surface is operational, but the enforcement contract depends on host conformance |
 | HTTP reconcile endpoint | Mode B | <StatusBadge status="Planned" /> |
 | Production MCP marketplace flows | Mode B | <StatusBadge status="Planned" /> |
 
-The mode boundary is determined by **who owns the agent loop**, not by which surface is used. See [Modes](/concepts/modes/) for a full explanation of the Mode A / Mode B enforcement boundary.
+The mode boundary is determined by **who owns the agent loop**, not by which surface is used. In v0, CLI (Mode A) and MCP (Mode B) are equal first-class adapters per ADR-0010; Mode A provides the hard non-bypassable harness. See [Modes](/concepts/modes/) for a full explanation of the Mode A / Mode B enforcement boundary.
 
 ### 4. Subsystems
 
@@ -76,7 +78,7 @@ See [`architecture/README.md`](https://github.com/provenant/provenant/blob/main/
 - Does not pick the model — v0 verifies Claude.
 - Does not run your GL, ERP, sanctions, FX, or data-extraction systems — it wraps them as registered tools.
 - No hosted SaaS, web HITL UI, hosted skill registry, BoN-MAV, or LangChain/OpenAI adapters in v0.
-- Does not defend against a maliciously root-compromised host — Provenant provides tamper detection, not tamper prevention.
+- Does not defend against a maliciously root-compromised host — the audit chain is internally tamper-evident, not tamper-proof; Provenant can detect tampering in bundle or audit bytes but does not prevent it.
 
 ## Caveats
 
@@ -94,6 +96,7 @@ See [`architecture/README.md`](https://github.com/provenant/provenant/blob/main/
   { label: 'architecture/adrs/0010-mcp-equal-not-primary.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0010-mcp-equal-not-primary.md', note: 'ADR-0010 (Accepted): CLI, MCP, and HTTP are equal first-class adapters; MCP is not primary.' },
   { label: 'architecture/adrs/0011-storage-is-a-deployment-concern.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0011-storage-is-a-deployment-concern.md', note: 'ADR-0011: storage bindings belong in the runtime layer, not the kernel.' },
   { label: 'architecture/adrs/0002-submit-answer-as-single-exit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md', note: 'ADR-0002: submit_answer as the non-bypassable single regulated exit point.' },
+  { label: 'architecture/adrs/0003-fail-closed-default.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0003-fail-closed-default.md', note: 'ADR-0003: fail-closed default — any enforcement pipeline error produces a rejection, not a pass.' },
 ]} />
 
 ## Next
