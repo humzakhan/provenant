@@ -41,6 +41,12 @@ export default defineConfig({
             { label: 'Current Surfaces', link: '/reference/current-surfaces/' },
           ],
         },
+        {
+          label: 'Architecture',
+          items: [
+            { label: 'Overview', link: '/architecture/overview/' },
+          ],
+        },
       ],
     }),
     mdx(),
