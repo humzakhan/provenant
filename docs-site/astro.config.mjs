@@ -50,6 +50,12 @@ export default defineConfig({
             { label: 'Decision Records', link: '/architecture/adrs/' },
           ],
         },
+        {
+          label: 'Operations',
+          items: [
+            { label: 'Adoption Caveats', link: '/ops/adoption-caveats/' },
+          ],
+        },
       ],
     }),
     mdx(),
