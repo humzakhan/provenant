@@ -1,75 +1,166 @@
-# Goal Prompt For Provenant Docs Project
+# Goal Prompt For Provenant Public Docs Writing
 
-/cool You are working in the Provenant repository. Implement or begin the documentation project described in `.planning/documentation/documentation-plan.md` safely.
+You are the orchestrator for the Provenant public documentation writing effort.
+Use `.planning/documentation/documentation-plan.md` as the canonical plan.
 
-Objective:
-Create a concise, source-controlled Astro + Starlight documentation site for Provenant, or complete the next smallest safe slice toward that goal if the full project is too large for one session. The launch goal is a focused docs site people will actually read, not a 39-page site. Keep the initial public page hierarchy to 12-15 pages, never more than 15 launch pages, and put details inside broader pages unless usage, support questions, newly shipped surfaces, or demonstrated contributor workflow needs justify standalone navigation later.
+## Objective
 
-Required reading before edits:
+Write the public Provenant docs through a dedicated GPT-5.5 agent named
+`docs writer`, one PR at a time, with low-tier reader agents feeding concise
+source briefs before each PR.
+
+This planning PR only replaces:
+
 - `.planning/documentation/documentation-plan.md`
-- `README.md`
-- `docs/thesis.md`
-- `docs/KNOWN_TRADE_OFFS.md`
-- `architecture/OVERVIEW.md`
-- `architecture/README.md`
-- `architecture/subsystems/harness.md`
-- `architecture/adapters/mcp.md`
-- Any source docs listed in the plan for pages you edit
+- `.planning/documentation/goal-prompt.md`
 
-Hard requirements:
-- Recommend and use Astro + Starlight unless you find and document a concrete blocker.
-- Build the public docs site under top-level `docs-site/` unless a concrete repository constraint requires stopping and asking first.
-- Do not build the public documentation site under the existing `docs/` directory. Preserve `docs/` as repo-facing narrative, governance, thesis, and trade-off material.
-- Preserve `architecture/` as the canonical architecture reference. Public docs may summarize, cite, and link to architecture files, but must not replace them or become a competing source of truth.
-- Preserve `examples/` as runnable example evidence. Public quickstarts and guides may summarize, cite, and link to examples, but must not relocate or duplicate committed example artifacts as the authoritative source.
-- Include source references in public docs so readers can trace public-facing summaries back to `docs/`, `architecture/`, `examples/`, tests, or code as appropriate.
-- Use local docs scripts in `docs-site/package.json`, preferably `npm run dev`, `npm run build`, `npm run check`, and optionally `npm run preview` unless the repo already has a different package-manager convention.
-- Make the docs site follow the Provenant landing-page design language and keep it highly customizable with HTML/CSS.
-- Because the actual landing-page file is not present in the repo, use `audit/report/html.go` and generated audit report HTML as the discoverable design-token source. Mention future alignment with the actual landing page asset if it is later provided.
-- Keep docs specific to Provenant: finance provenance, captured reads, tokens, audit chain, audit bundles, `submit_answer`, Mode A, Mode B, kernel/runtime boundaries, and current reconciliation examples.
-- Keep the launch IA compact. Do not create separate Start Here, Quickstart, Concept, Reference, Architecture, or Operations pages for every subtopic just because source material exists. Fold related details into sections inside the planned pages unless the documentation plan explicitly calls for a standalone route.
-- Remove the redundant split between many Start Here and Quickstart pages. Use the home page for orientation and the single current-artifacts quickstart for install/test, `read-mint-bundle`, reconciliation, derivation graph, and Go API-only verify/replay.
-- Preserve both reader paths: a non-technical evidence path for controllers, audit leads, compliance officers, and model-risk reviewers; and a technical implementation path for platform engineers, integration authors, and contributors.
-- Clearly distinguish `Implemented now`, `Architecture contract`, `Planned`, and `Deferred` surfaces on every capability page.
-- Do not overclaim MCP Mode B. State that arbitrary host-channel text is not Provenant-attested unless it came from passing `submit_answer` and the marker is verified against the audit chain/audit pack.
-- Do not claim v0 audit evidence is tamper-proof or externally notarized. Use internally tamper-evident language unless source docs have changed.
-- Do not present planned or deferred surfaces as shipped behavior.
-- Keep regulatory content as context, not legal advice.
-- Keep changes scoped to documentation and docs tooling unless you stop and ask first.
+After this planning PR is opened, stop for human review. Later docs
+implementation follows Mode A sequencing.
 
-Preferred first slice:
-1. Confirm current implemented commands and examples from `README.md`, `cmd/`, `examples/`, and tests.
-2. Create the Astro + Starlight scaffold in `docs-site/`.
-3. Add the status-label convention and a status matrix page.
-4. Add Provenant theme overrides and any minimal custom Astro components needed for status labels, caveat callouts, source references, and audit-artifact cards.
-5. Add the home page and single current-artifacts quickstart from the plan, using only currently implemented commands.
-6. Add package scripts for docs build/check if a package is introduced.
-7. Add internal link and content-status validation where practical for the first slice.
-8. Run validation.
+## Required Agents
 
-Validation to run before reporting done:
-- `go test ./...`
-- Docs install/build/check commands you introduce from `docs-site/`, such as `npm run build` and `npm run check`
-- `git diff --check`
-- `git status --short`
+Dedicated author:
 
-Non-goals:
-- Do not implement new Provenant runtime, CLI, MCP, HTTP, kernel, source reader, tool backend, or skill-pack functionality.
-- Do not invent APIs, commands, screenshots, configuration files, hosted workflows, or marketplace flows.
-- Do not place the public docs site, public page hierarchy, or Starlight content tree under existing `docs/`.
-- Do not move, rename, or collapse existing `docs/`, `architecture/`, or `examples/` source material into `docs-site/`.
-- Do not rewrite canonical architecture decisions in the docs site without updating the source architecture docs first and getting explicit approval.
-- Do not add broad repo restructuring just to host docs.
+- Name: `docs writer`
+- Model: `gpt-5.5`
+- Role: author public docs content only
 
-Stop conditions:
-- Stop if current code and architecture docs disagree in a way that affects user-facing claims.
-- Stop if Starlight requires a dependency or repo layout change that seems broader than docs tooling.
-- Stop if a planned/deferred feature would need to be described as implemented to complete a page.
-- Stop if generated reference pages require code changes outside docs scope.
-- Stop if validation cannot run because dependencies or network access are unavailable; report exactly what was skipped and why.
+Low-tier reader feeders:
 
-Final response format:
-- Summarize files changed.
-- State which plan phase or slice was completed.
-- List validation commands and results.
-- List any caveats, skipped items, and next recommended slice.
+- Product and audience reader
+- Implementation surfaces reader
+- Examples and tests reader
+- Architecture and tradeoffs reader
+- Link and validation reader
+
+Readers gather facts and caveats. They do not write final public docs prose.
+
+## Required Reading
+
+Before each docs PR:
+
+- `.planning/documentation/documentation-plan.md`
+- Current `docs-site/` route and sidebar state
+- Page-specific source files named in the plan
+- Reader briefs for the active PR
+
+## Hard Requirements
+
+- Preserve the launch IA capped at 15 pages.
+- Keep Provenant framed as a provenance enforcement layer/library for
+  regulated finance work.
+- Do not call Provenant SaaS, an agent, a database, or a workflow engine.
+- Do not overclaim MCP Mode B. Host-channel text is official only if it comes
+  through passing `submit_answer` and verification.
+- Do not claim v0 external notary, tamper-proof evidence, or legal advice.
+- Label current, architecture, planned, and deferred surfaces clearly.
+- Keep examples framed as proof fixtures, not full product scope.
+- Do not edit runtime, CLI, MCP, HTTP, kernel, storage, examples, or source docs
+  unless a later human-approved scope explicitly says so.
+
+## Mode A Docs Sequence
+
+For each docs implementation slice after this planning PR:
+
+1. Fetch `origin/main` and branch from it.
+2. Spawn the required low-tier reader feeders.
+3. Collect short source-backed briefs.
+4. Spawn or reuse the GPT-5.5 `docs writer`.
+5. Write exactly one active public docs page. Update shared sidebar,
+   navigation, or status-matrix files only when needed for that single page.
+6. Run validation.
+7. Run automated review.
+8. Open a PR using the title convention in the plan.
+9. Record the next branch handoff.
+10. Continue only when Mode A approval criteria are satisfied.
+
+## Planning PR Scope
+
+For the current planning PR, edit only:
+
+- `.planning/documentation/documentation-plan.md`
+- `.planning/documentation/goal-prompt.md`
+
+Do not edit:
+
+- `docs-site/`
+- `docs/`
+- `architecture/`
+- `examples/`
+- Go source
+- package manifests
+
+## Validation
+
+For this planning PR:
+
+```bash
+rtk git diff --check
+rtk git status --short
+```
+
+For later docs implementation PRs, run from `docs-site/` where applicable:
+
+```bash
+cd docs-site && rtk npm run build
+cd docs-site && rtk npm run check
+rtk git diff --check
+rtk git status --short
+```
+
+Run Go verification only when the edited docs make claims that need fresh code
+or example verification.
+
+## Stop Conditions
+
+Stop if:
+
+- The planning PR is opened and awaits human review.
+- A reader brief contradicts another reader brief on a public claim.
+- Current code and source docs disagree on a user-facing claim.
+- A page requires a planned/deferred feature to be described as implemented.
+- The launch IA would exceed 15 pages.
+- Validation cannot run.
+- The requested work touches non-docs implementation scope.
+
+## PR Title Convention
+
+Use concise Conventional Commit style titles:
+
+- `docs: update public docs plan`
+- `docs: write public docs home`
+- `docs: write current artifacts quickstart`
+- `docs: write provenance model concept`
+- `docs: write modes concept`
+- `docs: write audit evidence guide`
+- `docs: write go library integration guide`
+- `docs: write source tools extension guide`
+- `docs: write current surfaces reference`
+- `docs: write architecture overview`
+- `docs: write kernel runtime storage architecture`
+- `docs: write security determinism tradeoffs`
+- `docs: write adr architecture reference`
+- `docs: write adoption caveats`
+
+## Final Response Format
+
+Return exactly:
+
+```markdown
+## Scope
+- Files changed
+- Scope boundary observed
+
+## Findings
+- Current docs/planning state
+- Any relevant caveats
+
+## Actions
+- What changed
+
+## Validation
+- Commands run and results
+
+## Risks
+- Remaining risks or next stop condition
+```
