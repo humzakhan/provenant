@@ -1,0 +1,134 @@
+---
+title: Adoption Caveats
+description: Practical guidance for platform engineers and compliance reviewers deciding whether and how to adopt Provenant in v0 — what fits, what to verify before relying on output, the operational caveats, and what this page is not.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Deferred" />
+
+This page is for platform engineers and compliance or model-risk reviewers deciding whether and how to adopt Provenant in v0. It synthesizes the caveats from [Guarantees and Limits](/guarantees-and-limits/), [Modes](/concepts/modes/), [Security, Determinism, and Trade-offs](/architecture/security-determinism-tradeoffs/), and [Review Audit Evidence](/guides/review-audit-evidence/) into one practical pre-adoption checklist.
+
+**Status note:** guidance on sections marked <StatusBadge status="Implemented now" /> reflects current behavior you can verify against the repository today. Items explicitly flagged <StatusBadge status="Deferred" /> are outside v0 scope — do not plan on them for the current phase.
+
+---
+
+## Where Provenant Fits in v0
+
+Provenant is a Go provenance enforcement layer for regulated finance. It is not a SaaS product, agent, database, model, logger, or workflow engine. The library is the core product; CLI, MCP, and HTTP are access surfaces around the same kernel.
+
+### Fits now
+
+- **A Go host embedding the kernel (Mode A).** Mode A is the required deployment shape for hard, non-bypassable regulated output. The Provenant harness is the agent loop; `submit_answer` is the only exit. Use it when unsigned host-channel text is unacceptable in your regulatory context.
+- **An MCP or HTTP host (Mode B)** that understands host-channel text is not attested without verification. Mode B gives an architecture contract the host must honor; Provenant cannot enforce it unilaterally across an untrusted host channel.
+- **Single-tenant deployments.** Every token, tool call, audit entry, and run carries a `tenant_id`. Cross-tenant token references are rejected at verification. v0 ships single-tenant; multi-tenant packaging is deferred.
+- **Regulated-finance numeric-provenance needs.** Specifically: token-level grounding with verifiable lineage back to captured reads, hash-chained audit bundles that are verifiable and replayable offline, and four independent determinism and faithfulness metrics.
+
+### Does NOT fit yet
+
+The following are explicitly deferred in v0. Full detail and rationale is in `docs/KNOWN_TRADE_OFFS.md`.
+
+- Non-Go embedding — v0 embedded path is Go-only. <StatusBadge status="Deferred" />
+- Multi-tenant SaaS packaging. <StatusBadge status="Deferred" />
+- Hosted skill registry and skill-pack signing beyond local digest status. <StatusBadge status="Deferred" />
+- Fuzzy or AI-based matching. <StatusBadge status="Deferred" />
+- A complete end-user reconciliation product (with inference, UI, or fuzzy matching). <StatusBadge status="Deferred" />
+- LangChain and OpenAI adapters — Claude has been verified end-to-end; other adapters are deferred. <StatusBadge status="Deferred" />
+- Streaming and split-turn parallel runs. <StatusBadge status="Deferred" />
+
+---
+
+## Before You Rely on Output
+
+Work through this checklist before treating any Provenant output as an official regulated conclusion.
+
+### 1. Choose the mode for your risk level
+
+**Mode A is required where unsigned host-channel text is unacceptable.** In Mode A, the substrate owns the loop and `submit_answer` is architecturally non-bypassable. In Mode B (MCP or HTTP), Provenant validates tool inputs, mints tokens, and writes the audit chain — but cannot prevent the host from emitting text on its own channel without going through `submit_answer`. See [Modes](/concepts/modes/) for the full boundary.
+
+### 2. Verify the audit bundle offline
+
+Run both verification steps against the bundle produced by the run:
+
+- **`verify`** — calls `bundle.Verify`, which checks format, audit-chain hash linkage, and sequence continuity across every entry. A passing result confirms the bundle bytes have not been internally altered since production.
+- **`replay`** — calls `bundle.Replay`, which re-derives every token from the captured reads in the bundle. Replay is fully offline; it does not re-contact external sources.
+
+See [Review Audit Evidence](/guides/review-audit-evidence/) for the full step-by-step procedure.
+
+### 3. Confirm a regulated conclusion is properly attested
+
+A regulated conclusion is **official only when**:
+
+1. It comes from a passing `submit_answer` call, AND
+2. The `[PROVENANT-ATTESTED v1 ...]` marker is verified against the audit chain or audit pack from the run bundle.
+
+<CaveatCallout title="Marker text alone is not proof" tone="danger">
+  A `[PROVENANT-ATTESTED ...]` marker appearing on host-channel text is NOT by itself proof of attestation — marker text alone is not sufficient. Do NOT treat Mode B host-channel text as attested without the verification steps above. Untested hosts can complete a run as `host_text_only`. Verification requires the bundle bytes.
+</CaveatCallout>
+
+### 4. Understand what `bundle.Verify` does and does not prove
+
+<CaveatCallout title="Verify checks integrity, not business correctness" tone="warn">
+  `bundle.Verify` checks hash-chain linkage and bundle integrity. It does NOT prove that the right business rule was applied, or that the right source data was used. Correctness is a separately measured metric and is not guaranteed by integrity verification alone.
+</CaveatCallout>
+
+---
+
+## Operational Caveats
+
+### Audit evidence is internally tamper-evident, not externally tamper-proof
+
+<CaveatCallout title="Internally tamper-evident, not externally tamper-proof or notarized" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. A root-equivalent actor with direct write access to the database or bundle storage can construct a new valid chain from scratch. The chain detects edits made after the fact; it does not prevent a root-equivalent actor from replacing it entirely. Do not describe v0 evidence as externally attested or tamper-proof.
+</CaveatCallout>
+
+If you need stronger guarantees, the documented operational mitigation is to **replicate audit logs to a separate write-once store and have a separate team run periodic chain verification**. External notarization is <StatusBadge status="Deferred" />.
+
+### Host conformance is self-declared in v0
+
+<CaveatCallout title="Host conformance is self-declared in v0" tone="warn">
+  v0 provides no operator-signed attestation and no Provenant-side verification of host conformance. Untested hosts can complete a run as `host_text_only`. Do not rely on host conformance claims that have not been independently verified. Host conformance verification is <StatusBadge status="Deferred" />.
+</CaveatCallout>
+
+### Replay is offline and captured-deterministic — not cross-deployment-equivalent
+
+`bundle.Replay` re-derives tokens from captured bytes stored in the bundle. It does not guarantee that two fresh runs on different deployments produce identical chains — external source versions (for example, sanctions lists or FX rates) may differ between deployments. Cross-deployment fresh-run equivalence is not guaranteed.
+
+### Determinism does not imply accuracy
+
+<CaveatCallout title="Determinism ≠ accuracy — use all four metrics" tone="warn">
+  Provenant reports four independent metrics: trajectory determinism, decision determinism, faithfulness, and accuracy. These are measured and reported separately. A deterministic system can be reliably wrong. Correctness — whether the right rule was applied, whether the right source data was used — is a separately measured metric. Do not substitute determinism for correctness. Use the four metrics together.
+</CaveatCallout>
+
+### Examples are proof fixtures, not a complete product
+
+The reconciliation fixture and derivation-graph demo prove the provenance path works. They are intentionally small demonstrations. They do not infer columns, perform fuzzy matching, read remote files, expose a UI, or run LLM reasoning. They are not a complete reconciliation or derivation product.
+
+---
+
+## Not Legal Advice
+
+<CaveatCallout title="Regulatory material is context, not legal advice or regulatory approval" tone="warn">
+  Provenant's audit and evidence capabilities are **enabled, not certified**. Documentation references to regulatory frameworks — SR 11-7, FINRA 2026 GenAI guidance, NYDFS RAISE Act, MiFID II, and similar — are context, not legal advice or regulatory approval of any deployment. Customers achieve compliance by combining Provenant's evidence with their own governance, legal counsel, and internal model-risk processes. Provenant does not certify, approve, or guarantee that any deployment meets the requirements of any regulatory framework. Regulatory interpretation is <StatusBadge status="Deferred" />.
+</CaveatCallout>
+
+---
+
+<SourceReferences items={[
+  { label: 'docs/thesis.md', href: 'https://github.com/provenant/provenant/blob/main/docs/thesis.md', note: 'Product framing, Mode A/Mode B boundary, substrate-owns-the-loop contract.' },
+  { label: 'docs/KNOWN_TRADE_OFFS.md', href: 'https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md', note: 'Accepted v0 limitations: host conformance, notarization, streaming, locale normalization, and scope limits.' },
+  { label: 'architecture/cross-cutting/security.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/cross-cutting/security.md', note: 'Multi-tenant isolation, root-compromise boundary, and tamper-detection scope.' },
+]} />
+
+## Next
+
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Modes](/concepts/modes/): Mode A vs Mode B — who owns the loop and what each enforces.
+- [Review Audit Evidence](/guides/review-audit-evidence/): Step-by-step offline verification and replay procedure.
+- [Integrate the Go Library](/guides/integrate-go-library/): How to embed the kernel in a Go host.
+- [Security, Determinism, and Trade-offs](/architecture/security-determinism-tradeoffs/): Detailed security model, determinism semantics, and v0 trade-offs.
+- [Current Surfaces](/reference/current-surfaces/): What CLI verbs and surfaces exist today.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
