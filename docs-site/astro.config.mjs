@@ -21,7 +21,10 @@ export default defineConfig({
         },
         {
           label: 'Concepts',
-          items: [{ label: 'Provenance Model', link: '/concepts/provenance-model/' }],
+          items: [
+            { label: 'Provenance Model', link: '/concepts/provenance-model/' },
+            { label: 'Modes', link: '/concepts/modes/' },
+          ],
         },
         {
           label: 'Reference',

@@ -1,0 +1,104 @@
+---
+title: Modes
+description: Provenant's two deployment modes — who owns the agent loop, what each enforces, and how to choose the right shape for your regulatory needs.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Architecture contract" />
+
+Provenant is a Go provenance enforcement layer for regulated finance. It is not a SaaS product, agent, database, model, logger, or workflow engine. Modes in Provenant are about **who owns the agent loop** — not about which protocol or surface you use. Choosing the right mode determines whether regulated output enforcement is architecturally non-bypassable or an honored contract that depends on host behavior.
+
+## Mode A — Embedded / CLI
+
+<StatusBadge status="Architecture contract" />
+
+In Mode A, the Provenant harness **is** the agent loop. The harness owns prompt assembly, tool dispatch, model calls, and loop bounds. Nothing runs outside its control.
+
+Key properties of Mode A:
+
+- **`submit_answer` is the non-bypassable single exit.** There is no path by which a final answer reaches the user without passing through `submit_answer` and the full validator pipeline (grounding checks, token verification, fail-closed behavior). This is enforced by the substrate, not by convention.
+- **The kernel header is guaranteed in the prompt.** Because the harness assembles the prompt, the kernel header is always present at the start of every agent turn.
+- **Loop bounds are controlled.** The harness controls iteration limits and cannot be overridden by host-channel text.
+
+Mode A is the **required deployment shape for hard, non-bypassable regulated output**. Use it when unsigned host-channel text is unacceptable.
+
+Mode A is used by the `provenant` CLI and by custom Go agents that embed the kernel directly.
+
+## Mode B — Host-Driven (MCP / HTTP)
+
+<StatusBadge status="Architecture contract" />
+
+In Mode B, the host agent owns its own loop. Provenant is reduced to the **I/O contract**: it validates tool inputs against published JSON schemas, mints provenance tokens from tool responses, enforces pre-LLM guards, runs `submit_answer` validation (grounding checks and the validator pipeline, fail-closed), and writes the hash-chained audit log.
+
+What Mode B **cannot** guarantee:
+
+- That the host's prompt includes the kernel header. The host assembles its own prompt.
+- That the host actually calls `submit_answer`. A host can emit text directly on the host channel without going through `submit_answer`.
+- That arbitrary host-channel output respects the attestation marker. The marker appearing in host-channel text is not proof of attestation.
+- Control over loop bounds. The host controls its own iteration and termination.
+
+<CaveatCallout title="Mode B / host-channel text is not officially attested" tone="danger">
+  Host-channel text in Mode B is NOT an official regulated conclusion unless it comes through a passing `submit_answer` AND is verified against the audit chain or audit pack. A `[PROVENANT-ATTESTED ...]` marker appearing on host-channel text is NOT by itself proof of attestation — marker text alone is not sufficient. For deployments where unsigned host text is unacceptable, **Mode A is required**.
+</CaveatCallout>
+
+<CaveatCallout title="Host conformance is self-declared in v0" tone="warn">
+  v0 provides no operator-signed attestation and no Provenant-side verification of host conformance. Untested hosts can complete a run as `host_text_only`. Do not rely on host conformance claims that have not been independently verified.
+</CaveatCallout>
+
+## Access Surfaces
+
+Provenant exposes three access surfaces, all of which are thin shells over the same kernel public Go surface:
+
+- **CLI** — Mode A.
+- **MCP** — Mode B.
+- **HTTP** — Mode B.
+
+CLI, MCP, and HTTP are equal first-class adapters (ADR-0010). No adapter is primary. The mode boundary is determined by whether the Provenant harness or the host agent owns the loop — not by which surface you connect through.
+
+## The Attestation Marker
+
+`[PROVENANT-ATTESTED v1 ...]` is a kernel-emitted visible string. It is not a credential or a cryptographic signature.
+
+A regulated conclusion is **official only when**:
+
+1. It comes from a passing `submit_answer` call, and
+2. The marker is verified against the audit chain or audit pack from the run bundle.
+
+Marker text alone — for example, copied into a host-channel message — is not sufficient. Verification requires the bundle bytes.
+
+## Choosing a Mode
+
+**Choose Mode A** when:
+
+- Unsigned host-channel text is unacceptable in your regulatory context.
+- You need architectural non-bypassability: the substrate must own the loop, not the host.
+- You are building or integrating a custom Go agent and can embed the kernel directly.
+
+**Choose Mode B** when:
+
+- Your users are already working inside an MCP host and interactive use is the priority.
+- You are in a gradual adoption or experimentation phase.
+- Downstream consumers are aware that unverified host-channel text is non-attested and treat it accordingly.
+
+Note: production MCP packaging and marketplace connector flows are <StatusBadge status="Planned" />. The architecture describes these surfaces; they are not shipped in v0.
+
+## Next
+
+- [Home](/): Orientation, mental model, and glossary.
+- [Provenance Model](/concepts/provenance-model/): How numbers are captured, minted, recorded, and verified.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart for the current repository examples.
+
+<SourceReferences items={[
+  { label: 'architecture/subsystems/harness.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/harness.md', note: 'Mode A and Mode B enforcement boundary; harness-owns-the-loop contract.' },
+  { label: 'architecture/adapters/cli.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adapters/cli.md', note: 'CLI adapter as the Mode A access surface.' },
+  { label: 'architecture/adapters/mcp.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adapters/mcp.md', note: 'MCP adapter limits, host-channel attestation wording, and Mode B caveat.' },
+  { label: 'architecture/adapters/http.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adapters/http.md', note: 'HTTP adapter as an equal first-class Mode B surface.' },
+  { label: 'architecture/adrs/0002-submit-answer-as-single-exit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md', note: 'submit_answer as the single regulated exit and the non-bypassable enforcement contract.' },
+  { label: 'architecture/adrs/0010-mcp-equal-not-primary.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0010-mcp-equal-not-primary.md', note: 'ADR-0010 (Accepted): CLI, MCP, and HTTP are equal first-class adapters; MCP is not primary.' },
+]} />
