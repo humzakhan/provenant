@@ -206,7 +206,7 @@ rounding), the broken dataset in `broken/data/` and all goldens in
 
 ## Notes
 
-- **Phase 09 plan:** `.planning/derivation-graph/phase-09-scaled-demo-and-html-report.md`
+- **Roadmap:** `../../../ROADMAP.md`
 - **Definition of Done:** see the DoD checklist at the end of the phase plan.
 - **Contribution invariant** (happy path): `sum(LeafContribution.Contribution) == operating_income.ValueCanonical`. Asserted by `TestScaledFauxbooksEndToEnd`.
 - **Broken-run cross-run inequality**: `broken.operating_income.ValueCanonical != happy.operating_income.ValueCanonical`. Asserted by `TestBrokenFauxbooksEndToEnd` via an independent CSV recomputation, not via `trace.Trace`.
