@@ -1,0 +1,136 @@
+---
+title: Extend Source Tools
+description: Provenant's reader/tool/skill extension model — what is shipped in v0, what is an architecture contract, what is planned, and what is deferred — for platform engineers and tool authors.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" /> <StatusBadge status="Planned" /> <StatusBadge status="Deferred" />
+
+This guide explains Provenant's reader, tool, and skill extension model: what the contracts are, what ships in v0, and what is deferred. The intended audience is platform engineers, tool authors, and integrators who need to understand what they can extend today and what requires a future kernel version or a planned backend.
+
+**Honest framing before you read further.** In v0 the kernel is Go. Extension happens by contributing Go readers or tools to the kernel itself — and by configuring built-ins in a skill pack. There is no runtime plug-in surface, no WASM loader, and no dynamic library loading in v0. Provenant does not replace your general ledger, ERP, or document extractor; tools wrap those external systems. Tools are the only mechanism by which numbers enter the agent; the registry, not the tool, mints provenance tokens. See [Provenance Model](/concepts/provenance-model/) for the complete minting chain.
+
+---
+
+## Source Readers
+
+<StatusBadge status="Implemented now" />
+
+A source reader implements the `SourceReader` interface from `kernel/public`. Its `Read` method accepts a `context.Context`, a `Run`, `SourceBytes`, and a `SourceSelector`, and returns `(ReadResult, error)`. The `ReadResult` carries two things:
+
+- The **extracted output** — the structured data the kernel will use for token minting.
+- A **`CapturedRead`** — the stable, hash-anchored record of this read: reader name, reader version, source path, and SHA-256 of the canonicalized output. This is the evidence artifact that survives in the audit bundle.
+
+Four built-in readers ship in v0, implemented in Go packages `kernel/public/extractjson`, `kernel/public/extractcsvrows`, `kernel/public/extractspreadsheet`, and `kernel/public/extractjsonl`:
+
+| Reader name | Format | Status |
+|---|---|---|
+| `extract.json` | Single JSON document | <StatusBadge status="Implemented now" /> |
+| `extract.csv_rows` | CSV rows | <StatusBadge status="Implemented now" /> |
+| `extract.spreadsheet` | Spreadsheet (XLSX/ODS) | <StatusBadge status="Implemented now" /> |
+| `extract.jsonl` | Newline-delimited JSON | <StatusBadge status="Implemented now" /> |
+
+**Adding a new reader in v0** means contributing a Go implementation of `SourceReader` to the kernel. This is a kernel-version change — not a plug-in load, not a configuration toggle. There is no runtime reader registration API and no dynamic discovery in v0.
+
+---
+
+## The Tool Contract and Registry
+
+<StatusBadge status="Architecture contract" />
+
+A tool declares its **mintable paths** — the output paths it is permitted to produce tokens for. The registry, not the tool itself, mints one provenance token per declared mintable path. Tools cannot construct arbitrary tokens. This constraint preserves source integrity: a token's lineage always traces back through the registry's mint call, not through tool-internal logic.
+
+The `ToolBackend` interface specifies:
+
+- **Name and version** — stable identifiers used in audit entries and captured-read records.
+- **Input schema / output schema** — JSON schemas; malformed traffic is rejected before the tool is called.
+- **Mintable paths** — the declared set of output paths the registry will mint tokens for.
+- **Determinism class** — whether the tool is deterministic (replay-safe) or non-deterministic (requires captured output for offline replay).
+- **Credentials** — the logical `CredentialRef` values the backend will use when dispatched; pure-Go tools such as `calc.*` return an empty slice.
+- **Call** — the execution entry point.
+
+This interface is specified in the architecture. In v0, the registry is internal to the kernel and only kernel-built tools are registered. There is no external tool registration API in v0.
+
+---
+
+## Tool Categories vs. Backends
+
+Tool **categories** describe what a tool does. Tool **backends** describe how a specific deployment satisfies that category. These are independent: adding a new backend extends a category without renaming the tool. A tool named `ledger.get_balance` is the same tool regardless of whether the underlying backend is a Postgres view or a QuickBooks API call.
+
+### Categories
+
+| Category | Purpose | Status |
+|---|---|---|
+| `calc` | Pure arithmetic and aggregation | <StatusBadge status="Implemented now" /> — arithmetic ops run through the kernel derivation engine (`kernel/public/derive`), not through the agent-facing `ToolBackend` registry dispatch surface |
+| `extract` | Source reading and canonicalization | <StatusBadge status="Implemented now" /> (four built-in readers) |
+| `ledger` | General ledger balance and transaction queries | <StatusBadge status="Architecture contract" /> |
+| `external` | External reference data (FX rates, sanctions lists) | <StatusBadge status="Architecture contract" /> |
+| `reconcile` | Matching and reconciliation workflows | <StatusBadge status="Architecture contract" /> |
+| `match` | Entity and record matching | <StatusBadge status="Architecture contract" /> |
+| `dedupe` | Deduplication | <StatusBadge status="Architecture contract" /> |
+| `policy` | Policy evaluation | <StatusBadge status="Architecture contract" /> |
+
+Category contracts are architecture-level specifications. Implementing a category in a new backend produces a new tool backend, not a new tool contract.
+
+### Named Backends
+
+The following named backends appear in the architecture. None are shipping as callable tool backends in v0 — do not treat them as available.
+
+| Backend | Category | Status |
+|---|---|---|
+| Textract | `extract` | <StatusBadge status="Planned" /> — described in the architecture design as the reference backend for document extraction; it is not a shipped v0 component and is not callable today |
+| NetSuite | `ledger` | <StatusBadge status="Planned" /> |
+| QuickBooks | `ledger` | <StatusBadge status="Planned" /> |
+| Azure Document Intelligence | `extract` | <StatusBadge status="Planned" /> |
+| OFAC sanctions (broader coverage) | `external` | <StatusBadge status="Planned" /> |
+| pgvector | `match` / `policy` | <StatusBadge status="Planned" /> |
+
+**`calc` arithmetic operations are implemented in pure Go** and are available now. They run through the kernel's derivation engine (`kernel/public/derive`) rather than through the agent-facing `ToolBackend` registry dispatch surface — `calc` is not a registered `ToolBackend` and does not use `MintablePaths`. <StatusBadge status="Implemented now" />
+
+---
+
+## Skill Packs
+
+<StatusBadge status="Implemented now" />
+
+A skill pack bundles tool and guard configuration, prompts, and eval fixtures. It is the unit of deployment for a regulated workflow — not an extension point for loading external code.
+
+In v0, the normalizer slot in a skill pack accepts `kind: builtin` only. Built-in validators and normalizers are the only options; the slot does not accept external code paths, script references, or WASM modules. Configuring a skill pack means selecting and parameterizing built-ins, not registering new logic.
+
+The skill pack format is specified in ADR-0006. The hosted skill registry and pack signing beyond local digest verification are deferred.
+
+---
+
+## What Is Deferred
+
+<CaveatCallout title="Custom validators, WASM, and plugin loading are deferred" tone="warn">
+  Custom validators, WASM, and plugin loading are deferred. v0 uses built-in validators and normalizers only. The normalizer slot accepts <code>kind: builtin</code>; no external code loading path exists in v0.
+
+  Additionally deferred: hosted skill registry and pack signing beyond local digest verification; non-Go tool backends callable at runtime; and any runtime plug-in or dynamic library loading surface.
+
+  Do not describe these as available or as near-term options without consulting the current [Status Matrix](/reference/status-matrix/).
+</CaveatCallout>
+
+---
+
+## Next
+
+- [Provenance Model](/concepts/provenance-model/): Tools are the only way numbers enter; the registry mints — full minting chain and evidence structure.
+- [Integrate the Go Library](/guides/integrate-go-library/): How to embed the kernel, inject the substrate interfaces, and use `SourceReader` in Go.
+- [Review Audit Evidence](/guides/review-audit-evidence/): How to verify and replay the audit bundle produced by a run that used these readers and tools.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are deferred in v0.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled with its current status.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart using the `extract.json` reader and `calc` tools end-to-end.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Module path, runnable examples, and explicit non-support list.' },
+  { label: 'architecture/subsystems/tools.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/tools.md', note: 'Tools subsystem: ToolBackend interface, mintable paths, registry-controlled minting, and category/backend separation.' },
+  { label: 'architecture/tools/README.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/tools/README.md', note: 'Tool architecture index: category contracts and backend naming conventions.' },
+  { label: 'architecture/subsystems/skills.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/skills.md', note: 'Skills subsystem: skill pack structure, built-in validators, and normalizer slot.' },
+  { label: 'architecture/adrs/0006-skill-pack-format.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0006-skill-pack-format.md', note: 'ADR-0006: skill pack format specification, kind: builtin constraint, and deferred signing.' },
+  { label: 'docs/KNOWN_TRADE_OFFS.md', href: 'https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md', note: 'Accepted v0 limitations: custom validators, WASM, plugin loading, and hosted registry deferred.' },
+]} />

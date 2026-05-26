@@ -1,0 +1,135 @@
+---
+title: Guarantees and Limits
+description: Which Provenant claims you can rely on, which depend on deployment mode, and which are out of scope in v0 — before adopting or signing off.
+draft: false
+---
+
+import StatusBadge from '../../components/StatusBadge.astro';
+import CaveatCallout from '../../components/CaveatCallout.astro';
+import SourceReferences from '../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" /> <StatusBadge status="Deferred" />
+
+This page states precisely what Provenant guarantees, what it does not guarantee, and which properties depend on deployment mode. Use it to decide which claims you can rely on before adopting Provenant or signing off on a regulated workflow.
+
+Provenant is a Go provenance enforcement layer for regulated finance. It is not a SaaS product, agent, database, model, logger, or workflow engine. The library is the core product; CLI, MCP, and HTTP are access surfaces around the same kernel.
+
+## Audience
+
+This page is written for finance controllers and audit leads, platform engineers, MCP host vendors and framework authors, and compliance and model-risk reviewers evaluating Provenant for v0 adoption.
+
+The central question it answers: **which Provenant claims are unconditional, which depend on deployment mode (Mode A vs Mode B), and which are explicitly out of scope in v0?**
+
+---
+
+## What Provenant Guarantees
+
+### Enforcement Path
+
+**Non-bypassable exit** <StatusBadge status="Architecture contract" />
+
+`submit_answer` is the only path that returns data to the user. Mode A (CLI/embedded harness) is the required deployment shape for hard non-bypassable regulated output: the substrate owns the loop and the harness cannot be bypassed by host-channel text. In Mode B (MCP or host-driven adapter), this is an architecture contract the host must honor; Provenant cannot enforce it unilaterally across an untrusted host channel.
+
+**Fail-closed by default** <StatusBadge status="Implemented now" />
+
+Any validation, schema, token, or tool failure denies and surfaces an error. Silent pass is never the default. A missing or malformed source fails closed before any token is minted.
+
+### Input and Schema Integrity
+
+**Schema-first validation** <StatusBadge status="Implemented now" />
+
+Every tool, validator, input, and output is typed against a published JSON schema. Malformed traffic is rejected before LLM exposure. There is no path by which an untyped or schema-invalid request reaches the kernel.
+
+**Token-level grounding — no ungrounded numbers** <StatusBadge status="Implemented now" />
+
+Every numeric value in a final answer maps to exactly one provenance token with verifiable lineage back to a captured read. Ungrounded numbers are rejected at `submit_answer`. This is enforced by the guards subsystem, not by convention.
+
+### Auditability and Determinism
+
+**Replay-deterministic outputs** <StatusBadge status="Implemented now" />
+
+The deterministic portion of a run — tool calls, validator outcomes, the audit trail, and minted tokens — is bit-identical on replay when captured inputs, pinned skill-pack facts, kernel version, and backend versions match. Replay is offline; it does not re-contact external sources. This covers offline replay from captured bundle bytes; it does not guarantee that two fresh runs on different deployments produce identical chains, because external source versions (for example sanctions lists or FX rates) may differ.
+
+**Hash-chained, internally tamper-evident audit bundle** <StatusBadge status="Implemented now" />
+
+The audit bundle uses a SHA-256 chain over canonicalized entries. Any edit to an earlier entry breaks the linkage and is detected by `bundle.Verify`. Both Verify and Replay are fully offline operations.
+
+**Four independent metrics** <StatusBadge status="Implemented now" />
+
+Trajectory determinism, decision determinism, faithfulness, and accuracy are measured and reported separately. Determinism does NOT imply correctness. Faithfulness must be 1.00 to release. A deterministic system can be reliably wrong; correctness is a separate, independently measured metric.
+
+### Isolation
+
+**Kernel-enforced multi-tenant isolation** <StatusBadge status="Architecture contract" />
+
+Every token, tool call, audit entry, and run carries a `tenant_id`. Cross-tenant references are rejected at verification. This is specified by the security architecture; deployment packaging of storage bindings is a deployment concern outside the kernel. v0 ships single-tenant only; multi-tenant packaging is deferred (see v0 scope limits below).
+
+---
+
+## What Provenant Does NOT Guarantee
+
+### Mode A vs Mode B — The Headline Limit
+
+<CaveatCallout title="Mode B / MCP host-channel text is not officially attested" tone="danger">
+  Host-channel text in Mode B is NOT an official regulated conclusion unless it comes through a passing `submit_answer` AND is verified against the audit chain or audit pack. A `[PROVENANT-ATTESTED ...]` marker appearing on host-channel text is NOT by itself proof of attestation — marker text alone is not sufficient. For deployments where unsigned host text is unacceptable, **Mode A is required**.
+</CaveatCallout>
+
+Mode A (CLI/embedded harness) gives hard non-bypassable enforcement because the substrate owns the loop. Mode B gives an architecture contract that the host must honor; Provenant cannot enforce it unilaterally across an untrusted host channel.
+
+### Host Conformance
+
+<CaveatCallout title="Host conformance is self-declared in v0" tone="warn">
+  v0 provides no operator-signed attestation and no Provenant-side verification of host conformance. Untested hosts can complete a run as `host_text_only`. Do not rely on host conformance claims that have not been independently verified.
+</CaveatCallout>
+
+### Audit Evidence Scope
+
+<CaveatCallout title="Internally tamper-evident, not externally tamper-proof" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. Do not describe v0 evidence as externally attested or tamper-proof.
+</CaveatCallout>
+
+**No root-compromise resistance.** Tamper detection is not tamper prevention. Provenant assumes a trusted OS and operator. A compromised host environment can suppress or alter evidence before it reaches the bundle. The security architecture documents this boundary explicitly.
+
+### Correctness vs Determinism
+
+**Determinism does not imply accuracy.** A deterministic system can be reliably wrong. Correctness — whether the right rule was applied, whether the right source data was used — is a separately measured metric and is not guaranteed by replay-determinism alone. Use the four independent metrics together.
+
+### Examples and Scope
+
+**Examples are proof fixtures, not a full product.** The reconciliation fixture and derivation-graph demo are intentionally small demonstrations. They do not infer columns, perform fuzzy matching, read remote files, expose a UI, or run LLM reasoning. They prove the provenance path works; they are not a complete reconciliation or derivation product.
+
+**Legal and regulatory material is context, not legal advice or regulatory approval.** Documentation references to regulatory frameworks (MiFID II, SR 11-7, and similar) are context, not legal advice or regulatory approval of any deployment.
+
+### v0 Scope Limits
+
+The following are explicitly deferred in v0. Full details are in `docs/KNOWN_TRADE_OFFS.md`.
+
+- Single-tenant only; no hosted multi-tenant SaaS.
+- The embedded path is Go-only; non-Go bindings are deferred.
+- Claude has been verified end-to-end; LangChain and OpenAI adapters are deferred.
+- Streaming and split-turn parallel runs are deferred.
+- External notarization and hosted registry are deferred.
+- Custom validators, WASM, and plugin loading are deferred.
+- A complete end-user reconciliation product (with inference, UI, fuzzy matching) is deferred.
+
+---
+
+## Next
+
+- [Home](/): Orientation, mental model, and glossary.
+- [Status Matrix](/reference/status-matrix/): Compact table of every surface labeled Implemented now, Architecture contract, Planned, or Deferred.
+- [Run Current Artifacts](/quickstart/current-artifacts/): Runnable quickstart for the current repository examples.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Non-bypassable exit, fail-closed default, runnable examples, and explicit non-support list.' },
+  { label: 'docs/thesis.md', href: 'https://github.com/provenant/provenant/blob/main/docs/thesis.md', note: 'Product framing, Mode A/Mode B boundary, substrate-owns-the-loop contract.' },
+  { label: 'docs/KNOWN_TRADE_OFFS.md', href: 'https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md', note: 'Accepted v0 limitations: host conformance, notarization, scope limits.' },
+  { label: 'architecture/OVERVIEW.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/OVERVIEW.md', note: 'Library-as-product, access-surface boundaries, and hash-chained audit.' },
+  { label: 'architecture/adrs/0002-submit-answer-as-single-exit.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0002-submit-answer-as-single-exit.md', note: 'submit_answer as the single regulated exit point.' },
+  { label: 'architecture/adrs/0003-fail-closed-default.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0003-fail-closed-default.md', note: 'Fail-closed as the enforced default for all validation paths.' },
+  { label: 'architecture/adrs/0004-token-level-grounding.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0004-token-level-grounding.md', note: 'Token-level grounding contract and rejection of ungrounded numbers.' },
+  { label: 'architecture/adrs/0005-determinism-faithfulness-independent.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0005-determinism-faithfulness-independent.md', note: 'Four independent metrics; determinism does not imply correctness; faithfulness threshold.' },
+  { label: 'architecture/subsystems/guards.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/subsystems/guards.md', note: 'Guards subsystem enforcing token-level grounding at submit.' },
+  { label: 'architecture/cross-cutting/security.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/cross-cutting/security.md', note: 'Multi-tenant isolation, root-compromise boundary, and tamper-detection scope.' },
+  { label: 'architecture/adapters/mcp.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adapters/mcp.md', note: 'MCP adapter limits, host-channel attestation wording, and Mode B caveat.' },
+]} />

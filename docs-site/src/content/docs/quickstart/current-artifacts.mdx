@@ -1,0 +1,152 @@
+---
+title: Run Current Artifacts
+description: One current-artifacts quickstart for Provenant's implemented repository examples.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+import AuditArtifactCard from '../../../components/AuditArtifactCard.astro';
+
+<StatusBadge status="Implemented now" />
+
+This is the single public quickstart for current repository artifacts. Run commands from the repository root unless a step says otherwise.
+
+## Prerequisites
+
+- Go installed for the module version in `go.mod`.
+- Optional: `jq` for inspecting generated JSON.
+
+```bash
+git clone https://github.com/provenant/provenant
+cd provenant
+go test ./...
+```
+
+Last verified for this page: `go test ./...`.
+
+## Repository Layout Snapshot
+
+```text
+cmd/provenant/           CLI entry point
+access/cli/              Current CLI runner and tests
+kernel/public/bundle/    Go API for bundle Verify and Replay
+examples/reconciliation/ Deterministic CSV/XLSX reconciliation fixture
+examples/derivation-graph/ Committed CSV demo with golden bundle and trace
+```
+
+## read-mint-bundle
+
+`read-mint-bundle` is the smallest current token path. The only supported reader for this CLI surface is `extract.json`.
+
+```bash
+go run ./cmd/provenant read-mint-bundle --request request.json
+```
+
+The response contains `surface`, `read_and_mint`, `bundle_bytes`, and `bundle_sha256`. Decoded bundle bytes use format `phase1.bundle/v1` and include `run`, `captured_reads`, `tokens`, and `audit_jsonl`.
+
+<CaveatCallout title="Reader scope" tone="warn">
+  `extract.csv_rows` and `extract.spreadsheet` are used by the reconciliation fixture, but they are not exposed by the `read-mint-bundle` quickstart surface today.
+</CaveatCallout>
+
+## Reconciliation Fixture
+
+The fixture reads `bank.csv` and `ledger.xlsx`, performs exact-match comparison on `transaction_id`, and writes a deterministic ZIP report.
+
+```bash
+cd examples/reconciliation
+go run ../../cmd/provenant reconcile \
+  --request reconcile.json \
+  --out report.zip \
+  --workdir .
+```
+
+Use `--overwrite` if `report.zip` already exists.
+
+The ZIP contains exactly:
+
+<div class="artifact-grid">
+  <AuditArtifactCard name="report.md" description="Human-readable run summary, result count, and outcome counts." />
+  <AuditArtifactCard name="report.json" description="Machine-readable counts and per-result evidence." />
+  <AuditArtifactCard name="mismatches.csv" description="Rows for non-matched results." />
+  <AuditArtifactCard name="captured_reads.json" description="CapturedRead records with reader name, version, and output hash." />
+  <AuditArtifactCard name="tokens.json" description="Minted tokens with canonical values and captured-read bindings." />
+  <AuditArtifactCard name="audit.jsonl" description="Hash-chained audit entries covering token mints." />
+  <AuditArtifactCard name="bundle.json" description="Canonical audit bundle with run, reads, tokens, and audit chain." />
+  <AuditArtifactCard name="manifest.json" description="Bundle hash and SHA-256 for each sidecar artifact." />
+</div>
+
+This fixture is not a complete reconciliation product. It does not infer columns, perform fuzzy matching, read remote files, expose a UI, or run LLM reasoning.
+
+## Derivation Graph Demo
+
+The derivation graph demo mints leaf tokens from committed CSV accounting data, composes them with `filter.sum_where`, `calc.sum`, and `calc.subtract`, and traces `operating_income` back to source rows.
+
+Run the focused CLI and derivation graph checks:
+
+```bash
+go test ./access/cli ./examples/derivation-graph
+```
+
+Expected final value from the committed seed-42 data:
+
+```text
+operating_income = 350000.000000000 USD
+```
+
+The committed `golden.bundle.json` and `golden.trace.json` are the source artifacts for this demo.
+
+## Verify And Replay
+
+Top-level CLI `verify` and `replay` are implemented in the current CLI surface and covered by `access/cli` fixture tests.
+
+```json
+{
+  "bundle_path": "bundle.json"
+}
+```
+
+```bash
+go run ./cmd/provenant verify --request verify-request.json
+go run ./cmd/provenant replay --request verify-request.json
+```
+
+The same bundle verification and replay path is also available as Go API usage through `kernel/public/bundle`.
+
+```go
+import "github.com/provenant/provenant/kernel/public/bundle"
+
+data, _ := os.ReadFile("bundle.json")
+if err := bundle.Verify(data); err != nil {
+    log.Fatalf("bundle tampered or invalid: %v", err)
+}
+state, _ := bundle.Replay(data)
+_ = state
+```
+
+Run the focused CLI fixture tests:
+
+```bash
+go test ./access/cli
+```
+
+## Common Failure Modes
+
+- Missing source data fails closed instead of minting partial evidence.
+- Invalid numeric evidence fails with an evidence error.
+- Unsupported input formats fail before report generation.
+- Duplicate or invalid records are represented as deterministic fixture outcomes where the request supports them.
+
+<CaveatCallout title="Integrity versus business correctness" tone="warn">
+  `bundle.Verify` checks bundle integrity and audit-chain consistency. It does not prove that a business reconciliation rule was the right rule.
+</CaveatCallout>
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current quickstart commands and examples.' },
+  { label: 'cmd/provenant', href: 'https://github.com/provenant/provenant/tree/main/cmd/provenant', note: 'CLI entry point.' },
+  { label: 'access/cli', href: 'https://github.com/provenant/provenant/tree/main/access/cli', note: 'CLI implementation and fixture tests, including verify and replay.' },
+  { label: 'kernel/public/bundle', href: 'https://github.com/provenant/provenant/tree/main/kernel/public/bundle', note: 'Go Verify and Replay API.' },
+  { label: 'examples/reconciliation/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/reconciliation/README.md', note: 'ZIP artifacts and non-support list.' },
+  { label: 'examples/derivation-graph/README.md', href: 'https://github.com/provenant/provenant/blob/main/examples/derivation-graph/README.md', note: 'Derivation trace demo and golden files.' },
+]} />

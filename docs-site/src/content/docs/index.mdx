@@ -1,0 +1,81 @@
+---
+title: Provenant
+description: Public orientation for Provenant's current artifacts, contracts, and limits.
+draft: false
+---
+
+import StatusBadge from '../../components/StatusBadge.astro';
+import CaveatCallout from '../../components/CaveatCallout.astro';
+import SourceReferences from '../../components/SourceReferences.astro';
+import AuditArtifactCard from '../../components/AuditArtifactCard.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" />
+
+<div class="hero-panel">
+Provenant is a Go provenance enforcement layer for regulated finance workflows. It records where output numbers came from, mints tokens from captured reads, writes a hash-chained audit trail, and emits audit bundle bytes that can be verified and replayed.
+</div>
+
+Provenant is not a SaaS product, database, agent, model, logger, reconciliation product, or generic guardrail. The library is the core product. CLI, MCP, and HTTP are access surfaces around the same kernel, and current public examples are intentionally small.
+
+## Current Mental Model
+
+```text
+source bytes -> SourceReader.Read -> CapturedRead + ReadResult
+                                   -> kernel.MintToken
+                                   -> hash-chained audit entry
+                                   -> bundle.Snapshot
+                                   -> bundle.Verify / bundle.Replay
+```
+
+The current repository proves this path with:
+
+<div class="artifact-grid">
+  <AuditArtifactCard name="read-mint-bundle" description="Reads one JSON source through extract.json, mints one token, and emits bundle bytes plus a SHA-256 fingerprint." />
+  <AuditArtifactCard name="reconcile fixture" description="Runs exact-match CSV/XLSX reconciliation and writes report.zip with report, token, captured-read, audit, bundle, and manifest artifacts." />
+  <AuditArtifactCard name="derivation graph demo" description="Builds a deterministic operating-income trace from committed CSV accounting data and golden bundle/trace files." />
+</div>
+
+## Status Convention
+
+Every launch page uses these labels:
+
+<div class="status-row">
+  <div class="status-card"><StatusBadge status="Implemented now" /> <span>Verified by current code, examples, tests, or CLI commands.</span></div>
+  <div class="status-card"><StatusBadge status="Architecture contract" /> <span>Specified by architecture docs, not necessarily exposed as a current user workflow.</span></div>
+  <div class="status-card"><StatusBadge status="Planned" /> <span>Expected implementation work, not current behavior.</span></div>
+  <div class="status-card"><StatusBadge status="Deferred" /> <span>Explicitly out of scope for the current phase or v0.</span></div>
+</div>
+
+## What To Read Next
+
+- Run the current repository artifacts: [Current Artifact Quickstart](quickstart/current-artifacts/).
+- Check what exists versus what is planned or deferred: [Status Matrix](reference/status-matrix/).
+- For architecture details, use `architecture/` as the source of truth.
+
+## Glossary
+
+- `CapturedRead`: stable record of a source read, including source path, reader, selector, and output hash.
+- `Token`: kernel-issued provenance value bound to a captured read or derivation.
+- `Audit entry`: one hash-chained JSONL record in a run.
+- `Audit bundle`: canonical bytes containing the run, captured reads, tokens, and audit JSONL.
+- `Replay`: offline re-derivation from captured bundle bytes, not a fresh external-source run.
+- `submit_answer`: the guarded release path for regulated conclusions.
+- `Mode A`: Provenant-owned or embedded harness path.
+- `Mode B`: host-driven adapter path, such as MCP, where host-channel text is not automatically attested.
+
+<CaveatCallout title="Mode B attestation limit" tone="warn">
+  Marker verification is necessary for a regulated conclusion, but v0 host conformance is self-declared. Untested hosts can complete as `host_text_only`; use Mode A when unsigned host text is unacceptable.
+</CaveatCallout>
+
+<CaveatCallout title="Audit evidence language" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. These docs do not claim tamper-proof, externally notarized, or legal-advice status.
+</CaveatCallout>
+
+The first docs theme uses `audit/report/html.go` and generated audit report HTML as the available design-token source: white and warm-gray surfaces, deep Provenant green, compact bordered cards, mono metadata, and source-card motifs. If the missing landing-page asset is later provided, the token file should be aligned deliberately.
+
+<SourceReferences items={[
+  { label: 'README.md', href: 'https://github.com/provenant/provenant/blob/main/README.md', note: 'Current mental model and runnable examples.' },
+  { label: 'docs/thesis.md', href: 'https://github.com/provenant/provenant/blob/main/docs/thesis.md', note: 'Product framing, Mode A/Mode B caveat, and non-goals.' },
+  { label: 'architecture/OVERVIEW.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/OVERVIEW.md', note: 'Library-as-product and access-surface boundaries.' },
+  { label: 'audit/report/html.go', href: 'https://github.com/provenant/provenant/blob/main/audit/report/html.go', note: 'Current discoverable design-token source.' },
+]} />

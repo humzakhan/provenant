@@ -1,0 +1,124 @@
+---
+title: Security, Determinism, and Trade-offs
+description: What Provenant's security model defends against and does not, what determinism does and does not promise, the headline v0 trade-offs, and how regulatory frameworks relate — context, not advice.
+draft: false
+---
+
+import StatusBadge from '../../../components/StatusBadge.astro';
+import CaveatCallout from '../../../components/CaveatCallout.astro';
+import SourceReferences from '../../../components/SourceReferences.astro';
+
+<StatusBadge status="Implemented now" /> <StatusBadge status="Architecture contract" /> <StatusBadge status="Deferred" />
+
+Status varies by property: the audit chain and fail-closed defaults are implemented now; external notarization and regulatory interpretation are deferred.
+
+This page states, conservatively, what Provenant's security model defends against and does not, what determinism does and does not promise, the headline v0 trade-offs, and how regulatory frameworks relate. It is written for compliance and model-risk reviewers, security engineers, and architects. It summarizes the canonical architecture docs and links to them; it does not replace them.
+
+See the [Architecture Overview](/architecture/overview/) for the four-layer map and canonical invariants. See [Guarantees and Limits](/guarantees-and-limits/) for the complete guarantee and scope-limit reference.
+
+---
+
+## Security Model
+
+### In scope
+
+**Pre-LLM input guards** <StatusBadge status="Implemented now" />
+
+Prompt-injection attempts in untrusted documents and tool responses are quarantined by the guards subsystem before they reach the LLM. This is not a heuristic filter: guard evaluation is part of the kernel enforcement pipeline and fails closed if the guard result is absent or inconclusive.
+
+**Token verification** <StatusBadge status="Implemented now" />
+
+Every provenance token carries a `tenant_id` and `run_id`. The kernel verifier checks both fields on every token reference. A token presented with a mismatched `tenant_id` or `run_id` is rejected at verification, not silently accepted.
+
+**Internally tamper-evident audit chain** <StatusBadge status="Implemented now" />
+
+The audit bundle uses a SHA-256 hash chain over canonicalized entries. Any edit to an earlier entry breaks the linkage. Both `bundle.Verify` and the `provenant verify` CLI command detect the break. A scheduled verifier can be run against stored bundles to surface tampering. `Verify` and `Replay` are fully offline operations — they do not contact external sources.
+
+**Kernel-enforced multi-tenant isolation** <StatusBadge status="Architecture contract" />
+
+Every token, tool call, audit entry, and run carries a `tenant_id`. Cross-tenant token references are rejected at verification. v0 ships single-tenant; multi-tenant packaging is deferred.
+
+**Fail-closed default** <StatusBadge status="Implemented now" />
+
+Any validation, schema, token, or tool failure denies and surfaces an error. Silent pass is never the default. A missing or malformed source fails closed before any token is minted. See [`architecture/adrs/0003-fail-closed-default.md`](https://github.com/provenant/provenant/blob/main/architecture/adrs/0003-fail-closed-default.md).
+
+### Out of scope
+
+<CaveatCallout title="Tamper detection, not tamper prevention — internally tamper-evident, not tamper-proof" tone="warn">
+  v0 audit evidence is internally tamper-evident through hash-chain verification. Provenant can detect internal edits to bundle or audit bytes. It does NOT provide external notarization, third-party witnessing, or tamper-proof guarantees. A maliciously root-compromised host — with direct write access to the database or bundle storage — can construct a new valid chain from scratch. The chain detects edits made after the fact; it does not prevent a root-equivalent actor from replacing it entirely. Do not describe v0 evidence as externally attested or tamper-proof.
+</CaveatCallout>
+
+Internally tamper-evident audit chain: <StatusBadge status="Implemented now" />. External notarization / third-party witness: <StatusBadge status="Deferred" />.
+
+The following are explicitly outside Provenant's security boundary:
+
+- **Root-compromised host.** Provenant assumes a trusted OS and operator. A maliciously root-compromised host can suppress or alter evidence before it reaches the bundle. Provenant provides tamper detection, not prevention against root-equivalent actors. The security architecture documents this boundary explicitly.
+- **Side-channel attacks on the model provider.** Provenant enforces grounding and auditability at its kernel boundary. It does not control or monitor the model provider's infrastructure.
+- **Cryptographic break of SHA-256.** The hash chain integrity depends on SHA-256. A cryptographic break of that primitive falls outside Provenant's threat model.
+
+---
+
+## Determinism Semantics
+
+Provenant reports **four independent metrics** (ADR-0005). These are measured and reported separately; they are not combined into a single score:
+
+| Metric | What it measures |
+|---|---|
+| Trajectory determinism | Whether the tool-call sequence across two runs is identical. |
+| Decision determinism | Whether `submit_answer` decisions across two runs are identical. |
+| Faithfulness | Whether every claim in the final answer maps to a grounded provenance token — no hallucinated numbers. |
+| Accuracy | Whether the grounded answer is factually correct. |
+
+### What determinism does not promise
+
+**Determinism does not imply accuracy.** A deterministic system can be reliably wrong. Correctness — whether the right rule was applied, whether the right source data was used — is a separately measured metric. Decision determinism and accuracy are uncorrelated (the DFAH finding, r ≈ −0.11 from ADR-0005). Use the four metrics together; do not substitute determinism for correctness.
+
+**Faithfulness must be 1.00 to release.** Any unfaithful claim — a number in a final answer that does not map to a grounded provenance token — is a hallucination by Provenant's contract. The guards subsystem enforces this at `submit_answer`; a run with faithfulness below 1.00 is rejected, not released.
+
+**Replay-determinism is captured-deterministic, not cross-deployment-equivalent.** The deterministic portion of a run — tool calls, validator outcomes, the audit trail, and minted tokens — is bit-identical on offline replay when captured inputs, pinned skill-pack facts, kernel version, and backend versions match. This covers offline replay from captured bundle bytes. It does **not** guarantee that two fresh runs on different deployments produce identical chains, because external source versions — sanctions lists, FX rates, reference data — may differ between deployments. Cross-deployment fresh-run equivalence is not guaranteed.
+
+---
+
+## Headline v0 Trade-offs
+
+The following trade-offs are accepted in v0. Each is one line here; see [`docs/KNOWN_TRADE_OFFS.md`](https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md) for full detail and rationale.
+
+- **Audit-pack tamper-evidence is the internal hash chain only.** No RFC 3161 timestamping, no third-party notary, no external witness. Internally tamper-evident, not externally attested. External notarization is <StatusBadge status="Deferred" />.
+- **Host conformance is self-declared in v0.** No operator-signed attestation and no Provenant-side cryptographic verification of host conformance. Untested hosts can complete a run as `host_text_only`. Host conformance verification is <StatusBadge status="Deferred" />.
+- **Streaming and split-turn parallel `tool_use` are deferred.** <StatusBadge status="Deferred" />
+- **Locale-specific numeric normalization is built-in-only.** Tool backends declare and normalize their numeric locale; Provenant enforces schema conformance but does not perform locale-specific normalization beyond built-in support.
+- **Cross-deployment fresh-run equivalence is not guaranteed.** External source version drift — sanctions lists, FX rates, reference data — can cause two fresh runs on different deployments to produce different chains even from nominally identical inputs.
+- **Skill-pack extensibility (custom validators / WASM) is deferred.** v0 uses built-in validators and normalizers. <StatusBadge status="Deferred" />
+
+---
+
+## Regulatory Framing
+
+Provenant's audit and evidence story is designed to support review under frameworks such as SR 11-7 (model risk management), FINRA 2026 GenAI guidance, the NYDFS RAISE Act, and MiFID II — specifically by providing a hash-chained audit trail, grounded token lineage, replay-deterministic runs, and a fail-closed enforcement posture that reviewers can examine.
+
+These capabilities **enable** compliance work; they do not constitute certification or regulatory approval.
+
+<CaveatCallout title="Context, not legal advice or regulatory approval" tone="warn">
+  Documentation references to regulatory frameworks — SR 11-7, FINRA 2026 GenAI guidance, NYDFS RAISE Act, MiFID II, and similar — are context, not legal advice or regulatory approval of any deployment. Customers achieve compliance by combining Provenant's evidence with their own governance, legal counsel, and internal model-risk processes. Provenant does not certify, approve, or guarantee that any deployment meets the requirements of any regulatory framework.
+</CaveatCallout>
+
+Regulatory interpretation: <StatusBadge status="Deferred" />.
+
+---
+
+<SourceReferences items={[
+  { label: 'architecture/cross-cutting/security.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/cross-cutting/security.md', note: 'Multi-tenant isolation, root-compromise boundary, and tamper-detection scope.' },
+  { label: 'docs/KNOWN_TRADE_OFFS.md', href: 'https://github.com/provenant/provenant/blob/main/docs/KNOWN_TRADE_OFFS.md', note: 'Accepted v0 limitations: host conformance, notarization, streaming, locale normalization, and scope limits.' },
+  { label: 'architecture/adrs/0005-determinism-faithfulness-independent.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0005-determinism-faithfulness-independent.md', note: 'ADR-0005: four independent metrics; determinism does not imply correctness; faithfulness threshold at 1.00; DFAH correlation finding.' },
+  { label: 'architecture/adrs/0003-fail-closed-default.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/adrs/0003-fail-closed-default.md', note: 'ADR-0003: fail-closed default — any enforcement pipeline error produces a rejection, not a pass.' },
+  { label: 'architecture/references.md', href: 'https://github.com/provenant/provenant/blob/main/architecture/references.md', note: 'Canonical architecture reference list.' },
+]} />
+
+## Next
+
+- [Architecture Overview](/architecture/overview/): Four-layer map, canonical invariants, and what Provenant does not provide.
+- [Kernel, Runtime, and Storage](/architecture/kernel-runtime-storage/): Precise boundary between kernel, runtime layer, and storage.
+- [Guarantees and Limits](/guarantees-and-limits/): Which claims are unconditional, which depend on deployment mode, and which are out of scope in v0.
+- [Review Audit Evidence](/guides/review-audit-evidence/): How to verify and replay an audit bundle.
+- [Modes](/concepts/modes/): Mode A vs Mode B — who owns the loop and what each enforces.
+- [Status Matrix](/reference/status-matrix/): Every surface labeled Implemented now, Architecture contract, Planned, or Deferred.

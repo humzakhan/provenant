@@ -1,0 +1,141 @@
+:root {
+  --sl-color-accent-low: #eef6f2;
+  --sl-color-accent: #1f4d3a;
+  --sl-color-accent-high: #163829;
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f5f5f3;
+  --sl-color-gray-2: #e8e8e4;
+  --sl-color-gray-3: #d3d3cc;
+  --sl-color-gray-4: #9a9a9a;
+  --sl-color-gray-5: #525252;
+  --sl-color-gray-6: #191919;
+  --sl-color-black: #0c0f14;
+  --provenant-green: #1f4d3a;
+  --provenant-green-tint: #eef6f2;
+  --provenant-green-soft: #b8d4c5;
+  --provenant-amber: #b45309;
+  --provenant-danger: #c0392b;
+  --provenant-surface: #f5f5f3;
+  --provenant-border: rgba(0, 0, 0, 0.12);
+}
+
+.sl-markdown-content h1,
+.sl-markdown-content h2,
+.sl-markdown-content h3 {
+  letter-spacing: 0;
+}
+
+.hero-panel {
+  border: 1px solid var(--provenant-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+  background: linear-gradient(180deg, #ffffff 0%, var(--provenant-surface) 100%);
+}
+
+.status-row,
+.artifact-grid,
+.source-ref-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.75rem;
+}
+
+.status-badge {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  border-radius: 4px;
+  border: 1px solid var(--provenant-border);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.status-implemented-now {
+  color: var(--provenant-green);
+  background: var(--provenant-green-tint);
+  border-color: var(--provenant-green-soft);
+}
+
+.status-architecture-contract {
+  color: #24405f;
+  background: #edf4fb;
+  border-color: #bfd3ea;
+}
+
+.status-planned {
+  color: var(--provenant-amber);
+  background: #fff7ed;
+  border-color: #fed7aa;
+}
+
+.status-deferred {
+  color: var(--provenant-danger);
+  background: #fde8e8;
+  border-color: #f5b3b3;
+}
+
+.caveat {
+  border: 1px solid var(--provenant-border);
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  margin: 1rem 0;
+  background: #ffffff;
+}
+
+.caveat strong {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.caveat-warn {
+  border-color: #fed7aa;
+  background: #fff7ed;
+}
+
+.caveat-danger {
+  border-color: #f5b3b3;
+  background: #fde8e8;
+}
+
+.artifact-card,
+.source-ref-card,
+.status-card {
+  border: 1px solid var(--provenant-border);
+  border-radius: 8px;
+  padding: 0.85rem;
+  background: #ffffff;
+}
+
+.artifact-card > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+}
+
+.artifact-card span,
+.source-ref-card span,
+.status-card span {
+  color: var(--sl-color-gray-5);
+  font-size: 0.86rem;
+}
+
+.source-ref-card {
+  display: block;
+  text-decoration: none;
+}
+
+.source-ref-card strong {
+  display: block;
+  color: var(--provenant-green);
+}
+
+.status-table td:first-child {
+  font-weight: 700;
+}
+
+.mono {
+  font-family: ui-monospace, "Cascadia Code", "Fira Mono", monospace;
+}
