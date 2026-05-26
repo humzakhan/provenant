@@ -20,6 +20,10 @@ export default defineConfig({
           items: [{ label: 'Run Current Artifacts', link: '/quickstart/current-artifacts/' }],
         },
         {
+          label: 'Concepts',
+          items: [{ label: 'Provenance Model', link: '/concepts/provenance-model/' }],
+        },
+        {
           label: 'Reference',
           items: [{ label: 'Status Matrix', link: '/reference/status-matrix/' }],
         },
