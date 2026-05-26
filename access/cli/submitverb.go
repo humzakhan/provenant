@@ -9,8 +9,8 @@ import (
 	"io"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/runfile"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 // submitAnswerRequest is the JSON body for `submit-answer`.
@@ -33,8 +33,8 @@ type submitAnswerAnswer struct {
 
 // submitAnswerResponse is written to stdout on `submit-answer` success.
 type submitAnswerResponse struct {
-	Token      kernel.Token      `json:"token"`
-	AuditEntry kernel.AuditEntry `json:"audit_entry"`
+	Token      kernel.Token       `json:"token"`
+	AuditEntry kernel.AuditEntry  `json:"audit_entry"`
 	Answer     submitAnswerAnswer `json:"answer"`
 }
 
@@ -155,4 +155,3 @@ func answerAuditHash(prevHash []byte, seq uint64, runID, tenantID string, det []
 	h.Write(det)
 	return h.Sum(nil)
 }
-

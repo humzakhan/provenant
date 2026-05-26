@@ -7,9 +7,9 @@ import (
 	"errors"
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/internal/derivation"
-	"github.com/provenant/provenant/kernel/public/internal/ops"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/internal/derivation"
+	"github.com/humzakhan/provenant/kernel/public/internal/ops"
 )
 
 // Request is the input to a derivation. Op identifies the op catalog entry.
@@ -35,11 +35,11 @@ type Result struct {
 // CapturedReadStore is required only by filter.sum_where; it may be nil for
 // all other ops.
 type Dependencies struct {
-	Clock              kernel.Clock
-	Store              kernel.Store
-	AuditSink          kernel.AuditSink
-	Scope              kernel.TransactionalScope
-	CapturedReadStore  kernel.CapturedReadStore
+	Clock             kernel.Clock
+	Store             kernel.Store
+	AuditSink         kernel.AuditSink
+	Scope             kernel.TransactionalScope
+	CapturedReadStore kernel.CapturedReadStore
 }
 
 // Derive evaluates Op over Inputs and returns the derived Token plus the

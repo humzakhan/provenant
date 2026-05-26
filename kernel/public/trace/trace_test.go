@@ -13,11 +13,11 @@ import (
 
 	"github.com/gowebpki/jcs"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
-	"github.com/provenant/provenant/kernel/public/trace"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
+	"github.com/humzakhan/provenant/kernel/public/trace"
 )
 
 // ---------------------------------------------------------------------------
@@ -742,8 +742,8 @@ func TestTraceFilterSumWhere(t *testing.T) {
 		"matched":    matched,
 		"operation":  "filter.sum_where",
 		"predicate": map[string]any{
-			"field": "row.tag",
-			"op":    "in",
+			"field":  "row.tag",
+			"op":     "in",
 			"values": []string{"keep_a", "keep_c"},
 		},
 		"rounding": map[string]any{

@@ -12,12 +12,12 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/extractcsvrows"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/extractjsonl"
-	"github.com/provenant/provenant/kernel/public/extractspreadsheet"
-	"github.com/provenant/provenant/reconcile/request"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/extractcsvrows"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/extractjsonl"
+	"github.com/humzakhan/provenant/kernel/public/extractspreadsheet"
+	"github.com/humzakhan/provenant/reconcile/request"
 )
 
 func Route(ctx context.Context, req request.Request, opts Options) ([]NormalizedFile, error) {

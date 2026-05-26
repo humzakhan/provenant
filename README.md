@@ -2,8 +2,8 @@
 
 [![CI](https://github.com/humzakhan/provenant/actions/workflows/ci.yml/badge.svg)](https://github.com/humzakhan/provenant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Go Reference](https://pkg.go.dev/badge/github.com/provenant/provenant.svg)](https://pkg.go.dev/github.com/provenant/provenant)
-[![Go Report Card](https://goreportcard.com/badge/github.com/provenant/provenant)](https://goreportcard.com/report/github.com/provenant/provenant)
+[![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
+[![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
 
 Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger or a reconciliation product. It enforces four guarantees across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
 
@@ -37,13 +37,13 @@ Provenant is a provenance layer for finance workflows: it records where every ou
 **As a library:**
 
 ```bash
-go get github.com/provenant/provenant
+go get github.com/humzakhan/provenant
 ```
 
 **CLI binary:**
 
 ```bash
-go install github.com/provenant/provenant/cmd/provenant@latest
+go install github.com/humzakhan/provenant/cmd/provenant@latest
 ```
 
 **Build from source:**
@@ -254,7 +254,7 @@ Note: `extract.csv_rows` and `extract.spreadsheet` are available as kernel reade
 To verify or replay a bundle in Go:
 
 ```go
-import "github.com/provenant/provenant/kernel/public/bundle"
+import "github.com/humzakhan/provenant/kernel/public/bundle"
 
 data, _ := os.ReadFile("bundle.json")
 if err := bundle.Verify(data); err != nil {

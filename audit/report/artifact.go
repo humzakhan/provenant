@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/provenant/provenant/audit/pack"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/audit/pack"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // WriteArtifactReport renders an HTML report for doc where any SourcePath

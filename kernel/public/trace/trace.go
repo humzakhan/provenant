@@ -7,8 +7,8 @@ import (
 	"github.com/gowebpki/jcs"
 	"github.com/shopspring/decimal"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
 
 // Sentinel errors returned by Trace.
@@ -26,11 +26,11 @@ var (
 // Nodes are in topological order (parents before children, root first).
 // Leaves are all distinct leaf tokens reachable from the root.
 type Graph struct {
-	Root      string            `json:"root"`       // queried token ID
-	RootValue string            `json:"root_value"` // canonical decimal
-	RootUnit  string            `json:"root_unit"`
-	Nodes     []Node            `json:"nodes"`  // topological order, root first
-	Edges     []Edge            `json:"edges"`  // parent -> child (input)
+	Root      string             `json:"root"`       // queried token ID
+	RootValue string             `json:"root_value"` // canonical decimal
+	RootUnit  string             `json:"root_unit"`
+	Nodes     []Node             `json:"nodes"`  // topological order, root first
+	Edges     []Edge             `json:"edges"`  // parent -> child (input)
 	Leaves    []LeafContribution `json:"leaves"` // one per distinct leaf token in the lineage
 }
 

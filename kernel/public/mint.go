@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
-	"github.com/provenant/provenant/kernel/public/internal/phaseone"
+	"github.com/humzakhan/provenant/kernel/public/internal/phaseone"
 )
 
 var (

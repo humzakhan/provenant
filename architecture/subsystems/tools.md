@@ -33,7 +33,7 @@ import (
     "context"
     "encoding/json"
 
-    "github.com/provenant/provenant/internal/provenance"
+    "github.com/humzakhan/provenant/internal/provenance"
 )
 
 type ToolBackend interface {

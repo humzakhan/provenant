@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/internal/phaseone"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/internal/phaseone"
 )
 
 const FormatVersion = "phase1.bundle/v1"

@@ -8,7 +8,7 @@ import (
 	"errors"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 func TestReaderReadRowWindowHeaderProjectionAndPagination(t *testing.T) {

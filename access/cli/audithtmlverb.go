@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 
-	auditpack "github.com/provenant/provenant/audit/pack"
-	auditreport "github.com/provenant/provenant/audit/report"
+	auditpack "github.com/humzakhan/provenant/audit/pack"
+	auditreport "github.com/humzakhan/provenant/audit/report"
 )
 
 const commandAuditHTML = "audit-html"

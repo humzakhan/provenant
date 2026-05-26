@@ -1,4 +1,4 @@
-module github.com/provenant/provenant
+module github.com/humzakhan/provenant
 
 go 1.22
 

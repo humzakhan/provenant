@@ -8,7 +8,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/provenant/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
 
 // verifyRequest is the JSON body for `verify`.

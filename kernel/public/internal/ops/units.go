@@ -3,7 +3,7 @@ package ops
 import (
 	"fmt"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // RequireSameUnit returns the shared unit of all inputs, or an error if the

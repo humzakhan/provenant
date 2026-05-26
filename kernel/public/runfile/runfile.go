@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Public error sentinels returned by this package.
@@ -68,16 +68,16 @@ const (
 // Run owns an open .part file and provides methods to append entries and
 // finalize the run bundle.
 type Run struct {
-	opts      Options
-	partPath  string // path to the .part staging file
-	lockFile  lockHandle
-	partFile  appendFile
-	state     runState
-	lastSeq   uint64
-	lastHash  []byte
-	tokens    []tokenRecord
-	reads     []readRecord
-	entries   []entryRecord
+	opts     Options
+	partPath string // path to the .part staging file
+	lockFile lockHandle
+	partFile appendFile
+	state    runState
+	lastSeq  uint64
+	lastHash []byte
+	tokens   []tokenRecord
+	reads    []readRecord
+	entries  []entryRecord
 }
 
 // tokenRecord is an in-memory token collected during the run.

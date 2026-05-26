@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/internal/ops"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/internal/ops"
 )
 
 func tok(value, unit string) kernel.Token {
@@ -377,9 +377,9 @@ func TestRoundHalfEvenBoundary(t *testing.T) {
 		scale int
 		want  string
 	}{
-		{"2.5", 0, "2"},    // round-half-even: 2.5 → 2 (2 is even)
-		{"3.5", 0, "4"},    // round-half-even: 3.5 → 4 (4 is even)
-		{"-2.5", 0, "-2"},  // round-half-even: -2.5 → -2 (2 is even)
+		{"2.5", 0, "2"},   // round-half-even: 2.5 → 2 (2 is even)
+		{"3.5", 0, "4"},   // round-half-even: 3.5 → 4 (4 is even)
+		{"-2.5", 0, "-2"}, // round-half-even: -2.5 → -2 (2 is even)
 	}
 	for _, tt := range tests {
 		tt := tt

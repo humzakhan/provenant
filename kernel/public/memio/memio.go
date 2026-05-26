@@ -8,8 +8,8 @@ import (
 	"slices"
 	"sync"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/derive"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/derive"
 )
 
 const substrate = "provenant.substrate/kernel.public.memio/v1"

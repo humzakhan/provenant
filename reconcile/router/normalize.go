@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
-	"github.com/provenant/provenant/reconcile/request"
+	"github.com/humzakhan/provenant/reconcile/request"
 )
 
 func normalizeRows(file request.FileConfig, selector any, output []byte) ([]NormalizedRow, error) {

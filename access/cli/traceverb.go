@@ -9,7 +9,7 @@ import (
 	"os"
 
 	"github.com/gowebpki/jcs"
-	"github.com/provenant/provenant/kernel/public/trace"
+	"github.com/humzakhan/provenant/kernel/public/trace"
 )
 
 // traceRequest is the JSON body for `trace`.

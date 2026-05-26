@@ -20,8 +20,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/provenant/provenant/access/cli"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/access/cli"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // RunCLIFileArgs invokes runner.Run with no stdin body (empty reader) and

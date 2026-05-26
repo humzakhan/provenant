@@ -34,11 +34,11 @@ import (
 	"github.com/gowebpki/jcs"
 	"github.com/shopspring/decimal"
 
-	"github.com/provenant/provenant/access/cli"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/trace"
-	"github.com/provenant/provenant/examples/derivation-graph/internal/testsupport"
+	"github.com/humzakhan/provenant/access/cli"
+	"github.com/humzakhan/provenant/examples/derivation-graph/internal/testsupport"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/trace"
 )
 
 // fixedDemoTime is the deterministic clock used for all CLI invocations.

@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/derive"
-	"github.com/provenant/provenant/kernel/public/extractcsvrows"
-	"github.com/provenant/provenant/kernel/public/memio"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/derive"
+	"github.com/humzakhan/provenant/kernel/public/extractcsvrows"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 // ---------------------------------------------------------------------------
@@ -162,8 +162,8 @@ func TestRoundHalfEvenBoundaryViaDeriveEngine(t *testing.T) {
 		scale int
 		want  string
 	}{
-		{"2.5", 0, "2.000000000"},  // banker's: 2.5 → 2 (even neighbor), padded by FormatCanonical
-		{"3.5", 0, "4.000000000"},  // banker's: 3.5 → 4 (even neighbor)
+		{"2.5", 0, "2.000000000"},   // banker's: 2.5 → 2 (even neighbor), padded by FormatCanonical
+		{"3.5", 0, "4.000000000"},   // banker's: 3.5 → 4 (even neighbor)
 		{"-2.5", 0, "-2.000000000"}, // banker's: -2.5 → -2 (even neighbor)
 	}
 

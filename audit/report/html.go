@@ -14,8 +14,8 @@ import (
 
 	"github.com/shopspring/decimal"
 
-	"github.com/provenant/provenant/audit/pack"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/audit/pack"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // RenderHTML renders doc as a self-contained HTML file.
@@ -115,14 +115,14 @@ type treeNode struct {
 // sourceCard represents one source file in the visual card grid (Plain tab).
 type sourceCard struct {
 	Name       string
-	Ext        string       // file extension without dot, e.g. "csv"
-	SourceID   string       // selector or tool identifier
-	SourcePath string       // raw path from CapturedRead (may include scheme)
-	SHA256     string       // truncated sha256
-	RowCount   string       // human description of rows
-	Total      string       // sum value if available
-	Index      int          // 0-based for JS panel id
-	LocalHref  string       // relative href for browser link; empty if no local file or scheme URI
+	Ext        string // file extension without dot, e.g. "csv"
+	SourceID   string // selector or tool identifier
+	SourcePath string // raw path from CapturedRead (may include scheme)
+	SHA256     string // truncated sha256
+	RowCount   string // human description of rows
+	Total      string // sum value if available
+	Index      int    // 0-based for JS panel id
+	LocalHref  string // relative href for browser link; empty if no local file or scheme URI
 }
 
 type capturedReadRow struct {

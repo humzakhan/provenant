@@ -14,13 +14,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/provenant/provenant/access/cli"
-	"github.com/provenant/provenant/access/corepath"
-	"github.com/provenant/provenant/access/httpapi"
-	"github.com/provenant/provenant/access/mcpapi"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/memio"
+	"github.com/humzakhan/provenant/access/cli"
+	"github.com/humzakhan/provenant/access/corepath"
+	"github.com/humzakhan/provenant/access/httpapi"
+	"github.com/humzakhan/provenant/access/mcpapi"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 func TestSurfaceReadMintBundleSmoke(t *testing.T) {

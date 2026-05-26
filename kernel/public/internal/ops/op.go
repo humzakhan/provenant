@@ -1,8 +1,8 @@
 package ops
 
 import (
+	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/shopspring/decimal"
-	kernel "github.com/provenant/provenant/kernel/public"
 )
 
 // Op is a named pure arithmetic function over input tokens.

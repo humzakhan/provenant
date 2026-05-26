@@ -10,8 +10,8 @@ import (
 	"io"
 	"os"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/runfile"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 // runStartRequest is the JSON body for `run start`.
@@ -231,4 +231,3 @@ func parseRequestFlag(args []string) (string, error) {
 	}
 	return "", ErrMissingRequestPath
 }
-

@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/internal/phaseone"
-	"github.com/provenant/provenant/kernel/public/memio"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/internal/phaseone"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 func TestBundleReplayReconstructsCoreLoopState(t *testing.T) {

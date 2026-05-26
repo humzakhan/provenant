@@ -13,11 +13,11 @@ import (
 	"testing"
 
 	"github.com/gowebpki/jcs"
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/reconcile/engine"
-	"github.com/provenant/provenant/reconcile/request"
-	"github.com/provenant/provenant/reconcile/router"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/reconcile/engine"
+	"github.com/humzakhan/provenant/reconcile/request"
+	"github.com/humzakhan/provenant/reconcile/router"
 )
 
 func TestBindAttachesMatchedAndMismatchEvidence(t *testing.T) {

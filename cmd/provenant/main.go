@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/provenant/provenant/access/cli"
+	"github.com/humzakhan/provenant/access/cli"
 )
 
 func main() {

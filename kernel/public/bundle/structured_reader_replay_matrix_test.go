@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
-	kernel "github.com/provenant/provenant/kernel/public"
-	"github.com/provenant/provenant/kernel/public/bundle"
-	"github.com/provenant/provenant/kernel/public/extractcsvrows"
-	"github.com/provenant/provenant/kernel/public/extractjson"
-	"github.com/provenant/provenant/kernel/public/extractjsonl"
-	"github.com/provenant/provenant/kernel/public/extractspreadsheet"
-	"github.com/provenant/provenant/kernel/public/memio"
+	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
+	"github.com/humzakhan/provenant/kernel/public/extractcsvrows"
+	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/extractjsonl"
+	"github.com/humzakhan/provenant/kernel/public/extractspreadsheet"
+	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 func TestEmitReplayPreservesStructuredReaderCapturedReadMetadata(t *testing.T) {

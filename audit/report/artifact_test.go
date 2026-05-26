@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/provenant/provenant/audit/pack"
-	"github.com/provenant/provenant/audit/report"
-	kernel "github.com/provenant/provenant/kernel/public"
+	"github.com/humzakhan/provenant/audit/pack"
+	"github.com/humzakhan/provenant/audit/report"
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // ---------------------------------------------------------------------------
