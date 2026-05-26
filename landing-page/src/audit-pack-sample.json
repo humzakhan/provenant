@@ -1,0 +1,167 @@
+{
+  "audit_pack_version": "v0",
+  "run_id": "01HW9KQXJR8M4F2P7N3T5BV8YR",
+  "skill": {
+    "id": "reconciliation",
+    "version": "0.3.2",
+    "manifest_sha": "f2a8c4d9b1e7a3c5d8b2f9a4e6c1d7b3a8f5e2c9d4b1a7e8f3c6d2b9"
+  },
+  "model": {
+    "id": "claude-sonnet-4-5",
+    "provider": "anthropic"
+  },
+  "started_at": "2026-05-17T14:23:11.487Z",
+  "completed_at": "2026-05-17T14:23:47.124Z",
+  "duration_ms": 35637,
+  "submitted_answer": {
+    "text": "Operating income for Q1 2026 is $2,847,392.18, computed as Revenue ($4,512,847.00) minus Payroll ($1,247,892.42) minus Operating Expenses ($417,562.40).",
+    "tokens_referenced": ["t_op_inc_001", "t_rev_001", "t_pay_001", "t_exp_001"]
+  },
+  "tokens": [
+    {
+      "id": "t_rev_001",
+      "value": "4512847.00",
+      "unit": "USD",
+      "as_of": "2026-03-31T23:59:59Z",
+      "minted_by": "tc_001",
+      "determinism_class": "CapturedDeterministic",
+      "source": {
+        "kind": "spreadsheet",
+        "origin": "Revenue_Q1.xlsx",
+        "rows": "12-487",
+        "sha256": "a3f9b2c7d8e1f4a5d6c9b8a7e4f3d2c1b0a9e8d7c6b5a4f3e2d1c0b9a8e7"
+      }
+    },
+    {
+      "id": "t_pay_001",
+      "value": "1247892.42",
+      "unit": "USD",
+      "as_of": "2026-03-31T23:59:59Z",
+      "minted_by": "tc_002",
+      "determinism_class": "CapturedDeterministic",
+      "source": {
+        "kind": "csv",
+        "origin": "Payroll_Q1.csv",
+        "rows": "4-211",
+        "sha256": "7c1bd4e8f3a2b9c6d5e8f1a4b7c2d9e6f3a8b5c2d7e4f1a8b5c2d9e6"
+      }
+    },
+    {
+      "id": "t_exp_001",
+      "value": "417562.40",
+      "unit": "USD",
+      "as_of": "2026-03-31T23:59:59Z",
+      "minted_by": "tc_003",
+      "determinism_class": "CapturedDeterministic",
+      "source": {
+        "kind": "spreadsheet",
+        "origin": "AP_Expenses.xlsx",
+        "rows": "8-1903",
+        "sha256": "2e8d6f4a1b9c7d5e3f8a6b4c2d0e9f7a5b3c1d8e6f4a2b0c9d7e5f3a1"
+      }
+    },
+    {
+      "id": "t_op_inc_001",
+      "value": "2847392.18",
+      "unit": "USD",
+      "as_of": "2026-03-31T23:59:59Z",
+      "minted_by": "tc_004",
+      "determinism_class": "PureDeterministic",
+      "derivation": {
+        "tool": "calc.subtract",
+        "operands": ["t_rev_001", "t_pay_001", "t_exp_001"],
+        "operation": "$rev - $pay - $exp"
+      }
+    }
+  ],
+  "tool_calls": [
+    {
+      "id": "tc_001",
+      "tool": "ledger.get_balance",
+      "version": "1.4.0",
+      "input": {
+        "account_range": "4100..4399",
+        "as_of": "2026-03-31T23:59:59Z"
+      },
+      "started_at": "2026-05-17T14:23:14.221Z",
+      "ended_at": "2026-05-17T14:23:15.847Z",
+      "latency_ms": 1626,
+      "captured_read": {
+        "source": "Revenue_Q1.xlsx",
+        "sha256": "a3f9b2c7d8e1f4a5d6c9b8a7e4f3d2c1b0a9e8d7c6b5a4f3e2d1c0b9a8e7",
+        "storage_key": "s3://provenant-reads/run-01HW9KQX/revenue.xlsx",
+        "rows_scanned": 476
+      },
+      "minted_tokens": ["t_rev_001"]
+    },
+    {
+      "id": "tc_002",
+      "tool": "payroll.export",
+      "version": "1.1.3",
+      "input": {
+        "period": "2026Q1",
+        "include_benefits": true
+      },
+      "started_at": "2026-05-17T14:23:16.012Z",
+      "ended_at": "2026-05-17T14:23:17.244Z",
+      "latency_ms": 1232,
+      "captured_read": {
+        "source": "Payroll_Q1.csv",
+        "sha256": "7c1bd4e8f3a2b9c6d5e8f1a4b7c2d9e6f3a8b5c2d7e4f1a8b5c2d9e6",
+        "storage_key": "s3://provenant-reads/run-01HW9KQX/payroll.csv",
+        "rows_scanned": 208
+      },
+      "minted_tokens": ["t_pay_001"]
+    },
+    {
+      "id": "tc_003",
+      "tool": "ap.subledger",
+      "version": "2.0.1",
+      "input": {
+        "period": "2026Q1",
+        "categories": ["operating"]
+      },
+      "started_at": "2026-05-17T14:23:17.510Z",
+      "ended_at": "2026-05-17T14:23:19.847Z",
+      "latency_ms": 2337,
+      "captured_read": {
+        "source": "AP_Expenses.xlsx",
+        "sha256": "2e8d6f4a1b9c7d5e3f8a6b4c2d0e9f7a5b3c1d8e6f4a2b0c9d7e5f3a1",
+        "storage_key": "s3://provenant-reads/run-01HW9KQX/ap_expenses.xlsx",
+        "rows_scanned": 1896
+      },
+      "minted_tokens": ["t_exp_001"]
+    },
+    {
+      "id": "tc_004",
+      "tool": "calc.subtract",
+      "version": "1.0.0",
+      "input": {
+        "minuend": "t_rev_001",
+        "subtrahends": ["t_pay_001", "t_exp_001"]
+      },
+      "started_at": "2026-05-17T14:23:20.011Z",
+      "ended_at": "2026-05-17T14:23:20.014Z",
+      "latency_ms": 3,
+      "minted_tokens": ["t_op_inc_001"]
+    }
+  ],
+  "chain": {
+    "hash": "9b2e74d1c8a3f4e5d6c7b8a9d0e1f2c3a4b5c6d7e8f9a0b1c2d3e4f5",
+    "previous_anchor": "8a1d63c0b7e2d3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4",
+    "algorithm": "blake3"
+  },
+  "replay": {
+    "deterministic": true,
+    "captured_reads": 3,
+    "replay_url": "https://provenant.dev/runs/01HW9KQXJR8M4F2P7N3T5BV8YR/replay"
+  },
+  "metrics": {
+    "tokens_minted": 14,
+    "ungrounded_numbers": 0,
+    "schema_violations": 0,
+    "determinism_check": "passed",
+    "faithfulness_check": "passed",
+    "accuracy_check": "tolerance_within_$0.01"
+  }
+}
