@@ -10,7 +10,7 @@ Supersedes: [ADR-0007](0007-mcp-as-primary-adapter.md) ("MCP is the primary adap
 
 ## Decision
 
-MCP, HTTP, and CLI are **equal first-class adapters** in v0. None of the three has architectural primacy. All three are thin runtime-layer shells over the kernel public Go surface; all three are subject to the same conformance tests; all three must reach the same verified core path without introducing a second source of truth (the Phase 3 and Phase 4 boundaries in [`implementation-plan.md`](../../.planning/implementation-plan.md)).
+MCP, HTTP, and CLI are **equal first-class adapters** in v0. None of the three has architectural primacy. All three are thin runtime-layer shells over the kernel public Go surface; all three are subject to the same conformance tests; all three must reach the same verified core path without introducing a second source of truth.
 
 The engineering sequence in which the three adapters ship is a project-management concern, not an architectural one. v0 plan-of-record: Phase 3 adds thin CLI, HTTP, and MCP access surfaces over the same verified core path; Phase 4 hardens and hands them off. Marketing emphasis remains on MCP because of the host-ecosystem reach; that is a go-to-market choice, not an architectural privileging.
 
@@ -43,6 +43,6 @@ The engineering sequence in which the three adapters ship is a project-managemen
 
 - [`thesis.md`](../../docs/thesis.md) — dual-mode pluggability
 - [`architecture.md`](../OVERVIEW.md) §1, §2.1.3, §3.3 — adapter equality and the now-resolved open question
-- [`implementation-plan.md`](../../.planning/implementation-plan.md) Phase 3, Phase 4 - thin access surfaces, then hardening and handoff
+- [`ROADMAP.md`](../../ROADMAP.md) — phased build plan; Phase 03 thin access surfaces, Phase 04 hardening and handoff
 - [ADR-0007](0007-mcp-as-primary-adapter.md) — superseded ADR
 - [ADR-0009](0009-kernel-public-go-surface.md) — kernel public Go surface that all three adapters rest on
