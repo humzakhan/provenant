@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import starlight from '@astrojs/starlight';
 
 export default defineConfig({
+  site: process.env.SITE_URL || 'https://provenant-docs.pages.dev',
   integrations: [
     starlight({
       title: 'Provenant Docs',
