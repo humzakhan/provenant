@@ -29,3 +29,5 @@ docs-site/.wrangler/
 docs-site/*.local
 docs-site/*.log
 docs-site/logs/
+
+.codegraph/
