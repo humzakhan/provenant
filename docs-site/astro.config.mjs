@@ -27,6 +27,10 @@ export default defineConfig({
           ],
         },
         {
+          label: 'Guides',
+          items: [{ label: 'Review Audit Evidence', link: '/guides/review-audit-evidence/' }],
+        },
+        {
           label: 'Reference',
           items: [{ label: 'Status Matrix', link: '/reference/status-matrix/' }],
         },
