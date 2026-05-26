@@ -1,6 +1,70 @@
 # Provenant
 
-Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger or a reconciliation product. It enforces four guarantees across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, MCP host vendors, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
+[![CI](https://github.com/humzakhan/provenant/actions/workflows/ci.yml/badge.svg)](https://github.com/humzakhan/provenant/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go Reference](https://pkg.go.dev/badge/github.com/provenant/provenant.svg)](https://pkg.go.dev/github.com/provenant/provenant)
+[![Go Report Card](https://goreportcard.com/badge/github.com/provenant/provenant)](https://goreportcard.com/report/github.com/provenant/provenant)
+
+Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger or a reconciliation product. It enforces four guarantees across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
+
+> **Status: v0 / pre-1.0 — early and actively evolving. APIs may change without notice between minor releases.**
+
+---
+
+## What Provenant Does (and Doesn't, Yet)
+
+**Exists now:**
+
+- Go kernel with non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism
+- CLI `read-mint-bundle` with `extract.json` reader (JSON sources only)
+- CLI `reconcile` fixture with `extract.csv_rows` (CSV) and `extract.spreadsheet` (XLSX) readers
+- Audit bundle verify and replay (Go API: `bundle.Verify`, `bundle.Replay`)
+- Hash-chained tamper-evident audit JSONL
+- Deterministic ZIP report with manifest and sidecar hashes
+
+**Does not exist yet:**
+
+- HTTP surface for `reconcile` (no `POST /v1/reconcile` endpoint)
+- MCP server tool for `reconcile`
+- Reconciliation planner that infers column mappings from arbitrary inputs
+- Fuzzy or AI-assisted matching
+- A complete end-user reconciliation product
+
+---
+
+## Installation
+
+**As a library:**
+
+```bash
+go get github.com/provenant/provenant
+```
+
+**CLI binary:**
+
+```bash
+go install github.com/provenant/provenant/cmd/provenant@latest
+```
+
+**Build from source:**
+
+```bash
+git clone https://github.com/humzakhan/provenant
+cd provenant
+go build ./...
+go test ./...
+```
+
+---
+
+## Quick Start
+
+Two CLI subcommands exist today:
+
+- `go run ./cmd/provenant read-mint-bundle` — read one JSON source, mint one token, emit an audit bundle.
+- `go run ./cmd/provenant reconcile` — run the deterministic reconciliation fixture against local CSV/XLSX files.
+
+---
 
 ## Mental Model
 
@@ -26,18 +90,7 @@ source bytes → SourceReader.Read → CapturedRead + ReadResult
 
 **bundle.Verify / bundle.Replay.** Verify checks the audit chain and confirms the audit bundle fingerprint matches. Replay re-derives every provenance token from the captured reads in the audit bundle and confirms the audit chain is consistent. Both are offline operations that require only the audit bundle bytes.
 
-## Quick Start
-
-```bash
-git clone https://github.com/provenant/provenant
-cd provenant
-go test ./...
-```
-
-Two CLI subcommands exist today:
-
-- `go run ./cmd/provenant read-mint-bundle` — read one JSON source, mint one token, emit an audit bundle.
-- `go run ./cmd/provenant reconcile` — run the deterministic reconciliation fixture against local CSV/XLSX files.
+---
 
 ## Example 1: read-mint-bundle
 
@@ -126,6 +179,8 @@ Decoded, `bundle_bytes` is JSON with format `"phase1.bundle/v1"`, containing `ru
 
 The same request contract is exercised across surfaces in [`access/smoke/smoke_test.go`](access/smoke/smoke_test.go).
 
+---
+
 ## Example 2: reconcile (reconciliation fixture)
 
 The reconcile fixture reads two local files (`bank.csv` and `ledger.xlsx`), runs an exact-match comparison on `transaction_id`, and writes a ZIP report. The fixture is deterministic: the same inputs always produce the same output.
@@ -190,6 +245,8 @@ The full manifest also covers `captured_reads.json`, `mismatches.csv`, `report.j
 
 Note: `extract.csv_rows` and `extract.spreadsheet` are available as kernel readers and are used by the reconcile fixture path. They are not exposed by the `read-mint-bundle` CLI surface today.
 
+---
+
 ## Verifying a Bundle
 
 `bundle.Verify` and `bundle.Replay` are Go API only today. There is no CLI verb for standalone bundle verification. The CLI tests exercise both in [`access/cli`](access/cli).
@@ -213,6 +270,8 @@ Run the full fixture test including verify/replay:
 go test ./access/cli
 ```
 
+---
+
 ## Failure Fixtures
 
 Seven failure and edge-case fixtures live under `examples/reconciliation/failures/`:
@@ -227,34 +286,7 @@ Seven failure and edge-case fixtures live under `examples/reconciliation/failure
 | `invalid_record` | Produces `invalid_record` and `missing_left` outcomes. |
 | `currency_mismatch` | Produces a deterministic `mismatch` outcome for mismatched currency fields. |
 
-## What Exists vs. What Does Not
-
-**Exists now:**
-
-- Go kernel with non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism
-- CLI `read-mint-bundle` with `extract.json` reader (JSON sources only)
-- CLI `reconcile` fixture with `extract.csv_rows` (CSV) and `extract.spreadsheet` (XLSX) readers
-- Audit bundle verify and replay (Go API: `bundle.Verify`, `bundle.Replay`)
-- Hash-chained tamper-evident audit JSONL
-- Deterministic ZIP report with manifest and sidecar hashes
-
-**Does not exist yet:**
-
-- HTTP surface for `reconcile` (no `POST /v1/reconcile` endpoint)
-- MCP server tool for `reconcile`
-- Reconciliation planner that infers column mappings from arbitrary inputs
-- Fuzzy or AI-assisted matching
-- A complete end-user reconciliation product
-
-## Project Layout
-
-```
-kernel/                  Pure Go enforcement kernel: readers, minting, audit chain, bundle.
-access/cli/              CLI runner, flag parsing, and end-to-end tests including failure fixtures.
-reconcile/               Reconciliation engine, request schema, report generation, and provenance binding.
-cmd/provenant/           Main entry point for the CLI binary.
-examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
-```
+---
 
 ## Example 3: Derivation Graph End-to-End Demo
 
@@ -277,10 +309,41 @@ go test ./examples/derivation-graph/...
 
 See [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) for the full walkthrough, dataset description, and golden regeneration procedure.
 
+---
+
+## Project Layout
+
+```
+kernel/                  Pure Go enforcement kernel: readers, minting, audit chain, bundle.
+access/cli/              CLI runner, flag parsing, and end-to-end tests including failure fixtures.
+reconcile/               Reconciliation engine, request schema, report generation, and provenance binding.
+cmd/provenant/           Main entry point for the CLI binary.
+examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
+```
+
+---
+
+## Contributing
+
+Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request and follow the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
+
+To report a security vulnerability, see [`SECURITY.md`](SECURITY.md).
+
+---
+
+## License
+
+Provenant is released under the [MIT License](LICENSE).
+
+---
+
 ## Further Reading
 
 - [`docs/thesis.md`](docs/thesis.md) — design principles and invariant rationale
-- [`examples/reconciliation/README.md`](examples/reconciliation/README.md) — full reconciliation fixture walkthrough, verification guidance, and explicit non-support list
-- [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) — derivation graph end-to-end demo with operating income trace
 - [`architecture/README.md`](architecture/README.md) — repo navigation map
 - [`architecture/tools/extract/README.md`](architecture/tools/extract/README.md) — reader contracts and selector reference
+- [`ROADMAP.md`](ROADMAP.md) — planned milestones
+- [`docs/KNOWN_TRADE_OFFS.md`](docs/KNOWN_TRADE_OFFS.md) — known trade-offs
+- [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — open design questions
+- [`examples/reconciliation/README.md`](examples/reconciliation/README.md) — full reconciliation fixture walkthrough, verification guidance, and explicit non-support list
+- [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) — derivation graph end-to-end demo with operating income trace
