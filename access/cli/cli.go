@@ -32,6 +32,7 @@ const (
 	commandReadMint       = "read-mint"
 	commandCalc           = "calc"
 	commandSubmitAnswer   = "submit-answer"
+	commandCheckAnswer    = "check-answer"
 	commandVerify         = "verify"
 	commandReplay         = "replay"
 	commandPack           = "pack"
@@ -51,6 +52,7 @@ var (
 	ErrUnsupportedReader  = errors.New("cli: unsupported reader")
 	ErrRequestTooLarge    = errors.New("cli: request exceeds size limit")
 	ErrSourceTooLarge     = errors.New("cli: source bytes exceed size limit")
+	ErrAnswerTooLarge     = errors.New("cli: answer exceeds size limit")
 	ErrTokenNotFound      = errors.New("cli: token not found in run")
 )
 
@@ -175,6 +177,8 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 		return r.runCalc(ctx, args[1:], stdin, stdout)
 	case commandSubmitAnswer:
 		return r.runSubmitAnswer(ctx, args[1:], stdin, stdout)
+	case commandCheckAnswer:
+		return r.runCheckAnswer(ctx, args[1:], stdin, stdout)
 	case commandVerify:
 		return r.runVerify(ctx, args[1:], stdin, stdout)
 	case commandReplay:
