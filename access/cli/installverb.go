@@ -19,19 +19,29 @@ const (
 	claudeStopHookScript     = "${CLAUDE_PROJECT_DIR}/hack/hooks/answer-grounding-stop-hook.sh"
 )
 
-func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, _ io.Writer) error {
+func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet(commandInstall, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
 	claude := fs.Bool("claude", false, "install Claude Code integration")
+	var targets csvTargets
+	fs.Var(&targets, "target", "install target, csv list, or all")
+	printConfig := fs.String("print-config", "", "print merged config for a target without writing files")
 	if err := fs.Parse(args); err != nil {
 		return userError(fmt.Errorf("%w: %v", ErrUsage, err))
 	}
 	if fs.NArg() != 0 {
 		return userError(fmt.Errorf("%w: install takes no positional arguments", ErrUsage))
 	}
-	if !*claude {
-		return userError(fmt.Errorf("%w: install requires --claude", ErrUsage))
+	var selectedTargets []string
+	var err error
+	if *printConfig != "" {
+		selectedTargets, err = resolveInstallTargetNames(false, csvTargets{*printConfig})
+	} else {
+		selectedTargets, err = resolveInstallTargetNames(*claude, targets)
+	}
+	if err != nil {
+		return userError(fmt.Errorf("%w: %v", ErrUsage, err))
 	}
 
 	cwd, err := os.Getwd()
@@ -47,17 +57,20 @@ func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, _ io.W
 	if err != nil {
 		return fmt.Errorf("install: read settings: %w", err)
 	}
-	mergeClaudeSettings(settings)
-	if err := writeJSONObject(settingsPath, settings); err != nil {
-		return fmt.Errorf("install: write settings: %w", err)
-	}
-
 	mcpPath := filepath.Join(cwd, ".mcp.json")
 	mcpDoc, err := readJSONObject(mcpPath)
 	if err != nil {
 		return fmt.Errorf("install: read .mcp.json: %w", err)
 	}
-	mergeClaudeMCP(mcpDoc)
+	if err := applyInstallTargets(settings, mcpDoc, selectedTargets); err != nil {
+		return fmt.Errorf("install: apply targets: %w", err)
+	}
+	if *printConfig != "" {
+		return writeInstallPreview(stdout, settings, mcpDoc)
+	}
+	if err := writeJSONObject(settingsPath, settings); err != nil {
+		return fmt.Errorf("install: write settings: %w", err)
+	}
 	if err := writeJSONObject(mcpPath, mcpDoc); err != nil {
 		return fmt.Errorf("install: write .mcp.json: %w", err)
 	}

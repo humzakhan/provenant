@@ -175,6 +175,96 @@ func TestInstallClaudePreservesExistingProvenantMCPServerFields(t *testing.T) {
 	}
 }
 
+func TestInstallTargetParsing(t *testing.T) {
+	t.Run("no target fails", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		code := cli.Main([]string{"install"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+		if code != 2 {
+			t.Fatalf("install exit code = %d, want 2", code)
+		}
+	})
+
+	t.Run("--claude succeeds", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		if code := cli.Main([]string{"install", "--claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("install exit code = %d, want 0", code)
+		}
+	})
+
+	t.Run("--target claude succeeds", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		if code := cli.Main([]string{"install", "--target", "claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("install exit code = %d, want 0", code)
+		}
+	})
+
+	t.Run("--target all succeeds", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		if code := cli.Main([]string{"install", "--target", "all"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("install exit code = %d, want 0", code)
+		}
+	})
+
+	t.Run("duplicate targets do not duplicate output", func(t *testing.T) {
+		single := t.TempDir()
+		chdir(t, single)
+		if code := cli.Main([]string{"install", "--target", "claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("single-target install exit code = %d, want 0", code)
+		}
+		singleSettings, err := os.ReadFile(filepath.Join(single, ".claude", "settings.json"))
+		if err != nil {
+			t.Fatalf("ReadFile(single settings) error = %v", err)
+		}
+		singleMCP, err := os.ReadFile(filepath.Join(single, ".mcp.json"))
+		if err != nil {
+			t.Fatalf("ReadFile(single .mcp.json) error = %v", err)
+		}
+
+		dupe := t.TempDir()
+		chdir(t, dupe)
+		if code := cli.Main([]string{"install", "--target", "claude,claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+			t.Fatalf("duplicate-target install exit code = %d, want 0", code)
+		}
+		dupeSettings, err := os.ReadFile(filepath.Join(dupe, ".claude", "settings.json"))
+		if err != nil {
+			t.Fatalf("ReadFile(duplicate settings) error = %v", err)
+		}
+		dupeMCP, err := os.ReadFile(filepath.Join(dupe, ".mcp.json"))
+		if err != nil {
+			t.Fatalf("ReadFile(duplicate .mcp.json) error = %v", err)
+		}
+
+		if !bytes.Equal(singleSettings, dupeSettings) {
+			t.Fatalf("settings.json changed for duplicate targets\nsingle:\n%s\nduplicate:\n%s", singleSettings, dupeSettings)
+		}
+		if !bytes.Equal(singleMCP, dupeMCP) {
+			t.Fatalf(".mcp.json changed for duplicate targets\nsingle:\n%s\nduplicate:\n%s", singleMCP, dupeMCP)
+		}
+	})
+
+	t.Run("unknown target fails", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		code := cli.Main([]string{"install", "--target", "unknown"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+		if code != 2 {
+			t.Fatalf("install exit code = %d, want 2", code)
+		}
+	})
+
+	t.Run("positional args fail", func(t *testing.T) {
+		dir := t.TempDir()
+		chdir(t, dir)
+		code := cli.Main([]string{"install", "--claude", "extra"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+		if code != 2 {
+			t.Fatalf("install exit code = %d, want 2", code)
+		}
+	})
+}
+
 func TestProvenantSessionStartHookWritesBundlePath(t *testing.T) {
 	repoRoot := repoRoot(t)
 	cwd := t.TempDir()
@@ -288,6 +378,66 @@ func TestMCPReadMintBundleWritesSessionBundleForStopHook(t *testing.T) {
 	}
 	if strings.TrimSpace(result.stdout) != "" {
 		t.Fatalf("stop hook stdout = %q, want empty", result.stdout)
+	}
+}
+
+func TestMCPSubmitAnswerUsesEnvBundlePath(t *testing.T) {
+	dir := t.TempDir()
+	bundlePath, _ := buildCheckAnswerBundle(t, dir, "42")
+	t.Setenv("PROVENANT_BUNDLE_PATH", bundlePath)
+
+	requestBytes, err := json.Marshal(map[string]any{
+		"jsonrpc": "2.0",
+		"id":      1,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": mcpapi.ToolSubmitAnswer,
+			"arguments": map[string]any{
+				"answer": "The amount is 42.",
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Marshal(mcp request) error = %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Main([]string{"mcp"}, bytes.NewReader(append(requestBytes, '\n')), &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("mcp exit code = %d, stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	var response struct {
+		Error *struct {
+			Code    int    `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+		Result struct {
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
+			StructuredContent map[string]any `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &response); err != nil {
+		t.Fatalf("Unmarshal(mcp stdout) error = %v, stdout=%q", err, stdout.String())
+	}
+	if response.Error != nil {
+		t.Fatalf("mcp returned error = %#v, stdout=%s", response.Error, stdout.String())
+	}
+	if got, _ := response.Result.StructuredContent["attested"].(bool); !got {
+		t.Fatalf("attested = %#v, want true", response.Result.StructuredContent["attested"])
+	}
+	if got, _ := response.Result.StructuredContent["ok"].(bool); !got {
+		t.Fatalf("ok = %#v, want true", response.Result.StructuredContent["ok"])
+	}
+	if len(response.Result.Content) != 1 || response.Result.Content[0].Type != "text" || !strings.Contains(response.Result.Content[0].Text, "PROVENANT-ATTESTED") {
+		t.Fatalf("content = %#v, want attestation marker", response.Result.Content)
+	}
+	if _, ok := response.Result.StructuredContent["bundle_sha256"].(string); !ok {
+		t.Fatalf("bundle_sha256 = %#v, want string", response.Result.StructuredContent["bundle_sha256"])
 	}
 }
 
