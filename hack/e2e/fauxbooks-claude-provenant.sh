@@ -14,7 +14,7 @@ FORMAT="${FORMAT:-csv}"
 SEED="${SEED:-}"
 CLAUDE_MODEL="${CLAUDE_MODEL:-sonnet}"
 CLAUDE_MAX_BUDGET_USD="${CLAUDE_MAX_BUDGET_USD:-5}"
-RESULTS_PATH="${RESULTS_PATH:-$ROOT/.planning/e2e-harness/results.md}"
+RESULTS_PATH="${RESULTS_PATH:-/tmp/provenant-fauxbooks-e2e/results.md}"
 
 log() {
   printf '[fauxbooks-e2e] %s\n' "$*" >&2

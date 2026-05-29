@@ -22,7 +22,7 @@ FBX_BIN=<prebuilt fbx>
 CLAUDE_MODEL=sonnet
 CLAUDE_MAX_BUDGET_USD=10
 KEEP_E2E_WORKSPACE=1
-RESULTS_PATH=.planning/e2e-user-scenarios/report.md
+RESULTS_PATH=examples/fauxbooks-user-scenarios/report.md
 ```
 
 Exit codes:
@@ -125,4 +125,4 @@ The final `report.md` should include:
 4. Failure detail: exact mismatch, expected, actual, and artifact paths.
 5. Final verdict and exit code.
 
-Use `.planning/e2e-user-scenarios/golden-report.md` as the target shape.
+Use `examples/fauxbooks-user-scenarios/golden-report.md` as the target shape.

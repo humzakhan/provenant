@@ -125,7 +125,7 @@ hack/e2e/fauxbooks-user-scenarios.sh \
   --out /tmp/provenant-fauxbooks-user-scenarios
 ```
 
-The latest checked-in report is [`./.planning/e2e-user-scenarios/report.md`](.planning/e2e-user-scenarios/report.md).
+The latest checked-in report is [`./examples/fauxbooks-user-scenarios/report.md`](examples/fauxbooks-user-scenarios/report.md).
 
 ### Scenario Matrix
 
@@ -428,6 +428,8 @@ access/cli/              CLI runner, MCP command, install path, check-answer, an
 access/mcpapi/           MCP tool contract for Provenant read/mint/bundle.
 hack/hooks/              Claude Code SessionStart and Stop hook scripts.
 hack/e2e/                End-to-end runners, including Fauxbooks user scenarios.
+examples/fauxbooks-user-scenarios/
+                         Synthetic finance-file e2e example, runner spec, and latest report.
 reconcile/               Reconciliation engine, request schema, report generation, and provenance binding.
 cmd/provenant/           Main entry point for the CLI binary.
 examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
@@ -457,5 +459,6 @@ Provenant is released under the [MIT License](LICENSE).
 - [`ROADMAP.md`](ROADMAP.md) — planned milestones
 - [`docs/KNOWN_TRADE_OFFS.md`](docs/KNOWN_TRADE_OFFS.md) — known trade-offs
 - [`docs/OPEN_QUESTIONS.md`](docs/OPEN_QUESTIONS.md) — open design questions
+- [`examples/fauxbooks-user-scenarios/README.md`](examples/fauxbooks-user-scenarios/README.md) — synthetic finance-file e2e example with grounded Claude Code answers
 - [`examples/reconciliation/README.md`](examples/reconciliation/README.md) — full reconciliation fixture walkthrough, verification guidance, and explicit non-support list
 - [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) — derivation graph end-to-end demo with operating income trace

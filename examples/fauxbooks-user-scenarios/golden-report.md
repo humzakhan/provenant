@@ -10,7 +10,7 @@ This is the golden markdown shape for the future runner output. The example valu
 - Provenant command: `go build -o <workspace>/bin/provenant ./cmd/provenant`
 - Fauxbooks command: `go -C /Users/humza/projects/fauxbooks build -o <workspace>/bin/fbx ./cmd/fbx`
 - output root: `/tmp/provenant-fauxbooks-user-scenarios/workspace`
-- report path: `.planning/e2e-user-scenarios/report.md`
+- report path: `examples/fauxbooks-user-scenarios/report.md`
 
 ## Scenario Matrix
 
