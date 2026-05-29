@@ -23,7 +23,7 @@ from pathlib import Path
 
 ROOT = Path(os.environ["PROVENANT_ROOT"])
 DEFAULT_OUT = Path("/tmp/provenant-fauxbooks-user-scenarios")
-RESULTS_PATH = Path(os.environ.get("RESULTS_PATH", ROOT / ".planning/e2e-user-scenarios/report.md"))
+RESULTS_PATH = Path(os.environ.get("RESULTS_PATH", ROOT / "examples/fauxbooks-user-scenarios/report.md"))
 FAUXBOOKS_DIR = Path(os.environ.get("FAUXBOOKS_DIR", "/Users/humza/projects/fauxbooks"))
 FBX_BIN_OVERRIDE = os.environ.get("FBX_BIN", "")
 CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "sonnet")

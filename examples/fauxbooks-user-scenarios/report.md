@@ -12,7 +12,7 @@
 - Provenant binary: `/tmp/provenant-fauxbooks-user-scenarios/bin/provenant`
 - Fauxbooks binary: `/tmp/provenant-fauxbooks-user-scenarios/bin/fbx`
 - output root: `/tmp/provenant-fauxbooks-user-scenarios/workspace`
-- report path: `/Users/humza/.superset/worktrees/80fca87c-0634-4a2d-a395-e48a6db8de28/faithful-fender/.planning/e2e-user-scenarios/report.md`
+- report path: `examples/fauxbooks-user-scenarios/report.md`
 
 ## Scenario Matrix
 

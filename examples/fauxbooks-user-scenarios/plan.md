@@ -31,7 +31,7 @@ The implementation PR should add one runner and the generated report location, l
 
 ```text
 hack/e2e/fauxbooks-user-scenarios.sh
-.planning/e2e-user-scenarios/report.md
+examples/fauxbooks-user-scenarios/report.md
 ```
 
 The first implementation can be bash plus embedded Python verifiers. Keep it narrow: no new product API is required.
@@ -67,7 +67,7 @@ Use a disposable workspace per run:
     report.md
 ```
 
-The runner should copy `workspace/report.md` into `.planning/e2e-user-scenarios/report.md` after a successful or failed run so the PR has a stable human-readable artifact.
+The runner should copy `workspace/report.md` into `examples/fauxbooks-user-scenarios/report.md` after a successful or failed run so the PR has a stable human-readable artifact.
 
 ## Tool Setup
 
@@ -270,7 +270,7 @@ Negative control examples:
 
 ## Final Report
 
-The runner writes `.planning/e2e-user-scenarios/report.md`. It should follow `golden-report.md` and include:
+The runner writes `examples/fauxbooks-user-scenarios/report.md`. It should follow `golden-report.md` and include:
 
 - command line and git SHA
 - suite seed and scenario seeds
