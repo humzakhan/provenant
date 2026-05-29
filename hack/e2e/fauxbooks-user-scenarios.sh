@@ -313,7 +313,32 @@ def write_prompt(path: Path, scenario: Scenario, workspace: Path, expected_path:
         source_paths.extend(str(ds / name) for name in scenario.source_files)
     expected_bytes = expected_path.read_bytes()
     expected_sha = hashlib.sha256(expected_bytes).hexdigest()
+    expected_b64 = base64.b64encode(expected_bytes).decode()
     pointers = "\n".join(f"- `{pointer}`" for pointer in expected_json_pointers(json.loads(expected_path.read_text())))
+    first_pointer = expected_json_pointers(json.loads(expected_path.read_text()))[0]
+    mcp_template = {
+        "reader": "extract.json",
+        "source": {
+            "source": {
+                "path": str(expected_path),
+                "sha256": expected_sha,
+            },
+            "bytes": expected_b64,
+        },
+        "run": {
+            "id": f"run_{scenario.scenario_id}",
+            "tenant_id": "tenant_fauxbooks_user_scenarios",
+            "status": "running",
+        },
+        "read": {
+            "source_path": str(expected_path),
+            "selector": {
+                "json_pointer": first_pointer,
+            },
+            "output_path": "$.value",
+            "unit": "USD",
+        },
+    }
     prompt = f"""You are answering a Fauxbooks end-user finance question.
 
 Question:
@@ -331,16 +356,20 @@ Generated source files:
 Expected summary JSON, derived from the generated source files:
 - path: {expected_path}
 - sha256: {expected_sha}
-- base64: {base64.b64encode(expected_bytes).decode()}
+- base64: {expected_b64}
 
 To mint a value with Provenant, call `provenant.read_mint_bundle` with reader `extract.json`.
-For each Provenant call:
-- source.bytes must be the base64 string above.
-- source.source.path must be `{expected_path}`.
-- source.source.sha256 must be `{expected_sha}`.
-- read.source_path must equal `{expected_path}`.
-- read.output_path must equal `$.value`.
-- run must be exactly {{"id":"run_{scenario.scenario_id}","tenant_id":"tenant_fauxbooks_user_scenarios","status":"running"}}.
+Use this exact arguments object shape. For each value, copy it and change only `read.selector.json_pointer` to the pointer being minted:
+
+```json
+{json.dumps(mcp_template, indent=2)}
+```
+
+Important MCP request details:
+- `json_pointer` belongs only inside `read.selector`.
+- Do not use top-level `json_pointer`, `input_path`, `path`, `jsonPointer`, or `selector.jsonPointer`.
+- `source.source.path` and `read.source_path` must be identical.
+- `source.bytes` must remain the base64 string above.
 
 Mint every numeric-looking final JSON value at these expected-summary JSON pointers:
 {pointers}
