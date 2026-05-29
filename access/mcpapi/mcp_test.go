@@ -19,6 +19,7 @@ import (
 	"github.com/humzakhan/provenant/access/httpapi"
 	"github.com/humzakhan/provenant/access/mcpapi"
 	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 	"github.com/humzakhan/provenant/kernel/public/extractjson"
 	"github.com/humzakhan/provenant/kernel/public/memio"
 )
@@ -92,6 +93,90 @@ func TestSurfaceReadMintBundleSmoke(t *testing.T) {
 	}
 	if len(got.Content) != 1 || got.Content[0].Type != "text" || !strings.Contains(got.Content[0].Text, got.StructuredContent.BundleSHA256) {
 		t.Fatalf("content = %#v, want one summary block containing bundle sha", got.Content)
+	}
+}
+
+func TestSurfaceReadMintBundleIgnoresMCPArgumentMeta(t *testing.T) {
+	t.Parallel()
+
+	fixture := newMCPRequestFixture()
+	var request map[string]any
+	if err := json.Unmarshal([]byte(mustMarshalRequest(fixture.Request())), &request); err != nil {
+		t.Fatalf("Unmarshal(request) error = %v", err)
+	}
+	request["_meta"] = map[string]any{
+		"progressToken": "claude-code",
+	}
+	request["label"] = "mint invoice total"
+	requestBytes, err := json.Marshal(request)
+	if err != nil {
+		t.Fatalf("Marshal(request) error = %v", err)
+	}
+
+	surface := mcpapi.Surface{
+		Now: func() time.Time { return fixture.now },
+	}
+	got, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, requestBytes)
+	if err != nil {
+		t.Fatalf("CallTool() error = %v", err)
+	}
+	if got.StructuredContent.ReadAndMint.Token.ValueCanonical != "123.450000000" {
+		t.Fatalf("ValueCanonical = %q, want 123.450000000", got.StructuredContent.ReadAndMint.Token.ValueCanonical)
+	}
+}
+
+func TestStatefulDependencyBuilderAccumulatesTokens(t *testing.T) {
+	t.Parallel()
+
+	sourceBytes := []byte(`{"a":1,"b":2}`)
+	source := sourceWithHash("fixture://multi.json", sourceBytes)
+	run := kernel.Run{
+		ID:       "run_stateful",
+		TenantID: "tenant_stateful",
+		Status:   kernel.RunRunning,
+	}
+	surface := mcpapi.Surface{
+		Now:          func() time.Time { return time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC) },
+		Dependencies: mcpapi.NewStatefulDependencyBuilder(),
+	}
+
+	first := mcpapi.ReadMintBundleRequest{
+		Reader: "extract.json",
+		Source: source,
+		Run:    run,
+		Read: kernel.ReadAndMintRequest{
+			SourcePath: source.Source.Path,
+			Selector:   kernel.SourceSelector{JSONPointer: "/a"},
+			OutputPath: "$.value",
+		},
+	}
+	second := first
+	second.Read.Selector = kernel.SourceSelector{JSONPointer: "/b"}
+
+	firstBytes, err := json.Marshal(first)
+	if err != nil {
+		t.Fatalf("Marshal(first) error = %v", err)
+	}
+	if _, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, firstBytes); err != nil {
+		t.Fatalf("CallTool(first) error = %v", err)
+	}
+	secondBytes, err := json.Marshal(second)
+	if err != nil {
+		t.Fatalf("Marshal(second) error = %v", err)
+	}
+	got, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, secondBytes)
+	if err != nil {
+		t.Fatalf("CallTool(second) error = %v", err)
+	}
+	state, err := bundle.Replay(got.StructuredContent.BundleBytes)
+	if err != nil {
+		t.Fatalf("Replay(bundle) error = %v", err)
+	}
+	if len(state.Tokens) != 2 {
+		t.Fatalf("len(Tokens) = %d, want 2", len(state.Tokens))
+	}
+	if state.Tokens[0].ValueCanonical != "1.000000000" || state.Tokens[1].ValueCanonical != "2.000000000" {
+		t.Fatalf("token values = %#v, want 1 and 2", state.Tokens)
 	}
 }
 

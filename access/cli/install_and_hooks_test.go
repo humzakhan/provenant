@@ -41,7 +41,7 @@ func TestInstallClaudeWritesSettingsAndMCPJSON(t *testing.T) {
 		t.Fatalf("WriteFile(.mcp.json) error = %v", err)
 	}
 
-	t.Chdir(dir)
+	chdir(t, dir)
 	if code := cli.Main([]string{"install", "--claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("install exit code = %d, want 0", code)
 	}
@@ -140,7 +140,7 @@ func TestInstallClaudePreservesExistingProvenantMCPServerFields(t *testing.T) {
 		t.Fatalf("WriteFile(.mcp.json) error = %v", err)
 	}
 
-	t.Chdir(dir)
+	chdir(t, dir)
 	if code := cli.Main([]string{"install", "--claude"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
 		t.Fatalf("install exit code = %d, want 0", code)
 	}
@@ -242,6 +242,9 @@ func TestMCPReadMintBundleWritesSessionBundleForStopHook(t *testing.T) {
 		"params": map[string]any{
 			"name":      mcpapi.ToolReadMintBundle,
 			"arguments": request,
+			"_meta": map[string]any{
+				"progressToken": "claude-code-params",
+			},
 		},
 	})
 	if err != nil {
@@ -550,6 +553,22 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func chdir(t *testing.T, dir string) {
+	t.Helper()
+	previous, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("Getwd error = %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("Chdir(%s) error = %v", dir, err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(previous); err != nil {
+			t.Fatalf("restore cwd %s error = %v", previous, err)
+		}
+	})
 }
 
 func repoRoot(t *testing.T) string {

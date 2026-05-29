@@ -41,8 +41,11 @@ var (
 )
 
 type Surface struct {
-	Now func() time.Time
+	Now          func() time.Time
+	Dependencies DependencyBuilder
 }
+
+type DependencyBuilder func(ReadMintBundleRequest, time.Time) (corepath.Dependencies, error)
 
 type InitializeResult struct {
 	ServerInstructions string `json:"serverInstructions"`
@@ -139,7 +142,7 @@ func (s Surface) CallTool(ctx context.Context, name string, arguments json.RawMe
 	if err != nil {
 		return ToolResult{}, err
 	}
-	deps, err := buildDependencies(request, s.now())
+	deps, err := s.dependencies(request, s.now())
 	if err != nil {
 		return ToolResult{}, err
 	}
@@ -197,6 +200,10 @@ func decodeRequest(input json.RawMessage) (ReadMintBundleRequest, error) {
 	if len(input) > maxRequestBytes {
 		return ReadMintBundleRequest{}, ErrRequestTooLarge
 	}
+	input, err := stripMCPArgumentMeta(input)
+	if err != nil {
+		return ReadMintBundleRequest{}, err
+	}
 
 	dec := json.NewDecoder(bytes.NewReader(input))
 	dec.DisallowUnknownFields()
@@ -212,6 +219,25 @@ func decodeRequest(input json.RawMessage) (ReadMintBundleRequest, error) {
 		return ReadMintBundleRequest{}, err
 	}
 	return request, nil
+}
+
+func stripMCPArgumentMeta(input json.RawMessage) (json.RawMessage, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(input, &obj); err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidArguments, err)
+	}
+	_, hasMeta := obj["_meta"]
+	_, hasLabel := obj["label"]
+	if !hasMeta && !hasLabel {
+		return input, nil
+	}
+	delete(obj, "_meta")
+	delete(obj, "label")
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return nil, fmt.Errorf("%w: %v", ErrInvalidArguments, err)
+	}
+	return out, nil
 }
 
 func rejectTrailingJSON(dec *json.Decoder) error {
@@ -284,6 +310,25 @@ func buildDependencies(request ReadMintBundleRequest, now time.Time) (corepath.D
 	}, nil
 }
 
+func NewStatefulDependencyBuilder() DependencyBuilder {
+	binding := memio.NewBinding()
+	return func(request ReadMintBundleRequest, now time.Time) (corepath.Dependencies, error) {
+		reader, err := sourceReader(request.Reader)
+		if err != nil {
+			return corepath.Dependencies{}, err
+		}
+		binding.PutSource(request.Source)
+		return corepath.Dependencies{
+			Scope:     binding,
+			Resolver:  binding,
+			Reader:    reader,
+			Store:     binding,
+			AuditSink: binding,
+			Clock:     fixedClock{t: now.UTC()},
+		}, nil
+	}
+}
+
 func sourceReader(name string) (kernel.SourceReader, error) {
 	switch name {
 	case readerExtractJSON:
@@ -291,6 +336,13 @@ func sourceReader(name string) (kernel.SourceReader, error) {
 	default:
 		return nil, fmt.Errorf("%w: %s", ErrUnsupportedReader, name)
 	}
+}
+
+func (s Surface) dependencies(request ReadMintBundleRequest, now time.Time) (corepath.Dependencies, error) {
+	if s.Dependencies != nil {
+		return s.Dependencies(request, now)
+	}
+	return buildDependencies(request, now)
 }
 
 func (s Surface) now() time.Time {
