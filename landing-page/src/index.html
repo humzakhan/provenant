@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>Provenant — Every number, traced to source.</title>
+<title>Provenant: agent numbers you can actually trust.</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500&family=Cormorant+Garamond:ital,wght@1,600&display=swap" rel="stylesheet"/>
@@ -448,7 +448,7 @@ p{color:var(--muted);}
 </head>
 <body>
 
-<div class="topbar">Apache 2.0 &middot; Single-tenant &middot; Air-gappable &mdash; <em style="font-style:normal;opacity:.75">coming soon</em></div>
+<div class="topbar">Apache 2.0 &middot; Single-tenant &middot; Air-gappable &middot; <em style="font-style:normal;opacity:.75">coming soon</em></div>
 
 <nav class="nav" id="nav">
   <div class="nav-logo"><span class="nav-logo-mark"></span>Provenant</div>
@@ -475,10 +475,8 @@ p{color:var(--muted);}
   <canvas id="hero-bg"></canvas>
   <div class="hero-veil"></div>
   <div class="container hero-content">
-    <div class="hero-cs-badge"><span class="cs-blink"></span>Coming soon &mdash; v0 in private beta</div>
-    <div class="hero-mono"><span class="pulse"></span>provenant / v0</div>
     <h1>Every number your agent emits,<br/><em>traced to source.</em></h1>
-    <p class="hero-sub">An open-source enforcement kernel for LLM agents in financial services. Every numeric output is bound to a verifiable computation chain &mdash; or it never leaves the system.</p>
+    <p class="hero-sub">An open-source enforcement kernel for LLM agents in financial services. Every numeric output is bound to a verifiable computation chain, or it never leaves the system.</p>
     <div class="hero-ctas">
       <span class="cs-wrap"><a class="btn btn-primary" href="#">Run the demo (5 min)</a><span class="cs-tip">Coming soon</span></span>
       <span class="cs-wrap"><a class="btn btn-ghost" href="#">Read the thesis &rarr;</a><span class="cs-tip">Coming soon</span></span>
@@ -548,7 +546,7 @@ p{color:var(--muted);}
       <div>
         <div class="gap-eyebrow">What a reviewer asks</div>
         <p class="gap-question">&ldquo;Where did $237.42 come from? Who computed it? Show me the chain. Replay it.&rdquo;</p>
-        <p class="gap-context">Model risk guidance (FINRA 2026, SR&nbsp;11-7) places the burden of proof on the firm. A plausible-looking number with no verifiable derivation is not evidence &mdash; it is exposure.</p>
+        <p class="gap-context">Model risk guidance (FINRA 2026, SR&nbsp;11-7) places the burden of proof on the firm. A plausible-looking number with no verifiable derivation is not evidence; it is exposure.</p>
       </div>
     </div>
   </div>
@@ -559,7 +557,7 @@ p{color:var(--muted);}
   <div class="container reveal">
     <div class="eyebrow">A reconciliation, end to end</div>
     <h2>Three spreadsheets, one defensible number.</h2>
-    <p style="max-width:580px">A complete Provenant run &mdash; three real source files in, one operating-income figure out, every dollar tied to its exact origin. Hover any value to see which source produced it. Click <em>view file</em> to inspect the rows.</p>
+    <p style="max-width:580px">A complete Provenant run: three real source files in, one operating-income figure out, every dollar tied to its exact origin. Hover any value to see which source produced it. Click <em>view file</em> to inspect the rows.</p>
     <div class="recon-stage" id="recon-stage">
       <div class="recon-diagram">
         <div class="recon-sources">
@@ -650,7 +648,7 @@ p{color:var(--muted);}
         <div class="mech-content">
           <div class="mech-num">01</div>
           <div class="mech-title">Token-level grounding</div>
-          <div class="mech-desc">Every emitted number maps to a <em>provenance token</em> &mdash; linking it to a specific tool call and source read. A footnote tells you where a number appeared. A token proves the arithmetic that produced it.</div>
+          <div class="mech-desc">Every emitted number maps to a <em>provenance token</em>, linking it to a specific tool call and source read. A footnote tells you where a number appeared. A token proves the arithmetic that produced it.</div>
           <div class="mech-tag">Fabricated values caught at emit time</div>
         </div>
       </div>
@@ -666,7 +664,7 @@ p{color:var(--muted);}
         <div class="mech-content">
           <div class="mech-num">02</div>
           <div class="mech-title">Single enforced exit</div>
-          <div class="mech-desc"><em>submit_answer</em> is the only output channel. The kernel verifies every value against the token table before release. In Mode A, this is architectural &mdash; no back channel exists.</div>
+          <div class="mech-desc"><em>submit_answer</em> is the only output channel. The kernel verifies every value against the token table before release. In Mode A, this is architectural; no back channel exists.</div>
           <div class="mech-tag">No bypass possible in Mode A</div>
         </div>
       </div>
@@ -683,7 +681,7 @@ p{color:var(--muted);}
         <div class="mech-content">
           <div class="mech-num">03</div>
           <div class="mech-title">Fail closed by default</div>
-          <div class="mech-desc">Validators reject ungrounded output &mdash; no &ldquo;warn and continue.&rdquo; A run that emits an unverified number halts, logs the attempt, and surfaces a full error record in the audit log.</div>
+          <div class="mech-desc">Validators reject ungrounded output; no &ldquo;warn and continue.&rdquo; A run that emits an unverified number halts, logs the attempt, and surfaces a full error record in the audit log.</div>
           <div class="mech-tag">Errors logged, never silently dropped</div>
         </div>
       </div>
@@ -708,7 +706,7 @@ p{color:var(--muted);}
       </div>
       <div class="terminal-body">
         <div class="term-pane active" data-pane="mcp">
-          <div><span class="tm"># Run as an MCP server &mdash; no code changes in your host</span></div>
+          <div><span class="tm"># Run as an MCP server, no code changes in your host</span></div>
           <div><span class="tp">$ </span><span class="tc">docker run -p 8080:8080 provenant/provenant:v0</span></div>
           <div style="margin-top:14px"><span class="tm"># Register with your MCP host</span></div>
           <div><span class="tp">$ </span><span class="tc">claude mcp add provenant http://localhost:8080</span></div>
@@ -743,7 +741,7 @@ p{color:var(--muted);}
   <div class="container reveal">
     <div class="eyebrow">Comparison</div>
     <h2>Why not just use&hellip;</h2>
-    <p style="max-width:520px">Four alternatives teams reach for first &mdash; and the gap each one leaves.</p>
+    <p style="max-width:520px">Four alternatives teams reach for first, and the gap each one leaves.</p>
     <div class="acc-list" id="acc-list">
 
       <div class="acc-item">
@@ -760,11 +758,11 @@ p{color:var(--muted);}
             <div class="acc-content">
               <div class="acc-block acc-block-without">
                 <div class="acc-block-label"><span class="acc-block-label-icon">&#10007;</span>Without Provenant</div>
-                <div class="acc-block-text">Runs <strong>after</strong> the fact. An agent can emit ungrounded text through any other path &mdash; callbacks never see it.</div>
+                <div class="acc-block-text">Runs <strong>after</strong> the fact. An agent can emit ungrounded text through any other path; callbacks never see it.</div>
               </div>
               <div class="acc-block acc-block-with">
                 <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text">Enforcement is <strong>architectural</strong>. The kernel gate sits before any output channel &mdash; no code path bypasses it.</div>
+                <div class="acc-block-text">Enforcement is <strong>architectural</strong>. The kernel gate sits before any output channel; no code path bypasses it.</div>
               </div>
             </div>
           </div>
@@ -814,7 +812,7 @@ p{color:var(--muted);}
               </div>
               <div class="acc-block acc-block-with">
                 <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text">Token grounding proves <strong>how</strong> a number was computed &mdash; and blocks it when no computation supports it.</div>
+                <div class="acc-block-text">Token grounding proves <strong>how</strong> a number was computed, and blocks it when no computation supports it.</div>
               </div>
             </div>
           </div>
@@ -839,7 +837,7 @@ p{color:var(--muted);}
               </div>
               <div class="acc-block acc-block-with">
                 <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text"><strong>Apache 2.0</strong> &mdash; adopt the shared substrate. Ship the product that differentiates your business instead.</div>
+                <div class="acc-block-text"><strong>Apache 2.0</strong>: adopt the shared substrate. Ship the product that differentiates your business instead.</div>
               </div>
             </div>
           </div>
@@ -857,17 +855,17 @@ p{color:var(--muted);}
       <div>
         <div class="eyebrow eyebrow-dim">Compliance &amp; auditability</div>
         <h2 style="color:#fff;max-width:none;font-size:36px">Built to be defensible.<br/>Designed to be shared.</h2>
-        <p class="p-dim" style="margin-top:16px;max-width:420px;font-size:15px">Every run produces a self-contained audit pack. Any reviewer can verify the computation chain, replay the run, and confirm that no number was produced outside the kernel &mdash; without access to the original system.</p>
+        <p class="p-dim" style="margin-top:16px;max-width:420px;font-size:15px">Every run produces a self-contained audit pack. Any reviewer can verify the computation chain, replay the run, and confirm that no number was produced outside the kernel, without access to the original system.</p>
         <span class="cs-wrap" style="margin-top:24px"><a class="btn btn-outline-green" href="#">Read the compliance brief &rarr;</a><span class="cs-tip">Coming soon</span></span>
         <p class="comp-note">Maps to FINRA 2026, SR 11-7, EU AI Act Art.&nbsp;14, and SOX &sect;404. Structured for model risk teams, legal, and model inventory filings.</p>
       </div>
       <div>
         <div class="comp-claims">
-          <div class="comp-claim"><span class="tick">&#10003;</span><span>Hash-chained audit log &mdash; tamper-evident, verifiable without the original system</span></div>
+          <div class="comp-claim"><span class="tick">&#10003;</span><span>Hash-chained audit log: tamper-evident, verifiable without the original system</span></div>
           <div class="comp-claim"><span class="tick">&#10003;</span><span>Bit-identical replay from the captured-read record</span></div>
           <div class="comp-claim"><span class="tick">&#10003;</span><span>DFAH metrics per run: determinism, faithfulness, accuracy, hallucination rate</span></div>
-          <div class="comp-claim"><span class="tick">&#10003;</span><span>Per-value provenance to the source row &mdash; not document-level citation</span></div>
-          <div class="comp-claim"><span class="tick">&#10003;</span><span>Single-tenant, air-gappable in v0 &mdash; data does not leave your perimeter</span></div>
+          <div class="comp-claim"><span class="tick">&#10003;</span><span>Per-value provenance to the source row, not document-level citation</span></div>
+          <div class="comp-claim"><span class="tick">&#10003;</span><span>Single-tenant, air-gappable in v0: data does not leave your perimeter</span></div>
         </div>
         <div class="comp-regs">
           <span class="comp-reg">FINRA 2026</span><span class="comp-reg">SR 11-7</span><span class="comp-reg">EU AI Act Art. 14</span><span class="comp-reg">SOX &sect;404</span><span class="comp-reg">MRM guidance</span>
@@ -888,7 +886,7 @@ p{color:var(--muted);}
         <div class="prow-body">
           <div class="prow-who">Platform engineers</div>
           <div class="prow-statement">Ship product,<br/>not substrate.</div>
-          <div class="prow-desc">Stop rebuilding what Provenant already ships. Token minting, audit logs, and replay &mdash; handled.</div>
+          <div class="prow-desc">Stop rebuilding what Provenant already ships. Token minting, audit logs, and replay, all handled.</div>
         </div>
         <div class="prow-visual">
           <div><span class="pv-mid">k, _ := kernel.New(Config{</span></div>
