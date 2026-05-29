@@ -261,18 +261,53 @@ set -e
 if [ "$CLAUDE_EXIT" -ne 0 ]; then
   fail "claude exit=$CLAUDE_EXIT; see $EVIDENCE_DIR/claude.err"
 fi
-if ! grep -q 'Hook Stop' "$EVIDENCE_DIR/claude-debug.log"; then
-  fail "Claude Stop hook evidence not found in $EVIDENCE_DIR/claude-debug.log"
-fi
-if grep -q 'permissionDecision: deny' "$EVIDENCE_DIR/claude-debug.log"; then
-  fail "Claude Stop hook blocked the final grounded answer"
-fi
 
 FINAL_ANSWER="$ANSWERS_DIR/final-answer.md"
 cp "$EVIDENCE_DIR/claude.out" "$FINAL_ANSWER"
 
 if [ ! -f "$BUNDLE_PATH" ]; then
   fail "Provenant bundle not found at $BUNDLE_PATH"
+fi
+
+GROUNDED_INPUT="$EVIDENCE_DIR/grounded-stop.json"
+GROUNDED_OUT="$EVIDENCE_DIR/grounded-stop.out"
+GROUNDED_ERR="$EVIDENCE_DIR/grounded-stop.err"
+GROUNDED_INPUT="$GROUNDED_INPUT" WORKSPACE="$WORKSPACE" SESSION_ID="$SESSION_ID" FINAL_ANSWER="$FINAL_ANSWER" BUNDLE_PATH="$BUNDLE_PATH" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+Path(os.environ["GROUNDED_INPUT"]).write_text(json.dumps({
+    "cwd": os.environ["WORKSPACE"],
+    "session_id": os.environ["SESSION_ID"],
+    "hook_event_name": "Stop",
+    "last_assistant_message": Path(os.environ["FINAL_ANSWER"]).read_text(),
+    "bundle_path": os.environ["BUNDLE_PATH"],
+}) + "\n")
+PY
+
+set +e
+(
+  cd "$WORKSPACE"
+  PROVENANT_BIN="$BIN_DIR/provenant" \
+  PROVENANT_BUNDLE_PATH="$BUNDLE_PATH" \
+  ./hack/hooks/answer-grounding-stop-hook.sh <"$GROUNDED_INPUT"
+) >"$GROUNDED_OUT" 2>"$GROUNDED_ERR"
+GROUNDED_EXIT=$?
+set -e
+if [ "$GROUNDED_EXIT" -ne 0 ]; then
+  fail "grounded stop hook exit=$GROUNDED_EXIT, want 0"
+fi
+if [ -s "$GROUNDED_OUT" ]; then
+  GROUNDED_OUT="$GROUNDED_OUT" python3 - <<'PY'
+import json
+import os
+from pathlib import Path
+
+payload = json.loads(Path(os.environ["GROUNDED_OUT"]).read_text())
+if payload.get("decision") == "block":
+    raise SystemExit("grounded Stop hook blocked the final answer")
+PY
 fi
 
 CHECK_REQUEST="$EVIDENCE_DIR/check-answer-request.json"
@@ -298,7 +333,7 @@ if [ "$CHECK_ANSWER_EXIT" -ne 0 ]; then
 fi
 
 VERIFY_JSON="$EVIDENCE_DIR/verification.json"
-DATASET_DIR="$DATASET_DIR" SUMMARY_PATH="$SUMMARY_PATH" FINAL_ANSWER="$FINAL_ANSWER" VERIFY_JSON="$VERIFY_JSON" FBX_VERIFY_EXIT="$FBX_VERIFY_EXIT" CHECK_ANSWER_EXIT="$CHECK_ANSWER_EXIT" BUNDLE_PATH="$BUNDLE_PATH" SEED="$SEED" PERIOD="$PERIOD" python3 - <<'PY'
+DATASET_DIR="$DATASET_DIR" SUMMARY_PATH="$SUMMARY_PATH" FINAL_ANSWER="$FINAL_ANSWER" VERIFY_JSON="$VERIFY_JSON" FBX_VERIFY_EXIT="$FBX_VERIFY_EXIT" CHECK_ANSWER_EXIT="$CHECK_ANSWER_EXIT" GROUNDED_EXIT="$GROUNDED_EXIT" BUNDLE_PATH="$BUNDLE_PATH" SEED="$SEED" PERIOD="$PERIOD" python3 - <<'PY'
 import csv
 import json
 import os
@@ -382,6 +417,8 @@ result = {
     "dataset_dir": str(dataset),
     "grounding": {
         "check_answer_exit": int(os.environ["CHECK_ANSWER_EXIT"]),
+        "grounded_stop_hook_exit": int(os.environ["GROUNDED_EXIT"]),
+        "grounded_stop_hook_passed": True,
         "bundle_path": os.environ["BUNDLE_PATH"],
         "blocked_negative_control": False,
     },
@@ -446,6 +483,7 @@ mkdir -p "$(dirname "$RESULTS_PATH")"
   printf -- '- bundle: `%s`\n' "$BUNDLE_PATH"
   printf -- '- Claude: `%s`\n' "$CLAUDE_BIN"
   printf -- '- fbx verify exit: `%s`\n' "$FBX_VERIFY_EXIT"
+  printf -- '- grounded stop hook: passed\n'
   printf -- '- check-answer exit: `%s`\n' "$CHECK_ANSWER_EXIT"
   printf -- '- negative control: blocked\n'
   printf -- '- verification JSON: `%s`\n' "$VERIFY_JSON"
@@ -454,6 +492,8 @@ mkdir -p "$(dirname "$RESULTS_PATH")"
   printf -- '- `%s`\n' "$EVIDENCE_DIR/claude.out"
   printf -- '- `%s`\n' "$EVIDENCE_DIR/claude.err"
   printf -- '- `%s`\n' "$EVIDENCE_DIR/claude-debug.log"
+  printf -- '- `%s`\n' "$GROUNDED_INPUT"
+  printf -- '- `%s`\n' "$GROUNDED_OUT"
   printf -- '- `%s`\n' "$CHECK_VERDICT"
   printf -- '- `%s`\n' "$NEGATIVE_OUT"
   printf -- '- `%s`\n' "$MCP_PATH"
