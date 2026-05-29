@@ -261,6 +261,12 @@ set -e
 if [ "$CLAUDE_EXIT" -ne 0 ]; then
   fail "claude exit=$CLAUDE_EXIT; see $EVIDENCE_DIR/claude.err"
 fi
+if ! grep -q 'Hook Stop' "$EVIDENCE_DIR/claude-debug.log"; then
+  fail "Claude Stop hook evidence not found in $EVIDENCE_DIR/claude-debug.log"
+fi
+if grep -q 'permissionDecision: deny' "$EVIDENCE_DIR/claude-debug.log"; then
+  fail "Claude Stop hook blocked the final grounded answer"
+fi
 
 FINAL_ANSWER="$ANSWERS_DIR/final-answer.md"
 cp "$EVIDENCE_DIR/claude.out" "$FINAL_ANSWER"
@@ -363,6 +369,11 @@ for rec in answer_records:
     elif rec["type"] == "timing_difference":
         if entry_id not in gl_entries or not bank_by_entry.get(entry_id):
             raise SystemExit(f"timing_difference {entry_id} missing source evidence")
+    for field, value in rec.items():
+        if field == "amount" or field in {"type", "entry_id"}:
+            continue
+        if isinstance(value, (int, float)) or (isinstance(value, str) and re.search(r"\d", value)):
+            raise SystemExit(f"{rec['type']} {entry_id} has unsupported numeric field {field}")
 
 result = {
     "ok": True,
