@@ -285,7 +285,7 @@ def mint_values(value, prefix="") -> list[tuple[str, str]]:
         for idx, child in enumerate(value):
             out.extend(mint_values(child, f"{prefix}/{idx}"))
         return out
-    if isinstance(value, str) and re.search(r"\d", value) and not re.fullmatch(r"2026(-Q1|-03|-0[1-3])", value):
+    if isinstance(value, str) and re.fullmatch(r"-?\d+(\.\d+)?", value):
         return [(prefix, value)]
     return []
 
