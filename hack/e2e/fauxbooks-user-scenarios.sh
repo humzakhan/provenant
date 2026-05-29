@@ -128,10 +128,19 @@ def write_json(path: Path, obj) -> None:
 
 def extract_final_json(answer_path: Path) -> dict:
     text = answer_path.read_text()
-    match = re.search(rf"{FINAL_BEGIN}\s*(\{{.*?\}})\s*{FINAL_END}", text, re.S)
-    if not match:
-        raise ValueError("final answer markers/json block not found")
-    return json.loads(match.group(1))
+    matches = re.findall(rf"{FINAL_BEGIN}\s*(\{{.*?\}})\s*{FINAL_END}", text, re.S)
+    if len(matches) != 1:
+        raise ValueError(f"final answer must contain exactly one marked JSON block, found {len(matches)}")
+    return json.loads(matches[0])
+
+
+def save_final_marked_json(stdout_path: Path, answer_path: Path) -> None:
+    matches = re.findall(rf"{FINAL_BEGIN}\s*(\{{.*?\}})\s*{FINAL_END}", stdout_path.read_text(), re.S)
+    if not matches:
+        raise ValueError("Claude stdout did not contain a final marked JSON block")
+    answer = json.loads(matches[-1])
+    answer_path.parent.mkdir(parents=True, exist_ok=True)
+    answer_path.write_text(f"{FINAL_BEGIN}\n{json.dumps(answer, indent=2, sort_keys=True)}\n{FINAL_END}\n")
 
 
 def dataset_dir(workspace: Path, scenario: Scenario, period: str) -> Path:
@@ -578,9 +587,9 @@ def run_scenario(ctx: dict, scenario: Scenario, suite_seed: int) -> dict:
             stderr=evidence / f"{scenario.scenario_id}.claude.err",
         )
         scenario_result["checks"]["claude_exit"] = proc.returncode
-        shutil.copy2(evidence / f"{scenario.scenario_id}.claude.out", answer_path)
         if proc.returncode != 0:
             raise ValueError(f"Claude exit={proc.returncode}; see {evidence / (scenario.scenario_id + '.claude.err')}")
+        save_final_marked_json(evidence / f"{scenario.scenario_id}.claude.out", answer_path)
         if not bundle_path.exists():
             raise ValueError(f"Provenant bundle not found at {bundle_path}")
 
