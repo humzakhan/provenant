@@ -134,13 +134,29 @@ go build ./...
 go test ./...
 ```
 
-**Claude Code integration in a project workspace:**
+**Install into an MCP host:**
 
 ```bash
-provenant install --claude
+provenant install --target claude
+provenant install --target codex,cursor
+provenant install --target all
+provenant install --print-config codex
 ```
 
-That writes the local Claude Code project settings needed to enable the Provenant MCP server and install the SessionStart and Stop hooks. Example runners can add domain-specific MCP servers when they need generated or external source material.
+That writes the local host config needed to expose the Provenant MCP server. Claude Code also gets project hooks and Stop-hook enforcement. Other MCP hosts get tool access plus official answer attestation through `provenant.submit_answer`; arbitrary host text is not Provenant-attested.
+
+| Host | Compatibility | Notes |
+|---|---|---|
+| Claude Code | Supported | Project hooks plus Stop-hook enforcement. |
+| Cursor | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Codex CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| opencode | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Hermes Agent | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Gemini CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Antigravity IDE | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Kiro | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Kimi CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Pi.dev agent | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
 
 ---
 
@@ -152,6 +168,7 @@ That writes the local Claude Code project settings needed to enable the Provenan
 - CLI `read-mint-bundle` with `extract.json` reader.
 - MCP surface for `provenant.read_mint_bundle`.
 - Claude Code install path with SessionStart and Stop hooks.
+- `provenant.submit_answer` as the attestation boundary for official answers.
 - `provenant check-answer` for detecting ungrounded numeric claims in final answers.
 - CLI `reconcile` fixture with `extract.csv_rows` and `extract.spreadsheet` readers.
 - Audit bundle verify and replay through Go APIs and CLI commands.
@@ -414,8 +431,8 @@ Provenant is intentionally conservative in v0.
 - MCP grounding currently uses `extract.json` for the read/mint path.
 - CSV and spreadsheet readers exist in the kernel and reconciliation fixture path, but arbitrary customer CSV reasoning is not a complete product surface.
 - The Fauxbooks user-scenario runner mints final numeric values from generated expected JSON summaries while separately verifying those summaries against generated CSVs.
-- Host-channel text in MCP mode is not official unless it goes through the passing check-answer/Stop-hook path.
-- Host conformance outside the controlled Claude Code integration is an integration responsibility.
+- Host-channel text in MCP mode is not Provenant-attested unless it goes through `provenant.submit_answer` or the passing check-answer/Stop-hook path.
+- Claude Code gets project hooks and Stop-hook enforcement; other MCP hosts only get tool access plus `provenant.submit_answer` attestation.
 - Provenant provides verifiable evidence and replay, not legal advice, regulatory advice, or external tamper-proofing against root compromise.
 
 ---
