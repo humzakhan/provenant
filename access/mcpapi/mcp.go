@@ -26,6 +26,10 @@ const (
 	maxSourceBytes    = 1 << 20
 )
 
+// ServerInstructions is the MCP initialize soft assist layer. Hard enforcement
+// lives in the release hook/CheckAnswer path.
+const ServerInstructions = "Every number in a released answer must originate from a Provenant tool/token, not prose computation. Route numeric claims through Provenant tool paths such as provenant.read_mint_bundle. Ungrounded numbers are blocked at release by the hard hook/CheckAnswer path."
+
 var (
 	ErrUnsupportedTool     = errors.New("mcpapi: unsupported tool")
 	ErrUnsupportedPrompt   = errors.New("mcpapi: unsupported prompt")
@@ -38,6 +42,10 @@ var (
 
 type Surface struct {
 	Now func() time.Time
+}
+
+type InitializeResult struct {
+	ServerInstructions string `json:"serverInstructions"`
 }
 
 type Tool struct {
@@ -113,6 +121,12 @@ func Resources() []Resource {
 			Description: "JSON schema for the thin MCP read/mint/bundle tool.",
 			MIMEType:    "application/json",
 		},
+	}
+}
+
+func (Surface) Initialize() InitializeResult {
+	return InitializeResult{
+		ServerInstructions: ServerInstructions,
 	}
 }
 

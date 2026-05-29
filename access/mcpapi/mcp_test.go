@@ -271,6 +271,28 @@ func TestMetadataExposure(t *testing.T) {
 	}
 }
 
+func TestSurfaceInitializeIncludesServerInstructions(t *testing.T) {
+	t.Parallel()
+
+	got := (mcpapi.Surface{}).Initialize()
+	if got.ServerInstructions != mcpapi.ServerInstructions {
+		t.Fatalf("Initialize().ServerInstructions = %q, want %q", got.ServerInstructions, mcpapi.ServerInstructions)
+	}
+
+	wireBytes, err := json.Marshal(got)
+	if err != nil {
+		t.Fatalf("json.Marshal(Initialize()) error = %v", err)
+	}
+
+	var wire map[string]string
+	if err := json.Unmarshal(wireBytes, &wire); err != nil {
+		t.Fatalf("json.Unmarshal(initialize wire) error = %v", err)
+	}
+	if wire["serverInstructions"] != mcpapi.ServerInstructions {
+		t.Fatalf("initialize wire serverInstructions = %q, want %q", wire["serverInstructions"], mcpapi.ServerInstructions)
+	}
+}
+
 type mcpRequestFixture struct {
 	source kernel.SourceBytes
 	run    kernel.Run
