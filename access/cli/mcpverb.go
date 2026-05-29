@@ -32,7 +32,7 @@ func (r Runner) runMCP(ctx context.Context, args []string, stdin io.Reader, stdo
 	}
 
 	server := mcpStdioServer{
-		surface:    mcpapi.Surface{Now: r.now},
+		surface:    mcpapi.Surface{Now: r.now, Dependencies: mcpapi.NewStatefulDependencyBuilder()},
 		stdin:      stdin,
 		stdout:     stdout,
 		bundlePath: os.Getenv("PROVENANT_BUNDLE_PATH"),
@@ -309,9 +309,29 @@ func decodeMCPParams(raw json.RawMessage, out any) error {
 	if len(raw) == 0 {
 		return fmt.Errorf("missing params")
 	}
+	raw, err := stripMCPMeta(raw)
+	if err != nil {
+		return err
+	}
 	dec := json.NewDecoder(strings.NewReader(string(raw)))
 	dec.DisallowUnknownFields()
 	return dec.Decode(out)
+}
+
+func stripMCPMeta(raw json.RawMessage) (json.RawMessage, error) {
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil, err
+	}
+	if _, ok := obj["_meta"]; !ok {
+		return raw, nil
+	}
+	delete(obj, "_meta")
+	out, err := json.Marshal(obj)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func rawID(id json.RawMessage) any {

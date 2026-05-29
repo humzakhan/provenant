@@ -242,6 +242,9 @@ func TestMCPReadMintBundleWritesSessionBundleForStopHook(t *testing.T) {
 		"params": map[string]any{
 			"name":      mcpapi.ToolReadMintBundle,
 			"arguments": request,
+			"_meta": map[string]any{
+				"progressToken": "claude-code-params",
+			},
 		},
 	})
 	if err != nil {

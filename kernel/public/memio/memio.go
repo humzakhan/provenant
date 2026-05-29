@@ -49,6 +49,12 @@ func NewBinding(sources ...kernel.SourceBytes) *Binding {
 	return b
 }
 
+func (b *Binding) PutSource(source kernel.SourceBytes) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.sources[source.Source.Path] = cloneSource(source)
+}
+
 func (b *Binding) TransactionalSubstrate() string {
 	return substrate
 }
