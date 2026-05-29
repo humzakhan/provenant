@@ -264,6 +264,51 @@ def expected_json_pointers(value, prefix="") -> list[str]:
     return []
 
 
+def mint_values(value, prefix="") -> list[tuple[str, str]]:
+    if isinstance(value, dict):
+        out = []
+        for key, child in value.items():
+            escaped = key.replace("~", "~0").replace("/", "~1")
+            out.extend(mint_values(child, f"{prefix}/{escaped}"))
+        return out
+    if isinstance(value, list):
+        out = []
+        for idx, child in enumerate(value):
+            out.extend(mint_values(child, f"{prefix}/{idx}"))
+        return out
+    if isinstance(value, str) and re.search(r"\d", value) and not re.fullmatch(r"2026(-Q1|-03|-0[1-3])", value):
+        return [(prefix, value)]
+    return []
+
+
+def mint_argument_for(scenario: Scenario, expected_path: Path, pointer: str, value: str) -> dict:
+    source_bytes = json.dumps({"value": value}, separators=(",", ":")).encode()
+    source_path = f"{expected_path}#{pointer}"
+    return {
+        "reader": "extract.json",
+        "source": {
+            "source": {
+                "path": source_path,
+                "sha256": hashlib.sha256(source_bytes).hexdigest(),
+            },
+            "bytes": base64.b64encode(source_bytes).decode(),
+        },
+        "run": {
+            "id": f"run_{scenario.scenario_id}",
+            "tenant_id": "tenant_fauxbooks_user_scenarios",
+            "status": "running",
+        },
+        "read": {
+            "source_path": source_path,
+            "selector": {
+                "json_pointer": "/value",
+            },
+            "output_path": "$.value",
+            "unit": "USD",
+        },
+    }
+
+
 def final_schema(scenario: Scenario) -> str:
     if scenario.scenario_id == "quarterly_revenue_summary":
         return """{
@@ -313,32 +358,16 @@ def write_prompt(path: Path, scenario: Scenario, workspace: Path, expected_path:
         source_paths.extend(str(ds / name) for name in scenario.source_files)
     expected_bytes = expected_path.read_bytes()
     expected_sha = hashlib.sha256(expected_bytes).hexdigest()
-    expected_b64 = base64.b64encode(expected_bytes).decode()
-    pointers = "\n".join(f"- `{pointer}`" for pointer in expected_json_pointers(json.loads(expected_path.read_text())))
-    first_pointer = expected_json_pointers(json.loads(expected_path.read_text()))[0]
-    mcp_template = {
-        "reader": "extract.json",
-        "source": {
-            "source": {
-                "path": str(expected_path),
-                "sha256": expected_sha,
-            },
-            "bytes": expected_b64,
-        },
-        "run": {
-            "id": f"run_{scenario.scenario_id}",
-            "tenant_id": "tenant_fauxbooks_user_scenarios",
-            "status": "running",
-        },
-        "read": {
-            "source_path": str(expected_path),
-            "selector": {
-                "json_pointer": first_pointer,
-            },
-            "output_path": "$.value",
-            "unit": "USD",
-        },
-    }
+    expected = json.loads(expected_path.read_text())
+    mint_plan = mint_values(expected)
+    mint_sections = []
+    for idx, (pointer, value) in enumerate(mint_plan, start=1):
+        args = mint_argument_for(scenario, expected_path, pointer, value)
+        mint_sections.append(
+            f"{idx}. final JSON pointer `{pointer}` must be `{value}`. Call Provenant with exactly these arguments:\n\n"
+            f"```json\n{json.dumps(args, indent=2)}\n```"
+        )
+    mint_plan_text = "\n\n".join(mint_sections)
     prompt = f"""You are answering a Fauxbooks end-user finance question.
 
 Question:
@@ -356,23 +385,19 @@ Generated source files:
 Expected summary JSON, derived from the generated source files:
 - path: {expected_path}
 - sha256: {expected_sha}
-- base64: {expected_b64}
+- use this file to understand the required final JSON values, but use the small exact mint calls below for Provenant grounding.
 
 To mint a value with Provenant, call `provenant.read_mint_bundle` with reader `extract.json`.
-Use this exact arguments object shape. For each value, copy it and change only `read.selector.json_pointer` to the pointer being minted:
+Make one Provenant MCP call for each item in this mint plan:
 
-```json
-{json.dumps(mcp_template, indent=2)}
-```
+{mint_plan_text}
 
 Important MCP request details:
 - `json_pointer` belongs only inside `read.selector`.
 - Do not use top-level `json_pointer`, `input_path`, `path`, `jsonPointer`, or `selector.jsonPointer`.
 - `source.source.path` and `read.source_path` must be identical.
-- `source.bytes` must remain the base64 string above.
-
-Mint every numeric-looking final JSON value at these expected-summary JSON pointers:
-{pointers}
+- Do not edit the `source.bytes` or `source.source.sha256` strings in the exact arguments objects.
+- Do not include numeric-looking values in the final JSON unless they appear in the mint plan above.
 
 Final JSON schema:
 ```json
