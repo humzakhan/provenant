@@ -80,7 +80,7 @@ def log(message: str) -> None:
 
 
 def canon(value) -> str:
-    return str(Decimal(str(value)).quantize(Decimal("0.000000001"), rounding=ROUND_HALF_EVEN))
+    return format(Decimal(str(value)).quantize(Decimal("0.000000001"), rounding=ROUND_HALF_EVEN), "f")
 
 
 def read_csv(path: Path) -> list[dict[str, str]]:
