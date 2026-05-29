@@ -4,7 +4,9 @@
   "private": true,
   "description": "Provenant marketing landing page — static site deployed to Cloudflare Pages.",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "clean": "rm -rf dist",
     "build": "node scripts/build.mjs",
@@ -13,6 +15,7 @@
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
+    "browser-sync": "^3.0.4",
     "html-minifier-terser": "^7.2.0",
     "wrangler": "^4.0.0"
   }
