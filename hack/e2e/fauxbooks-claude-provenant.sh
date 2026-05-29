@@ -399,9 +399,13 @@ for rec in answer_records:
             raise SystemExit(f"orphan {entry_id} amount not found in source row")
         amounts_checked.append({"entry_id": entry_id, "amount": canon(amount)})
     elif rec["type"] == "duplicate":
+        if "amount" in rec:
+            raise SystemExit(f"duplicate {entry_id} must not include amount")
         if len(bank_by_entry.get(entry_id, [])) < 2:
             raise SystemExit(f"duplicate {entry_id} has fewer than two bank rows")
     elif rec["type"] == "timing_difference":
+        if "amount" in rec:
+            raise SystemExit(f"timing_difference {entry_id} must not include amount")
         if entry_id not in gl_entries or not bank_by_entry.get(entry_id):
             raise SystemExit(f"timing_difference {entry_id} missing source evidence")
     for field, value in rec.items():
