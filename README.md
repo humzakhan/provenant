@@ -111,55 +111,6 @@ That is the difference Provenant is trying to make: the user still asks a natura
 
 ---
 
-## Latest End-To-End Scenarios
-
-Note: [Fauxbooks](https://github.com/humzakhan/fauxbooks) is a separate open source project used here to generate deterministic synthetic finance datasets. Provenant uses those generated exports as repeatable source material for end-to-end grounding tests; Fauxbooks is not part of the Provenant kernel.
-
-The current end-to-end suite exercises three natural finance questions over deterministic Fauxbooks `monthly-close` datasets. The suite generates data, verifies the generated datasets, runs Claude Code headlessly with Fauxbooks and Provenant MCP enabled, verifies numeric correctness by recomputing from CSVs, proves Provenant grounding, runs negative controls, and writes one final report.
-
-Run it:
-
-```bash
-hack/e2e/fauxbooks-user-scenarios.sh \
-  --seed 424200 \
-  --out /tmp/provenant-fauxbooks-user-scenarios
-```
-
-The latest checked-in report is [`./examples/fauxbooks-user-scenarios/report.md`](examples/fauxbooks-user-scenarios/report.md).
-
-### Scenario Matrix
-
-| Scenario | What the user asks | Verification |
-|---|---|---|
-| Quarterly revenue summary | "What was revenue for Q1 2026?" | Monthly revenue, Q1 total, and top revenue account are recomputed from `profit-loss.csv`. |
-| Cash vs book revenue reconciliation | "Why does cash received not match booked revenue?" | Book revenue, customer cash receipts, delta, and payment cross-check are recomputed from CSVs. |
-| Accounts receivable aging | "Which customers owe us money?" | Bucket totals, AR total, largest customer, and statement closing-balance cross-check are recomputed from CSVs. |
-
-The latest run passed all scenario checks:
-
-| Scenario | Key verified result |
-|---|---:|
-| Q1 revenue total | `$395,061.13` |
-| March book revenue | `$147,136.26` |
-| March customer cash receipts | `$74,002.66` |
-| Book-to-cash delta | `$73,133.60` |
-| March AR total | `$73,367.10` |
-| Largest AR customer | `cust-005 McKinsey`, `$20,714.83` |
-
-The README renders financial values in user-facing US dollar format. The verification artifacts keep canonical machine values with fixed decimal scale so exact comparisons remain deterministic.
-
-For every scenario, the runner expects:
-
-- `fbx verify` exits `0` for every generated dataset.
-- Claude uses Fauxbooks MCP at least once.
-- Claude mints every final numeric value through Provenant MCP.
-- `provenant check-answer` exits `0`.
-- The direct grounded Stop hook does not block.
-- The negative Stop-hook control blocks an ungrounded `$999,999,999.00` claim.
-- The final JSON matches both generated expected values and direct CSV recomputation.
-
----
-
 ## Installation
 
 **As a library:**
@@ -189,51 +140,7 @@ go test ./...
 provenant install --claude
 ```
 
-That writes the local Claude Code project settings needed to enable the Provenant MCP server and install the SessionStart and Stop hooks. The end-to-end runner also configures Fauxbooks MCP because the demo scenarios need generated finance documents as source material.
-
----
-
-## Solving The Finance File Scenario
-
-A complete local run has three layers:
-
-1. **Data and prompt setup.** The runner builds `provenant` and `fbx`, creates a disposable workspace, generates deterministic monthly-close exports, and writes one prompt per scenario.
-2. **Agent execution.** Claude Code runs headlessly with strict MCP config. It can inspect Fauxbooks bundles/documents and must call Provenant to mint the numeric values that appear in the final JSON.
-3. **Release verification.** The runner saves answers, stdout, stderr, debug logs, MCP logs, hook evidence, and verification JSON. It then runs `provenant check-answer`, direct grounded Stop-hook control, direct negative Stop-hook control, and CSV recomputation.
-
-The resulting workspace looks like this:
-
-```text
-/tmp/provenant-fauxbooks-user-scenarios/
-  bin/
-    fbx
-    provenant
-  workspace/
-    .claude/settings.json
-    .mcp.json
-    datasets/
-    prompts/
-    answers/
-    evidence/
-    verification/
-    report.md
-```
-
-The important artifacts are:
-
-| Artifact | Purpose |
-|---|---|
-| `prompts/<scenario>.md` | The exact user-facing prompt and Provenant minting instructions. |
-| `answers/<scenario>.final.md` | The final machine-readable answer block. |
-| `evidence/<scenario>.claude.out` | Raw Claude Code output. |
-| `evidence/<scenario>.claude-debug.log` | Claude Code debug log with MCP activity. |
-| `evidence/<scenario>.provenant-mcp.*.jsonl` | Provenant MCP request/response transcript. |
-| `evidence/<scenario>.check-answer.out` | `provenant check-answer` verdict. |
-| `evidence/<scenario>.grounded-stop.out` | Direct Stop-hook pass evidence. |
-| `evidence/<scenario>.negative-stop.out` | Direct Stop-hook block evidence for the negative control. |
-| `verification/<scenario>.json` | Scenario truth, grounding, and control status. |
-
-This is the shape a real integration should preserve even if the host is not Claude Code. The host can be different, but the invariant is the same: released numeric claims must be grounded, checkable, and replayable.
+That writes the local Claude Code project settings needed to enable the Provenant MCP server and install the SessionStart and Stop hooks. Example runners can add domain-specific MCP servers when they need generated or external source material.
 
 ---
 
@@ -404,6 +311,99 @@ go test ./examples/derivation-graph/...
 ```
 
 See [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md) for the full walkthrough, dataset description, and golden regeneration procedure.
+
+---
+
+## Latest End-To-End Scenarios
+
+Note: [Fauxbooks](https://github.com/humzakhan/fauxbooks) is a separate open source project used here to generate deterministic synthetic finance datasets. Provenant uses those generated exports as repeatable source material for end-to-end grounding tests; Fauxbooks is not part of the Provenant kernel.
+
+The current end-to-end suite exercises three natural finance questions over deterministic Fauxbooks `monthly-close` datasets. The suite generates data, verifies the generated datasets, runs Claude Code headlessly with Fauxbooks and Provenant MCP enabled, verifies numeric correctness by recomputing from CSVs, proves Provenant grounding, runs negative controls, and writes one final report.
+
+Run it:
+
+```bash
+hack/e2e/fauxbooks-user-scenarios.sh \
+  --seed 424200 \
+  --out /tmp/provenant-fauxbooks-user-scenarios
+```
+
+The latest checked-in report is [`./examples/fauxbooks-user-scenarios/report.md`](examples/fauxbooks-user-scenarios/report.md).
+
+### Scenario Matrix
+
+| Scenario | What the user asks | Verification |
+|---|---|---|
+| Quarterly revenue summary | "What was revenue for Q1 2026?" | Monthly revenue, Q1 total, and top revenue account are recomputed from `profit-loss.csv`. |
+| Cash vs book revenue reconciliation | "Why does cash received not match booked revenue?" | Book revenue, customer cash receipts, delta, and payment cross-check are recomputed from CSVs. |
+| Accounts receivable aging | "Which customers owe us money?" | Bucket totals, AR total, largest customer, and statement closing-balance cross-check are recomputed from CSVs. |
+
+The latest run passed all scenario checks:
+
+| Scenario | Key verified result |
+|---|---:|
+| Q1 revenue total | `$395,061.13` |
+| March book revenue | `$147,136.26` |
+| March customer cash receipts | `$74,002.66` |
+| Book-to-cash delta | `$73,133.60` |
+| March AR total | `$73,367.10` |
+| Largest AR customer | `cust-005 McKinsey`, `$20,714.83` |
+
+The README renders financial values in user-facing US dollar format. The verification artifacts keep canonical machine values with fixed decimal scale so exact comparisons remain deterministic.
+
+For every scenario, the runner expects:
+
+- `fbx verify` exits `0` for every generated dataset.
+- Claude uses Fauxbooks MCP at least once.
+- Claude mints every final numeric value through Provenant MCP.
+- `provenant check-answer` exits `0`.
+- The direct grounded Stop hook does not block.
+- The negative Stop-hook control blocks an ungrounded `$999,999,999.00` claim.
+- The final JSON matches both generated expected values and direct CSV recomputation.
+
+---
+
+## Solving The Finance File Scenario
+
+A complete local run has three layers:
+
+1. **Data and prompt setup.** The runner builds `provenant` and `fbx`, creates a disposable workspace, generates deterministic monthly-close exports, and writes one prompt per scenario.
+2. **Agent execution.** Claude Code runs headlessly with strict MCP config. It can inspect Fauxbooks bundles/documents and must call Provenant to mint the numeric values that appear in the final JSON.
+3. **Release verification.** The runner saves answers, stdout, stderr, debug logs, MCP logs, hook evidence, and verification JSON. It then runs `provenant check-answer`, direct grounded Stop-hook control, direct negative Stop-hook control, and CSV recomputation.
+
+The resulting workspace looks like this:
+
+```text
+/tmp/provenant-fauxbooks-user-scenarios/
+  bin/
+    fbx
+    provenant
+  workspace/
+    .claude/settings.json
+    .mcp.json
+    datasets/
+    prompts/
+    answers/
+    evidence/
+    verification/
+    report.md
+```
+
+The important artifacts are:
+
+| Artifact | Purpose |
+|---|---|
+| `prompts/<scenario>.md` | The exact user-facing prompt and Provenant minting instructions. |
+| `answers/<scenario>.final.md` | The final machine-readable answer block. |
+| `evidence/<scenario>.claude.out` | Raw Claude Code output. |
+| `evidence/<scenario>.claude-debug.log` | Claude Code debug log with MCP activity. |
+| `evidence/<scenario>.provenant-mcp.*.jsonl` | Provenant MCP request/response transcript. |
+| `evidence/<scenario>.check-answer.out` | `provenant check-answer` verdict. |
+| `evidence/<scenario>.grounded-stop.out` | Direct Stop-hook pass evidence. |
+| `evidence/<scenario>.negative-stop.out` | Direct Stop-hook block evidence for the negative control. |
+| `verification/<scenario>.json` | Scenario truth, grounding, and control status. |
+
+This is the shape a real integration should preserve even if the host is not Claude Code. The host can be different, but the invariant is the same: released numeric claims must be grounded, checkable, and replayable.
 
 ---
 
