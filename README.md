@@ -23,7 +23,7 @@ Finance teams increasingly ask AI systems practical questions over local exports
 
 Those are not hard questions because the arithmetic is exotic. They are hard because the answer is only useful if the organization can later prove where every number came from. A polished paragraph from Claude Code, Codex, or another agent workspace is not enough for a controller, auditor, or model-risk reviewer. They need to know which files were read, which values were selected, which derived values were minted, whether the final answer contains ungrounded numbers, and whether the evidence can be verified offline after the agent session is gone.
 
-The failure mode Provenant is built to prevent is simple: an answer can be directionally correct, well written, and still impossible to audit. If a released answer says revenue was `395061.130000000`, the reviewer should not have to trust the model's prose. The reviewer should be able to inspect the captured read, the token, the hash-chained audit entry, and the bundle that replays the value.
+The failure mode Provenant is built to prevent is simple: an answer can be directionally correct, well written, and still impossible to audit. If a released answer says revenue was `$395,061.13`, the reviewer should not have to trust the model's prose. The reviewer should be able to inspect the captured read, the token, the hash-chained audit entry, and the bundle that replays the value.
 
 ---
 
@@ -72,7 +72,7 @@ I uploaded the January, February, and March 2026 finance exports. What was reven
 The useful answer is not just:
 
 ```text
-Q1 revenue was 395061.130000000.
+Q1 revenue was $395,061.13.
 ```
 
 The useful answer is a grounded answer with machine-checkable values:
@@ -81,25 +81,25 @@ The useful answer is a grounded answer with machine-checkable values:
 {
   "scenario_id": "quarterly_revenue_summary",
   "quarter": "2026-Q1",
-  "quarter_total_revenue": "395061.130000000",
+  "quarter_total_revenue": "$395,061.13",
   "months": [
     {
       "period": "2026-01",
-      "total_revenue": "185951.480000000",
+      "total_revenue": "$185,951.48",
       "top_account_code": "4000",
-      "top_account_amount": "145633.670000000"
+      "top_account_amount": "$145,633.67"
     },
     {
       "period": "2026-02",
-      "total_revenue": "84784.440000000",
+      "total_revenue": "$84,784.44",
       "top_account_code": "4000",
-      "top_account_amount": "62724.560000000"
+      "top_account_amount": "$62,724.56"
     },
     {
       "period": "2026-03",
-      "total_revenue": "124325.210000000",
+      "total_revenue": "$124,325.21",
       "top_account_code": "4000",
-      "top_account_amount": "92136.280000000"
+      "top_account_amount": "$92,136.28"
     }
   ]
 }
@@ -112,6 +112,8 @@ That is the difference Provenant is trying to make: the user still asks a natura
 ---
 
 ## Latest End-To-End Scenarios
+
+Note: [Fauxbooks](https://github.com/humzakhan/fauxbooks) is a separate open source project used here to generate deterministic synthetic finance datasets. Provenant uses those generated exports as repeatable source material for end-to-end grounding tests; Fauxbooks is not part of the Provenant kernel.
 
 The current end-to-end suite exercises three natural finance questions over deterministic Fauxbooks `monthly-close` datasets. The suite generates data, verifies the generated datasets, runs Claude Code headlessly with Fauxbooks and Provenant MCP enabled, verifies numeric correctness by recomputing from CSVs, proves Provenant grounding, runs negative controls, and writes one final report.
 
@@ -137,12 +139,14 @@ The latest run passed all scenario checks:
 
 | Scenario | Key verified result |
 |---|---:|
-| Q1 revenue total | `395061.130000000` |
-| March book revenue | `147136.260000000` |
-| March customer cash receipts | `74002.660000000` |
-| Book-to-cash delta | `73133.600000000` |
-| March AR total | `73367.100000000` |
-| Largest AR customer | `cust-005 McKinsey`, `20714.830000000` |
+| Q1 revenue total | `$395,061.13` |
+| March book revenue | `$147,136.26` |
+| March customer cash receipts | `$74,002.66` |
+| Book-to-cash delta | `$73,133.60` |
+| March AR total | `$73,367.10` |
+| Largest AR customer | `cust-005 McKinsey`, `$20,714.83` |
+
+The README renders financial values in user-facing US dollar format. The verification artifacts keep canonical machine values with fixed decimal scale so exact comparisons remain deterministic.
 
 For every scenario, the runner expects:
 
@@ -151,7 +155,7 @@ For every scenario, the runner expects:
 - Claude mints every final numeric value through Provenant MCP.
 - `provenant check-answer` exits `0`.
 - The direct grounded Stop hook does not block.
-- The negative Stop-hook control blocks an ungrounded `999999999.000000000` claim.
+- The negative Stop-hook control blocks an ungrounded `$999,999,999.00` claim.
 - The final JSON matches both generated expected values and direct CSV recomputation.
 
 ---
@@ -387,7 +391,7 @@ The derivation graph demo shows the full pipeline from raw CSV accounting data t
 The demo uses seed 42 and produces a deterministic bundle and trace:
 
 ```text
-operating_income = $350,000 USD
+operating_income = $350,000
   <- gross_margin ($550,000) - total_opex ($200,000)
     <- gross_revenue ($950,000) - total_cogs ($400,000)
       <- (net_revenue $1,000,000 - refunds $50,000)
