@@ -180,10 +180,14 @@ func TestInstallLocalJSONTargetsPreserveSiblingServers(t *testing.T) {
 		name       string
 		target     string
 		configPath string
+		wantType   bool
 	}{
-		{name: "cursor", target: "cursor", configPath: filepath.Join(".cursor", "mcp.json")},
-		{name: "gemini", target: "gemini", configPath: filepath.Join(".gemini", "settings.json")},
-		{name: "kiro", target: "kiro", configPath: filepath.Join(".kiro", "settings", "mcp.json")},
+		{name: "cursor", target: "cursor", configPath: filepath.Join(".cursor", "mcp.json"), wantType: true},
+		{name: "gemini", target: "gemini", configPath: filepath.Join(".gemini", "settings.json"), wantType: true},
+		{name: "kiro", target: "kiro", configPath: filepath.Join(".kiro", "settings", "mcp.json"), wantType: true},
+		{name: "antigravity", target: "antigravity", configPath: filepath.Join(".agents", "mcp_config.json")},
+		{name: "kimi", target: "kimi", configPath: filepath.Join(".kimi-code", "mcp.json")},
+		{name: "pi", target: "pi", configPath: filepath.Join(".pi", "mcp.json")},
 	}
 
 	for _, tc := range tests {
@@ -224,8 +228,12 @@ func TestInstallLocalJSONTargetsPreserveSiblingServers(t *testing.T) {
 			if got, _ := provenant["command"].(string); got != "${PROVENANT_BIN:-provenant}" {
 				t.Fatalf("provenant command = %q, want ${PROVENANT_BIN:-provenant}", got)
 			}
-			if got, _ := provenant["type"].(string); got != "stdio" {
-				t.Fatalf("provenant type = %q, want stdio", got)
+			if tc.wantType {
+				if got, _ := provenant["type"].(string); got != "stdio" {
+					t.Fatalf("provenant type = %q, want stdio", got)
+				}
+			} else if _, ok := provenant["type"]; ok {
+				t.Fatalf("provenant type = %#v, want omitted", provenant["type"])
 			}
 			if args := anyStrings(provenant["args"]); len(args) != 1 || args[0] != "mcp" {
 				t.Fatalf("provenant args = %#v, want [mcp]", provenant["args"])
@@ -279,6 +287,139 @@ func TestInstallMixedTargetsWriteMultipleConfigs(t *testing.T) {
 		if _, ok := servers["provenant"]; !ok {
 			t.Fatalf("provenant mcp server missing from %s: %s", path, data)
 		}
+	}
+}
+
+func TestInstallOpenCodeWritesConfigAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opencode.json")
+	if err := os.WriteFile(path, []byte(`{
+  "custom": true,
+  "mcp": {
+    "legacy": {"enabled": false}
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile(opencode.json) error = %v", err)
+	}
+
+	chdir(t, dir)
+	if code := cli.Main([]string{"install", "--target", "opencode"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("install exit code = %d, want 0", code)
+	}
+
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(opencode.json) error = %v", err)
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(first, &doc); err != nil {
+		t.Fatalf("Unmarshal(opencode.json) error = %v", err)
+	}
+	if custom, _ := doc["custom"].(bool); !custom {
+		t.Fatalf("custom = %#v, want true", doc["custom"])
+	}
+	server := doc["mcp"].(map[string]any)["provenant"].(map[string]any)
+	if got, _ := server["type"].(string); got != "local" {
+		t.Fatalf("provenant type = %q, want local", got)
+	}
+	if got, ok := server["command"].([]any); !ok || len(got) != 2 || got[0] != "${PROVENANT_BIN:-provenant}" || got[1] != "mcp" {
+		t.Fatalf("provenant command = %#v, want [${PROVENANT_BIN:-provenant} mcp]", server["command"])
+	}
+	if enabled, _ := server["enabled"].(bool); !enabled {
+		t.Fatalf("enabled = %#v, want true", server["enabled"])
+	}
+	if legacy := doc["mcp"].(map[string]any)["legacy"].(map[string]any); legacy["enabled"] != false {
+		t.Fatalf("legacy mcp config changed: %#v", legacy)
+	}
+
+	if code := cli.Main([]string{"install", "--target", "opencode"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("second install exit code = %d, want 0", code)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(opencode.json second) error = %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("opencode.json changed on second install\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
+func TestInstallHermesWritesConfigAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".hermes", "config.yaml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(.hermes) error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte("theme: dark\ncustom: keep\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile(config.yaml) error = %v", err)
+	}
+
+	chdir(t, dir)
+	if code := cli.Main([]string{"install", "--target", "hermes"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("install exit code = %d, want 0", code)
+	}
+
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(config.yaml) error = %v", err)
+	}
+	text := string(first)
+	if !strings.Contains(text, "theme: dark") || !strings.Contains(text, "custom: keep") {
+		t.Fatalf("hermes unrelated content lost: %s", text)
+	}
+	if !strings.Contains(text, "mcp_servers:") || !strings.Contains(text, "provenant:") {
+		t.Fatalf("hermes mcp_servers block missing: %s", text)
+	}
+	if !strings.Contains(text, `command: "${PROVENANT_BIN:-provenant}"`) {
+		t.Fatalf("hermes command missing: %s", text)
+	}
+	if !strings.Contains(text, "platform_toolsets:") || !strings.Contains(text, "- mcp-provenant") {
+		t.Fatalf("hermes platform_toolsets block missing: %s", text)
+	}
+
+	if code := cli.Main([]string{"install", "--target", "hermes"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("second install exit code = %d, want 0", code)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(config.yaml second) error = %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("config.yaml changed on second install\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
+func TestInstallTargetAllWritesEverythingUnderCwd(t *testing.T) {
+	dir := t.TempDir()
+	fakeHome := filepath.Join(t.TempDir(), "home")
+	t.Setenv("HOME", fakeHome)
+
+	chdir(t, dir)
+	if code := cli.Main([]string{"install", "--target", "all"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("install exit code = %d, want 0", code)
+	}
+
+	wants := []string{
+		filepath.Join(dir, ".claude", "settings.json"),
+		filepath.Join(dir, ".mcp.json"),
+		filepath.Join(dir, ".cursor", "mcp.json"),
+		filepath.Join(dir, ".codex", "config.toml"),
+		filepath.Join(dir, "opencode.json"),
+		filepath.Join(dir, ".hermes", "config.yaml"),
+		filepath.Join(dir, ".agents", "mcp_config.json"),
+		filepath.Join(dir, ".gemini", "settings.json"),
+		filepath.Join(dir, ".kimi-code", "mcp.json"),
+		filepath.Join(dir, ".kiro", "settings", "mcp.json"),
+		filepath.Join(dir, ".pi", "mcp.json"),
+	}
+	for _, path := range wants {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("Stat(%s) error = %v", path, err)
+		}
+	}
+	if _, err := os.Stat(fakeHome); !os.IsNotExist(err) {
+		t.Fatalf("fake home touched: stat(%s) err=%v", fakeHome, err)
 	}
 }
 

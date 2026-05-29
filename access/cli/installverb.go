@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strings"
 )
 
 const (
@@ -98,15 +99,113 @@ func mergeClaudeSettings(doc map[string]any) {
 }
 
 func mergeProvenantMCP(doc map[string]any) {
+	mergeProvenantMCPWithType(doc, true)
+}
+
+func mergeProvenantMCPWithoutType(doc map[string]any) {
+	mergeProvenantMCPWithType(doc, false)
+}
+
+func mergeProvenantMCPWithType(doc map[string]any, includeType bool) {
 	servers := nestedObject(doc, "mcpServers")
 	server := nestedObject(servers, provenantServerName)
-	setDefaultString(server, "type", "stdio")
+	if includeType {
+		setDefaultString(server, "type", "stdio")
+	}
 	setDefaultString(server, "command", "${PROVENANT_BIN:-provenant}")
 	if _, ok := server["args"]; !ok {
 		server["args"] = []any{"mcp"}
 	}
 	env := nestedObject(server, "env")
 	setDefaultString(env, "PROVENANT_BUNDLE_PATH", "${PROVENANT_BUNDLE_PATH:-}")
+}
+
+func mergeOpenCodeMCP(doc map[string]any) {
+	mcp := nestedObject(doc, "mcp")
+	server := nestedObject(mcp, provenantServerName)
+	setDefaultString(server, "type", "local")
+	if _, ok := server["command"]; !ok {
+		server["command"] = []any{"${PROVENANT_BIN:-provenant}", "mcp"}
+	}
+	if _, ok := server["enabled"]; !ok {
+		server["enabled"] = true
+	}
+}
+
+func mergeHermesConfig(existing string) string {
+	mcpSection := strings.Join([]string{
+		"mcp_servers:",
+		"  provenant:",
+		`    command: "${PROVENANT_BIN:-provenant}"`,
+		"    args:",
+		"      - mcp",
+		"    env:",
+		`      PROVENANT_BUNDLE_PATH: "${PROVENANT_BUNDLE_PATH:-}"`,
+	}, "\n")
+	toolsetSection := strings.Join([]string{
+		"platform_toolsets:",
+		"  cli:",
+		"    - mcp-provenant",
+	}, "\n")
+
+	updated := replaceTopLevelYAMLSection(existing, "mcp_servers:", mcpSection)
+	updated = replaceTopLevelYAMLSection(updated, "platform_toolsets:", toolsetSection)
+	return normalizeTopLevelYAMLSpacing(updated)
+}
+
+func replaceTopLevelYAMLSection(existing, header, replacement string) string {
+	if strings.TrimSpace(existing) == "" {
+		return replacement
+	}
+
+	lines := strings.Split(existing, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) != strings.TrimSpace(header) || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		end := len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			trimmed := strings.TrimSpace(lines[j])
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t") && strings.HasSuffix(trimmed, ":") {
+				end = j
+				break
+			}
+		}
+		merged := append([]string{}, lines[:i]...)
+		merged = append(merged, strings.Split(replacement, "\n")...)
+		merged = append(merged, lines[end:]...)
+		return strings.Join(trimTrailingEmptyLine(merged), "\n")
+	}
+
+	trimmed := strings.TrimRight(existing, "\n")
+	if trimmed == "" {
+		return replacement
+	}
+	return trimmed + "\n\n" + replacement
+}
+
+func normalizeTopLevelYAMLSpacing(existing string) string {
+	lines := strings.Split(strings.TrimRight(existing, "\n"), "\n")
+	if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
+		return "\n"
+	}
+
+	out := make([]string, 0, len(lines)+len(lines)/2)
+	for _, line := range lines {
+		if len(out) > 0 && isTopLevelYAMLHeader(line) && out[len(out)-1] != "" {
+			out = append(out, "")
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n") + "\n"
+}
+
+func isTopLevelYAMLHeader(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed != "" && trimmed == line && strings.HasSuffix(trimmed, ":")
 }
 
 type hookCommand struct {

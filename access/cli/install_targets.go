@@ -32,14 +32,39 @@ var installTargetRegistry = []installTargetSpec{
 		preview: previewCodexInstallTarget,
 	},
 	{
+		name:    "opencode",
+		apply:   applyOpenCodeInstallTarget,
+		preview: previewOpenCodeInstallTarget,
+	},
+	{
+		name:    "hermes",
+		apply:   applyHermesInstallTarget,
+		preview: previewHermesInstallTarget,
+	},
+	{
+		name:    "antigravity",
+		apply:   applyAntigravityInstallTarget,
+		preview: previewAntigravityInstallTarget,
+	},
+	{
 		name:    "gemini",
 		apply:   applyGeminiInstallTarget,
 		preview: previewGeminiInstallTarget,
 	},
 	{
+		name:    "kimi",
+		apply:   applyKimiInstallTarget,
+		preview: previewKimiInstallTarget,
+	},
+	{
 		name:    "kiro",
 		apply:   applyKiroInstallTarget,
 		preview: previewKiroInstallTarget,
+	},
+	{
+		name:    "pi",
+		apply:   applyPiInstallTarget,
+		preview: previewPiInstallTarget,
 	},
 }
 
@@ -124,6 +149,59 @@ func previewKiroInstallTarget(cwd string) (string, error) {
 	return previewJSONInstallTarget(filepath.Join(cwd, ".kiro", "settings", "mcp.json"))
 }
 
+func applyOpenCodeInstallTarget(cwd string) error {
+	return applyJSONInstallTargetWith(filepath.Join(cwd, "opencode.json"), mergeOpenCodeMCP)
+}
+
+func previewOpenCodeInstallTarget(cwd string) (string, error) {
+	return previewJSONInstallTargetWith(filepath.Join(cwd, "opencode.json"), mergeOpenCodeMCP)
+}
+
+func applyHermesInstallTarget(cwd string) error {
+	path := filepath.Join(cwd, ".hermes", "config.yaml")
+	if err := ensureDir(filepath.Dir(path)); err != nil {
+		return err
+	}
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.WriteFile(path, []byte(mergeHermesConfig(string(existing))), 0o644)
+}
+
+func previewHermesInstallTarget(cwd string) (string, error) {
+	path := filepath.Join(cwd, ".hermes", "config.yaml")
+	existing, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return "", err
+	}
+	return mergeHermesConfig(string(existing)), nil
+}
+
+func applyAntigravityInstallTarget(cwd string) error {
+	return applyJSONInstallTargetWith(filepath.Join(cwd, ".agents", "mcp_config.json"), mergeProvenantMCPWithoutType)
+}
+
+func previewAntigravityInstallTarget(cwd string) (string, error) {
+	return previewJSONInstallTargetWith(filepath.Join(cwd, ".agents", "mcp_config.json"), mergeProvenantMCPWithoutType)
+}
+
+func applyKimiInstallTarget(cwd string) error {
+	return applyJSONInstallTargetWith(filepath.Join(cwd, ".kimi-code", "mcp.json"), mergeProvenantMCPWithoutType)
+}
+
+func previewKimiInstallTarget(cwd string) (string, error) {
+	return previewJSONInstallTargetWith(filepath.Join(cwd, ".kimi-code", "mcp.json"), mergeProvenantMCPWithoutType)
+}
+
+func applyPiInstallTarget(cwd string) error {
+	return applyJSONInstallTargetWith(filepath.Join(cwd, ".pi", "mcp.json"), mergeProvenantMCPWithoutType)
+}
+
+func previewPiInstallTarget(cwd string) (string, error) {
+	return previewJSONInstallTargetWith(filepath.Join(cwd, ".pi", "mcp.json"), mergeProvenantMCPWithoutType)
+}
+
 func applyCodexInstallTarget(cwd string) error {
 	path := codexConfigPath(cwd)
 	if err := ensureDir(filepath.Dir(path)); err != nil {
@@ -146,6 +224,10 @@ func previewCodexInstallTarget(cwd string) (string, error) {
 }
 
 func applyJSONInstallTarget(path string) error {
+	return applyJSONInstallTargetWith(path, mergeProvenantMCP)
+}
+
+func applyJSONInstallTargetWith(path string, merge func(map[string]any)) error {
 	if err := ensureDir(filepath.Dir(path)); err != nil {
 		return err
 	}
@@ -153,16 +235,20 @@ func applyJSONInstallTarget(path string) error {
 	if err != nil {
 		return err
 	}
-	mergeProvenantMCP(doc)
+	merge(doc)
 	return writeJSONObject(path, doc)
 }
 
 func previewJSONInstallTarget(path string) (string, error) {
+	return previewJSONInstallTargetWith(path, mergeProvenantMCP)
+}
+
+func previewJSONInstallTargetWith(path string, merge func(map[string]any)) (string, error) {
 	doc, err := readJSONObject(path)
 	if err != nil {
 		return "", err
 	}
-	mergeProvenantMCP(doc)
+	merge(doc)
 	data, err := json.MarshalIndent(doc, "", "  ")
 	if err != nil {
 		return "", err
