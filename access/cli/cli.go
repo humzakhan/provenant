@@ -33,6 +33,8 @@ const (
 	commandCalc           = "calc"
 	commandSubmitAnswer   = "submit-answer"
 	commandCheckAnswer    = "check-answer"
+	commandInstall        = "install"
+	commandMCP            = "mcp"
 	commandVerify         = "verify"
 	commandReplay         = "replay"
 	commandPack           = "pack"
@@ -179,6 +181,10 @@ func (r Runner) Run(ctx context.Context, args []string, stdin io.Reader, stdout 
 		return r.runSubmitAnswer(ctx, args[1:], stdin, stdout)
 	case commandCheckAnswer:
 		return r.runCheckAnswer(ctx, args[1:], stdin, stdout)
+	case commandInstall:
+		return r.runInstall(ctx, args[1:], stdin, stdout)
+	case commandMCP:
+		return r.runMCP(ctx, args[1:], stdin, stdout)
 	case commandVerify:
 		return r.runVerify(ctx, args[1:], stdin, stdout)
 	case commandReplay:
