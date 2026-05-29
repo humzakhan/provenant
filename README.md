@@ -5,30 +5,154 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
 
-Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger or a reconciliation product. It enforces four guarantees across every read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
+Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger, a database, a workflow engine, or a complete accounting product. It is the enforcement layer that sits between source files, agent/tool reads, numeric claims, and the final answer that a finance team is willing to release.
+
+It enforces four guarantees across every supported read path: non-bypassable exit, fail-closed errors, schema-first validation, and deterministic replay. It is designed for SR 11-7 / FINRA 2026 contexts where finance controllers, audit leads, platform engineers, and compliance officers need a verifiable audit chain from raw bytes through to a replayable audit bundle.
 
 > **Status: v0 / pre-1.0 — early and actively evolving. APIs may change without notice between minor releases.**
 
 ---
 
-## What Provenant Does (and Doesn't, Yet)
+## The Problem
 
-**Exists now:**
+Finance teams increasingly ask AI systems practical questions over local exports, close packages, reconciliation workbooks, and customer/vendor schedules:
 
-- Go kernel with non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism
-- CLI `read-mint-bundle` with `extract.json` reader (JSON sources only)
-- CLI `reconcile` fixture with `extract.csv_rows` (CSV) and `extract.spreadsheet` (XLSX) readers
-- Audit bundle verify and replay (Go API: `bundle.Verify`, `bundle.Replay`)
-- Hash-chained tamper-evident audit JSONL
-- Deterministic ZIP report with manifest and sidecar hashes
+- "What was revenue for Q1?"
+- "Why does booked revenue not match cash received?"
+- "Which customers still owe us money, and who is the largest balance?"
 
-**Does not exist yet:**
+Those are not hard questions because the arithmetic is exotic. They are hard because the answer is only useful if the organization can later prove where every number came from. A polished paragraph from Claude Code, Codex, or another agent workspace is not enough for a controller, auditor, or model-risk reviewer. They need to know which files were read, which values were selected, which derived values were minted, whether the final answer contains ungrounded numbers, and whether the evidence can be verified offline after the agent session is gone.
 
-- HTTP surface for `reconcile` (no `POST /v1/reconcile` endpoint)
-- MCP server tool for `reconcile`
-- Reconciliation planner that infers column mappings from arbitrary inputs
-- Fuzzy or AI-assisted matching
-- A complete end-user reconciliation product
+The failure mode Provenant is built to prevent is simple: an answer can be directionally correct, well written, and still impossible to audit. If a released answer says revenue was `395061.130000000`, the reviewer should not have to trust the model's prose. The reviewer should be able to inspect the captured read, the token, the hash-chained audit entry, and the bundle that replays the value.
+
+---
+
+## The Solution
+
+Provenant turns numeric claims into grounded, replayable evidence.
+
+The core loop is:
+
+```text
+source bytes -> SourceReader.Read -> CapturedRead + ReadResult
+                                   |
+                                   v
+                             kernel.MintToken
+                                   |
+                                   v
+                       AuditSink.AppendAuditEntry (hash-chained)
+                                   |
+                                   v
+                       bundle.Snapshot -> bundle bytes + SHA-256
+                                   |
+                                   v
+                      bundle.Verify / bundle.Replay (offline)
+```
+
+In user-facing terms:
+
+1. The agent reads generated or user-provided finance files.
+2. Every released numeric value must be minted through Provenant.
+3. `provenant check-answer` checks the final answer against the bundle.
+4. A Stop hook can block ungrounded numbers before release.
+5. Negative controls prove that made-up numbers are rejected.
+
+This is deliberately stricter than normal logging. The kernel owns the path from captured source read to token to audit entry. A numeric value that does not pass validation does not become a token. A final answer with an ungrounded number fails the check-answer path.
+
+---
+
+## What It Looks Like For A User
+
+Imagine a controller has January, February, and March finance exports in a workspace. They open Claude Code, or another agent environment wired to Provenant's kernel and MCP surface, and ask:
+
+```text
+I uploaded the January, February, and March 2026 finance exports. What was revenue for Q1 2026? Give me the monthly revenue totals, the quarter total, and the biggest revenue account driving each month.
+```
+
+The useful answer is not just:
+
+```text
+Q1 revenue was 395061.130000000.
+```
+
+The useful answer is a grounded answer with machine-checkable values:
+
+```json
+{
+  "scenario_id": "quarterly_revenue_summary",
+  "quarter": "2026-Q1",
+  "quarter_total_revenue": "395061.130000000",
+  "months": [
+    {
+      "period": "2026-01",
+      "total_revenue": "185951.480000000",
+      "top_account_code": "4000",
+      "top_account_amount": "145633.670000000"
+    },
+    {
+      "period": "2026-02",
+      "total_revenue": "84784.440000000",
+      "top_account_code": "4000",
+      "top_account_amount": "62724.560000000"
+    },
+    {
+      "period": "2026-03",
+      "total_revenue": "124325.210000000",
+      "top_account_code": "4000",
+      "top_account_amount": "92136.280000000"
+    }
+  ]
+}
+```
+
+Behind that answer, Provenant keeps the bundle, the captured reads, the minted tokens, the raw Claude stdout/stderr, the MCP request/response logs, the direct grounded Stop-hook evidence, the negative Stop-hook control, and a scenario verification JSON.
+
+That is the difference Provenant is trying to make: the user still asks a natural finance question, but the released numbers are no longer unsupported prose.
+
+---
+
+## Latest End-To-End Scenarios
+
+The current end-to-end suite exercises three natural finance questions over deterministic Fauxbooks `monthly-close` datasets. The suite generates data, verifies the generated datasets, runs Claude Code headlessly with Fauxbooks and Provenant MCP enabled, verifies numeric correctness by recomputing from CSVs, proves Provenant grounding, runs negative controls, and writes one final report.
+
+Run it:
+
+```bash
+hack/e2e/fauxbooks-user-scenarios.sh \
+  --seed 424200 \
+  --out /tmp/provenant-fauxbooks-user-scenarios
+```
+
+The latest checked-in report is [`./.planning/e2e-user-scenarios/report.md`](.planning/e2e-user-scenarios/report.md).
+
+### Scenario Matrix
+
+| Scenario | What the user asks | Verification |
+|---|---|---|
+| Quarterly revenue summary | "What was revenue for Q1 2026?" | Monthly revenue, Q1 total, and top revenue account are recomputed from `profit-loss.csv`. |
+| Cash vs book revenue reconciliation | "Why does cash received not match booked revenue?" | Book revenue, customer cash receipts, delta, and payment cross-check are recomputed from CSVs. |
+| Accounts receivable aging | "Which customers owe us money?" | Bucket totals, AR total, largest customer, and statement closing-balance cross-check are recomputed from CSVs. |
+
+The latest run passed all scenario checks:
+
+| Scenario | Key verified result |
+|---|---:|
+| Q1 revenue total | `395061.130000000` |
+| March book revenue | `147136.260000000` |
+| March customer cash receipts | `74002.660000000` |
+| Book-to-cash delta | `73133.600000000` |
+| March AR total | `73367.100000000` |
+| Largest AR customer | `cust-005 McKinsey`, `20714.830000000` |
+
+For every scenario, the runner expects:
+
+- `fbx verify` exits `0` for every generated dataset.
+- Claude uses Fauxbooks MCP at least once.
+- Claude mints every final numeric value through Provenant MCP.
+- `provenant check-answer` exits `0`.
+- The direct grounded Stop hook does not block.
+- The negative Stop-hook control blocks an ungrounded `999999999.000000000` claim.
+- The final JSON matches both generated expected values and direct CSV recomputation.
 
 ---
 
@@ -55,46 +179,96 @@ go build ./...
 go test ./...
 ```
 
+**Claude Code integration in a project workspace:**
+
+```bash
+provenant install --claude
+```
+
+That writes the local Claude Code project settings needed to enable the Provenant MCP server and install the SessionStart and Stop hooks. The end-to-end runner also configures Fauxbooks MCP because the demo scenarios need generated finance documents as source material.
+
 ---
 
-## Quick Start
+## Solving The Finance File Scenario
 
-Two CLI subcommands exist today:
+A complete local run has three layers:
+
+1. **Data and prompt setup.** The runner builds `provenant` and `fbx`, creates a disposable workspace, generates deterministic monthly-close exports, and writes one prompt per scenario.
+2. **Agent execution.** Claude Code runs headlessly with strict MCP config. It can inspect Fauxbooks bundles/documents and must call Provenant to mint the numeric values that appear in the final JSON.
+3. **Release verification.** The runner saves answers, stdout, stderr, debug logs, MCP logs, hook evidence, and verification JSON. It then runs `provenant check-answer`, direct grounded Stop-hook control, direct negative Stop-hook control, and CSV recomputation.
+
+The resulting workspace looks like this:
+
+```text
+/tmp/provenant-fauxbooks-user-scenarios/
+  bin/
+    fbx
+    provenant
+  workspace/
+    .claude/settings.json
+    .mcp.json
+    datasets/
+    prompts/
+    answers/
+    evidence/
+    verification/
+    report.md
+```
+
+The important artifacts are:
+
+| Artifact | Purpose |
+|---|---|
+| `prompts/<scenario>.md` | The exact user-facing prompt and Provenant minting instructions. |
+| `answers/<scenario>.final.md` | The final machine-readable answer block. |
+| `evidence/<scenario>.claude.out` | Raw Claude Code output. |
+| `evidence/<scenario>.claude-debug.log` | Claude Code debug log with MCP activity. |
+| `evidence/<scenario>.provenant-mcp.*.jsonl` | Provenant MCP request/response transcript. |
+| `evidence/<scenario>.check-answer.out` | `provenant check-answer` verdict. |
+| `evidence/<scenario>.grounded-stop.out` | Direct Stop-hook pass evidence. |
+| `evidence/<scenario>.negative-stop.out` | Direct Stop-hook block evidence for the negative control. |
+| `verification/<scenario>.json` | Scenario truth, grounding, and control status. |
+
+This is the shape a real integration should preserve even if the host is not Claude Code. The host can be different, but the invariant is the same: released numeric claims must be grounded, checkable, and replayable.
+
+---
+
+## What Provenant Does Now
+
+**Exists now:**
+
+- Go kernel with non-bypassable exit, fail-closed errors, schema-first validation, and replay-determinism.
+- CLI `read-mint-bundle` with `extract.json` reader.
+- MCP surface for `provenant.read_mint_bundle`.
+- Claude Code install path with SessionStart and Stop hooks.
+- `provenant check-answer` for detecting ungrounded numeric claims in final answers.
+- CLI `reconcile` fixture with `extract.csv_rows` and `extract.spreadsheet` readers.
+- Audit bundle verify and replay through Go APIs and CLI commands.
+- Hash-chained tamper-evident audit JSONL.
+- Deterministic ZIP report with manifest and sidecar hashes.
+- End-to-end Fauxbooks user-scenario runner over generated finance files.
+
+**Does not exist yet:**
+
+- A complete end-user accounting or reconciliation product.
+- A planner that infers column mappings from arbitrary customer files.
+- Fuzzy or AI-assisted matching.
+- HTTP surface for the reconciliation fixture.
+- MCP server tool for the reconciliation fixture.
+- Host-conformance enforcement for every possible agent environment.
+
+---
+
+## Developer Quick Start
+
+Two useful CLI paths exist today:
 
 - `go run ./cmd/provenant read-mint-bundle` — read one JSON source, mint one token, emit an audit bundle.
 - `go run ./cmd/provenant reconcile` — run the deterministic reconciliation fixture against local CSV/XLSX files.
 
----
+### Example: read-mint-bundle
 
-## Mental Model
-
-```
-source bytes → SourceReader.Read → CapturedRead + ReadResult
-                                    ↓
-                              kernel.MintToken
-                                    ↓
-                        AuditSink.AppendAuditEntry (hash-chained)
-                                    ↓
-                        bundle.Snapshot → bundle bytes + SHA-256
-                                    ↓
-                       bundle.Verify / bundle.Replay (offline)
-```
-
-**Source bytes → captured read + ReadResult.** The source reader receives raw bytes with a declared SHA-256 and selector. It produces a captured read (`CapturedRead`: stable identity, origin URI, reader name and version, output hash) plus a `ReadResult` (normalized value, byte span, matched pointer). No value enters the kernel without a captured read.
-
-**kernel.MintToken.** The kernel receives the captured read and issues a provenance token bound to it. The provenance token carries a canonical decimal value, unit, run ID, and tenant ID. Issuing the token is fail-closed: any validation failure returns an error; no partial token escapes.
-
-**AuditSink.AppendAuditEntry.** Every issued token appends one audit entry to the audit chain. Each entry records its sequence number, kind, deterministic payload, previous hash, and current hash. The audit chain is tamper-evident: any edit to an earlier entry breaks the hash linkage.
-
-**bundle.Snapshot → audit bundle bytes + SHA-256.** The snapshot serializes the run descriptor, all captured reads, all provenance tokens, and the full audit JSONL into a single canonical byte sequence. The SHA-256 of that sequence is the audit bundle fingerprint.
-
-**bundle.Verify / bundle.Replay.** Verify checks the audit chain and confirms the audit bundle fingerprint matches. Replay re-derives every provenance token from the captured reads in the audit bundle and confirms the audit chain is consistent. Both are offline operations that require only the audit bundle bytes.
-
----
-
-## Example 1: read-mint-bundle
-
-The only supported reader for this surface is `extract.json`. Prepare a request file:
+The supported reader for this surface is `extract.json`. Prepare a request file:
 
 ```json
 {
@@ -130,58 +304,11 @@ Run it:
 go run ./cmd/provenant read-mint-bundle --request request.json
 ```
 
-The response is JSON with four top-level keys: `surface`, `read_and_mint`, `bundle_bytes` (base64 canonical bundle), and `bundle_sha256`.
-
-```json
-{
-  "surface": "cli",
-  "read_and_mint": {
-    "read_result": {
-      "output": {
-        "byte_end": 26,
-        "byte_start": 20,
-        "json_pointer": "/invoice/total",
-        "jsonpath": "$.invoice.total",
-        "normalized_value": 123.45,
-        "raw_value": "123.45",
-        "source_hash": "00a31c1d108c9a5045542250c7551107be5355a4ef6f5dad81a1ada6c4b894c9",
-        "value": 123.45
-      },
-      "captured_read": {
-        "id": "read_5038967ffe96e2e546aaf16a042c0e33",
-        "run_id": "run_1",
-        "source_path": "fixture://invoice.json",
-        "origin": "fixture://invoice.json#ptr=/invoice/total&byte=20-26",
-        "reader_name": "extract.json",
-        "reader_version": "v1",
-        "source_sha256": "00a31c1d108c9a5045542250c7551107be5355a4ef6f5dad81a1ada6c4b894c9",
-        "output_sha256": "7da2ca3e36de54031d97fcd9752e405ef2ca71311c0799b2ac75a62730a0e5d9"
-      }
-    },
-    "token": {
-      "id": "tok_12d6f0a3ea0b8ee41c02ee9cdeb145ff",
-      "run_id": "run_1",
-      "tenant_id": "tenant_1",
-      "value_canonical": "123.450000000",
-      "unit": "USD"
-    },
-    "audit_entry": {
-      "seq": 1,
-      "kind": "token_mint"
-    }
-  },
-  "bundle_bytes": "<base64 canonical bundle bytes>",
-  "bundle_sha256": "4c59478548e47bc1b47b874372135aaf6ed61bdedcabc648f8c638b44ad5a5b8"
-}
-```
-
-Decoded, `bundle_bytes` is JSON with format `"phase1.bundle/v1"`, containing `run`, `captured_reads`, `tokens`, and `audit_jsonl`.
+The response includes the captured read, minted token, audit entry, base64 canonical bundle bytes, and bundle SHA-256. Decoded, `bundle_bytes` is JSON with format `"phase1.bundle/v1"`, containing `run`, `captured_reads`, `tokens`, and `audit_jsonl`.
 
 The same request contract is exercised across surfaces in [`access/smoke/smoke_test.go`](access/smoke/smoke_test.go).
 
----
-
-## Example 2: reconcile (reconciliation fixture)
+### Example: reconcile fixture
 
 The reconcile fixture reads two local files (`bank.csv` and `ledger.xlsx`), runs an exact-match comparison on `transaction_id`, and writes a ZIP report. The fixture is deterministic: the same inputs always produce the same output.
 
@@ -195,9 +322,7 @@ go run ../../cmd/provenant reconcile \
 
 Re-run with `--overwrite` if `report.zip` already exists.
 
-### ZIP contents
-
-The output ZIP contains exactly these eight entries:
+The output ZIP contains:
 
 | Entry | Description |
 |---|---|
@@ -210,44 +335,11 @@ The output ZIP contains exactly these eight entries:
 | `bundle.json` | The canonical audit bundle (`phase1.bundle/v1`) containing the full run, captured reads, tokens, and audit chain. |
 | `manifest.json` | Verified bundle hash and SHA-256 for each companion artifact; used to confirm ZIP integrity offline. |
 
-### Sample audit.jsonl entry
-
-The first entry is a deterministic token mint for `bank.csv`:
-
-```json
-{"at":"1970-01-01T00:00:00Z","hash":"1c3a31b2c15870aa4b205af0263bf882123987affaa55e75222f89ee74203163","kind":"token_mint","payload_deterministic":{"captured_read_id":"read_c3182a42dc24532fcb411f81391f198b","reader_name":"extract.csv_rows","reader_version":"v1","source_sha256":"c430a1f9c8f25c2603459acb5f77b0531f5bddcd2429abafd6e06dc1f59911e0","source_value_raw":"100.00","token_id":"tok_b96a501573ad7fd5edb9185ed93604d5","value_canonical":"100.000000000"},"prev_hash":"4533226321c664c56ea0c277312cb192f27ae2cdad5bb632780ba79a7f9de1ba","run_id":"reconciliation_fixture_run_1","seq":1,"tenant_id":"tenant_demo"}
-```
-
-Absolute `source_path` and `origin` fields in the real output depend on the working directory at run time.
-
-### Sample manifest.json shape
-
-```json
-{
-  "schema_version": "provenant.reconcile.report.manifest.v1",
-  "bundle_hash": "43985b8db3be88c9c1b7dbef2fcd5028349eff173302f29f6ad815662983be25",
-  "artifacts": [
-    {
-      "name": "audit.jsonl",
-      "size": 14740,
-      "sha256": "7d4af8e201608b42c09d41ead8dec89feb5875eaa099a7bf926f1f31be51f8c8"
-    },
-    {
-      "name": "bundle.json",
-      "size": 29318,
-      "sha256": "43985b8db3be88c9c1b7dbef2fcd5028349eff173302f29f6ad815662983be25"
-    }
-  ]
-}
-```
-
-The full manifest also covers `captured_reads.json`, `mismatches.csv`, `report.json`, `report.md`, and `tokens.json`.
-
 Note: `extract.csv_rows` and `extract.spreadsheet` are available as kernel readers and are used by the reconcile fixture path. They are not exposed by the `read-mint-bundle` CLI surface today.
 
 ---
 
-## Verifying a Bundle
+## Verifying And Replaying Evidence
 
 `bundle.Verify` and `bundle.Replay` are available through Go APIs and the top-level `verify` and `replay` CLI commands in [`access/cli`](access/cli). CLI tests cover both commands.
 
@@ -264,7 +356,7 @@ entries, _ := bundle.Replay(data)
 _ = entries // captured reads and tokens re-derived from bundle bytes
 ```
 
-Run the full fixture test including verify/replay:
+Run the fixture tests including verify/replay:
 
 ```bash
 go test ./access/cli
@@ -288,17 +380,17 @@ Seven failure and edge-case fixtures live under `examples/reconciliation/failure
 
 ---
 
-## Example 3: Derivation Graph End-to-End Demo
+## Derivation Graph Demo
 
 The derivation graph demo shows the full pipeline from raw CSV accounting data to a traced, verified operating income figure. Three committed CSV files (`revenue.csv`, `cogs.csv`, `opex.csv`) are minted row-by-row into leaf tokens, composed via `filter.sum_where`, `calc.sum`, and `calc.subtract`, and the final `operating_income` token is traced back to every source row with signed contribution amounts.
 
 The demo uses seed 42 and produces a deterministic bundle and trace:
 
-```
+```text
 operating_income = $350,000 USD
-  ← gross_margin ($550,000) − total_opex ($200,000)
-    ← gross_revenue ($950,000) − total_cogs ($400,000)
-      ← (net_revenue $1,000,000 − refunds $50,000)
+  <- gross_margin ($550,000) - total_opex ($200,000)
+    <- gross_revenue ($950,000) - total_cogs ($400,000)
+      <- (net_revenue $1,000,000 - refunds $50,000)
 ```
 
 Run the demo tests:
@@ -311,11 +403,27 @@ See [`examples/derivation-graph/README.md`](examples/derivation-graph/README.md)
 
 ---
 
+## Current Limits
+
+Provenant is intentionally conservative in v0.
+
+- MCP grounding currently uses `extract.json` for the read/mint path.
+- CSV and spreadsheet readers exist in the kernel and reconciliation fixture path, but arbitrary customer CSV reasoning is not a complete product surface.
+- The Fauxbooks user-scenario runner mints final numeric values from generated expected JSON summaries while separately verifying those summaries against generated CSVs.
+- Host-channel text in MCP mode is not official unless it goes through the passing check-answer/Stop-hook path.
+- Host conformance outside the controlled Claude Code integration is an integration responsibility.
+- Provenant provides verifiable evidence and replay, not legal advice, regulatory advice, or external tamper-proofing against root compromise.
+
+---
+
 ## Project Layout
 
-```
+```text
 kernel/                  Pure Go enforcement kernel: readers, minting, audit chain, bundle.
-access/cli/              CLI runner, flag parsing, and end-to-end tests including failure fixtures.
+access/cli/              CLI runner, MCP command, install path, check-answer, and tests.
+access/mcpapi/           MCP tool contract for Provenant read/mint/bundle.
+hack/hooks/              Claude Code SessionStart and Stop hook scripts.
+hack/e2e/                End-to-end runners, including Fauxbooks user scenarios.
 reconcile/               Reconciliation engine, request schema, report generation, and provenance binding.
 cmd/provenant/           Main entry point for the CLI binary.
 examples/reconciliation/ Reconciliation fixture inputs, reconcile.json, and expected outputs.
