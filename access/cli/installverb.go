@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 )
 
 const (
@@ -49,30 +48,28 @@ func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, stdout
 		return fmt.Errorf("install: getwd: %w", err)
 	}
 
-	settingsPath := filepath.Join(cwd, ".claude", "settings.json")
-	if err := ensureDir(filepath.Dir(settingsPath)); err != nil {
-		return fmt.Errorf("install: mkdir settings dir: %w", err)
-	}
-	settings, err := readJSONObject(settingsPath)
-	if err != nil {
-		return fmt.Errorf("install: read settings: %w", err)
-	}
-	mcpPath := filepath.Join(cwd, ".mcp.json")
-	mcpDoc, err := readJSONObject(mcpPath)
-	if err != nil {
-		return fmt.Errorf("install: read .mcp.json: %w", err)
-	}
-	if err := applyInstallTargets(settings, mcpDoc, selectedTargets); err != nil {
-		return fmt.Errorf("install: apply targets: %w", err)
-	}
 	if *printConfig != "" {
-		return writeInstallPreview(stdout, settings, mcpDoc)
+		if len(selectedTargets) != 1 {
+			return fmt.Errorf("install: print-config requires exactly one target")
+		}
+		target, ok := installTargetByName[selectedTargets[0]]
+		if !ok {
+			return fmt.Errorf("install: unknown target %q", selectedTargets[0])
+		}
+		preview, err := target.preview(cwd)
+		if err != nil {
+			return fmt.Errorf("install: preview target: %w", err)
+		}
+		return writeInstallPreview(stdout, preview)
 	}
-	if err := writeJSONObject(settingsPath, settings); err != nil {
-		return fmt.Errorf("install: write settings: %w", err)
-	}
-	if err := writeJSONObject(mcpPath, mcpDoc); err != nil {
-		return fmt.Errorf("install: write .mcp.json: %w", err)
+	for _, targetName := range selectedTargets {
+		target, ok := installTargetByName[targetName]
+		if !ok {
+			return fmt.Errorf("install: unknown target %q", targetName)
+		}
+		if err := target.apply(cwd); err != nil {
+			return fmt.Errorf("install: apply %s: %w", targetName, err)
+		}
 	}
 
 	return nil
@@ -100,7 +97,7 @@ func mergeClaudeSettings(doc map[string]any) {
 	hooks["Stop"] = stopGroups
 }
 
-func mergeClaudeMCP(doc map[string]any) {
+func mergeProvenantMCP(doc map[string]any) {
 	servers := nestedObject(doc, "mcpServers")
 	server := nestedObject(servers, provenantServerName)
 	setDefaultString(server, "type", "stdio")

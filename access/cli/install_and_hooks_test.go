@@ -175,6 +175,161 @@ func TestInstallClaudePreservesExistingProvenantMCPServerFields(t *testing.T) {
 	}
 }
 
+func TestInstallLocalJSONTargetsPreserveSiblingServers(t *testing.T) {
+	tests := []struct {
+		name       string
+		target     string
+		configPath string
+	}{
+		{name: "cursor", target: "cursor", configPath: filepath.Join(".cursor", "mcp.json")},
+		{name: "gemini", target: "gemini", configPath: filepath.Join(".gemini", "settings.json")},
+		{name: "kiro", target: "kiro", configPath: filepath.Join(".kiro", "settings", "mcp.json")},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, tc.configPath)
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatalf("MkdirAll(config dir) error = %v", err)
+			}
+			if err := os.WriteFile(path, []byte(`{
+  "mcpServers": {
+    "existing": {"type":"stdio","command":"existing","args":[],"env":{}}
+  },
+  "custom": true
+}
+`), 0o600); err != nil {
+				t.Fatalf("WriteFile(config) error = %v", err)
+			}
+
+			chdir(t, dir)
+			if code := cli.Main([]string{"install", "--target", tc.target}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+				t.Fatalf("install exit code = %d, want 0", code)
+			}
+
+			data, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("ReadFile(config) error = %v", err)
+			}
+			var doc map[string]any
+			if err := json.Unmarshal(data, &doc); err != nil {
+				t.Fatalf("Unmarshal(config) error = %v", err)
+			}
+			servers := doc["mcpServers"].(map[string]any)
+			if _, ok := servers["existing"]; !ok {
+				t.Fatalf("existing mcp server missing: %s", data)
+			}
+			provenant := servers["provenant"].(map[string]any)
+			if got, _ := provenant["command"].(string); got != "${PROVENANT_BIN:-provenant}" {
+				t.Fatalf("provenant command = %q, want ${PROVENANT_BIN:-provenant}", got)
+			}
+			if got, _ := provenant["type"].(string); got != "stdio" {
+				t.Fatalf("provenant type = %q, want stdio", got)
+			}
+			if args := anyStrings(provenant["args"]); len(args) != 1 || args[0] != "mcp" {
+				t.Fatalf("provenant args = %#v, want [mcp]", provenant["args"])
+			}
+			env := provenant["env"].(map[string]any)
+			if got, _ := env["PROVENANT_BUNDLE_PATH"].(string); got != "${PROVENANT_BUNDLE_PATH:-}" {
+				t.Fatalf("provenant env.PROVENANT_BUNDLE_PATH = %q, want ${PROVENANT_BUNDLE_PATH:-}", got)
+			}
+			if custom, _ := doc["custom"].(bool); !custom {
+				t.Fatalf("custom = %#v, want true", doc["custom"])
+			}
+		})
+	}
+}
+
+func TestInstallMixedTargetsWriteMultipleConfigs(t *testing.T) {
+	dir := t.TempDir()
+	cursorPath := filepath.Join(dir, ".cursor", "mcp.json")
+	geminiPath := filepath.Join(dir, ".gemini", "settings.json")
+	if err := os.MkdirAll(filepath.Dir(cursorPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(cursor dir) error = %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(geminiPath), 0o755); err != nil {
+		t.Fatalf("MkdirAll(gemini dir) error = %v", err)
+	}
+	if err := os.WriteFile(cursorPath, []byte(`{"mcpServers":{"existing":{"type":"stdio","command":"existing","args":[],"env":{}}}}`), 0o600); err != nil {
+		t.Fatalf("WriteFile(cursor) error = %v", err)
+	}
+	if err := os.WriteFile(geminiPath, []byte(`{"mcpServers":{"existing":{"type":"stdio","command":"existing","args":[],"env":{}}}}`), 0o600); err != nil {
+		t.Fatalf("WriteFile(gemini) error = %v", err)
+	}
+
+	chdir(t, dir)
+	if code := cli.Main([]string{"install", "--target", "cursor,gemini"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("install exit code = %d, want 0", code)
+	}
+
+	for _, path := range []string{cursorPath, geminiPath} {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("ReadFile(%s) error = %v", path, err)
+		}
+		var doc map[string]any
+		if err := json.Unmarshal(data, &doc); err != nil {
+			t.Fatalf("Unmarshal(%s) error = %v", path, err)
+		}
+		servers := doc["mcpServers"].(map[string]any)
+		if _, ok := servers["existing"]; !ok {
+			t.Fatalf("existing mcp server missing from %s: %s", path, data)
+		}
+		if _, ok := servers["provenant"]; !ok {
+			t.Fatalf("provenant mcp server missing from %s: %s", path, data)
+		}
+	}
+}
+
+func TestInstallCodexWritesTOMLAndIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".codex", "config.toml")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("MkdirAll(codex dir) error = %v", err)
+	}
+	if err := os.WriteFile(path, []byte(`# keep this
+[other]
+value = "preserved"
+`), 0o600); err != nil {
+		t.Fatalf("WriteFile(config.toml) error = %v", err)
+	}
+
+	chdir(t, dir)
+	if code := cli.Main([]string{"install", "--target", "codex"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("install exit code = %d, want 0", code)
+	}
+
+	first, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(config.toml) error = %v", err)
+	}
+	text := string(first)
+	if !strings.Contains(text, `[mcp_servers.provenant]`) {
+		t.Fatalf("codex config missing provenance section: %s", text)
+	}
+	if !strings.Contains(text, `command = "${PROVENANT_BIN:-provenant}"`) {
+		t.Fatalf("codex command missing: %s", text)
+	}
+	if !strings.Contains(text, `args = ["mcp"]`) {
+		t.Fatalf("codex args missing: %s", text)
+	}
+	if !strings.Contains(text, `[other]`) || !strings.Contains(text, `value = "preserved"`) {
+		t.Fatalf("codex unrelated content lost: %s", text)
+	}
+
+	if code := cli.Main([]string{"install", "--target", "codex"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{}); code != 0 {
+		t.Fatalf("second install exit code = %d, want 0", code)
+	}
+	second, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("ReadFile(config.toml second) error = %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("config.toml changed on second install\nfirst:\n%s\nsecond:\n%s", first, second)
+	}
+}
+
 func TestInstallTargetParsing(t *testing.T) {
 	t.Run("no target fails", func(t *testing.T) {
 		dir := t.TempDir()
