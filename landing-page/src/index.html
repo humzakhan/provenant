@@ -321,6 +321,14 @@ p{color:var(--muted);}
 .comp-regs{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px;font-family:var(--mono);font-size:11px;}
 .comp-reg{padding:5px 12px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);border-radius:5px;color:rgba(255,255,255,.55);}
 .comp-note{font-size:14px;color:rgba(255,255,255,.45);margin-top:20px;line-height:1.65;}
+/* Compliance section on sage: override the white-on-dark text to dark tones */
+#s-compliance .eyebrow-dim{color:var(--green);}
+#s-compliance h2{color:var(--text);}
+#s-compliance .p-dim{color:var(--muted);}
+#s-compliance .comp-note{color:var(--faint);}
+#s-compliance .comp-claim{color:var(--text);}
+#s-compliance .comp-claim .tick{background:var(--green-tint);color:var(--green);}
+#s-compliance .comp-reg{background:rgba(0,0,0,.04);border-color:var(--border-med);color:var(--muted);}
 
 /* ── personas ── */
 .prow-list{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:48px;}
@@ -731,127 +739,15 @@ p{color:var(--muted);}
   </div>
 </section>
 
-<!-- ═══ WHY NOT — GRAY ═══ -->
-<section class="section section-gray">
-  <div class="container reveal">
-    <div class="eyebrow">Comparison</div>
-    <h2>Why not just use&hellip;</h2>
-    <p style="max-width:520px">Four alternatives teams reach for first, and the gap each one leaves.</p>
-    <div class="acc-list" id="acc-list">
-
-      <div class="acc-item">
-        <button class="acc-trigger" aria-expanded="false">
-          <div class="acc-left">
-            <span class="acc-num">01</span>
-            <span class="acc-icon"><img src="https://cdn.simpleicons.org/langchain/525252" width="16" height="16" alt="LangChain" onerror="this.parentNode.innerHTML='<svg viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5'><path d='M13 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V9z'/><polyline points='13 2 13 9 20 9'/></svg>'"/></span>
-            <span class="acc-name">LangChain callbacks</span>
-          </div>
-          <span class="acc-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-        </button>
-        <div class="acc-body" role="region">
-          <div class="acc-body-inner">
-            <div class="acc-content">
-              <div class="acc-block acc-block-without">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10007;</span>Without Provenant</div>
-                <div class="acc-block-text">Runs <strong>after</strong> the fact. An agent can emit ungrounded text through any other path; callbacks never see it.</div>
-              </div>
-              <div class="acc-block acc-block-with">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text">Enforcement is <strong>architectural</strong>. The kernel gate sits before any output channel; no code path bypasses it.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="acc-item">
-        <button class="acc-trigger" aria-expanded="false">
-          <div class="acc-left">
-            <span class="acc-num">02</span>
-            <span class="acc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>
-            <span class="acc-name">Guardrail layer</span>
-          </div>
-          <span class="acc-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-        </button>
-        <div class="acc-body" role="region">
-          <div class="acc-body-inner">
-            <div class="acc-content">
-              <div class="acc-block acc-block-without">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10007;</span>Without Provenant</div>
-                <div class="acc-block-text">Classifies <strong>prose</strong>, not computation. A correct-looking number that was never derived from a tool call passes every guardrail check.</div>
-              </div>
-              <div class="acc-block acc-block-with">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text">Tokens are <strong>deterministic gates</strong>. A value either traces to a tool output, or it does not release. No exceptions.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="acc-item">
-        <button class="acc-trigger" aria-expanded="false">
-          <div class="acc-left">
-            <span class="acc-num">03</span>
-            <span class="acc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>
-            <span class="acc-name">Document citation</span>
-          </div>
-          <span class="acc-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-        </button>
-        <div class="acc-body" role="region">
-          <div class="acc-body-inner">
-            <div class="acc-content">
-              <div class="acc-block acc-block-without">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10007;</span>Without Provenant</div>
-                <div class="acc-block-text">Proves <strong>where</strong> a number appeared. &ldquo;Revenue grew 18% (10-K p.12)&rdquo; cites the right doc while stating a fabricated figure.</div>
-              </div>
-              <div class="acc-block acc-block-with">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text">Token grounding proves <strong>how</strong> a number was computed, and blocks it when no computation supports it.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="acc-item">
-        <button class="acc-trigger" aria-expanded="false">
-          <div class="acc-left">
-            <span class="acc-num">04</span>
-            <span class="acc-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></span>
-            <span class="acc-name">Build it in-house</span>
-          </div>
-          <span class="acc-chevron" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-        </button>
-        <div class="acc-body" role="region">
-          <div class="acc-body-inner">
-            <div class="acc-content">
-              <div class="acc-block acc-block-without">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10007;</span>Without Provenant</div>
-                <div class="acc-block-text">Re-implement tokens, hash-chained logs, captured-read replay, tool registries, and DFAH metrics. <strong>Every time.</strong></div>
-              </div>
-              <div class="acc-block acc-block-with">
-                <div class="acc-block-label"><span class="acc-block-label-icon">&#10003;</span>With Provenant</div>
-                <div class="acc-block-text"><strong>Apache 2.0</strong>: adopt the shared substrate. Ship the product that differentiates your business instead.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-    </div>
-  </div>
-</section>
-
-<!-- ═══ COMPLIANCE — DARK GREEN ═══ -->
-<section class="section section-darkgreen" id="s-compliance">
+<!-- ═══ COMPLIANCE — SAGE ═══ -->
+<section class="section section-sage" id="s-compliance">
   <div class="container reveal">
     <div class="comp-grid">
       <div>
         <div class="eyebrow eyebrow-dim">Compliance &amp; auditability</div>
-        <h2 style="color:#fff;max-width:none;font-size:36px">Built to be defensible.<br/>Designed to be shared.</h2>
+        <h2 style="max-width:none;font-size:36px">Built to be defensible.<br/>Designed to be shared.</h2>
         <p class="p-dim" style="margin-top:16px;max-width:420px;font-size:15px">Every run produces a self-contained audit pack. Any reviewer can verify the computation chain, replay the run, and confirm that no number was produced outside the kernel, without access to the original system.</p>
-        <span class="cs-wrap" style="margin-top:24px"><a class="btn btn-outline-green" href="#">Read the compliance brief &rarr;</a><span class="cs-tip">Coming soon</span></span>
+        <span class="cs-wrap" style="margin-top:24px"><a class="btn btn-ghost" href="#">Read the compliance brief &rarr;</a><span class="cs-tip">Coming soon</span></span>
         <p class="comp-note">Maps to FINRA 2026, SR 11-7, EU AI Act Art.&nbsp;14, and SOX &sect;404. Structured for model risk teams, legal, and model inventory filings.</p>
       </div>
       <div>
@@ -866,68 +762,6 @@ p{color:var(--muted);}
           <span class="comp-reg">FINRA 2026</span><span class="comp-reg">SR 11-7</span><span class="comp-reg">EU AI Act Art. 14</span><span class="comp-reg">SOX &sect;404</span><span class="comp-reg">MRM guidance</span>
         </div>
       </div>
-    </div>
-  </div>
-</section>
-
-<!-- ═══ PERSONAS ═══ -->
-<section class="section">
-  <div class="container reveal">
-    <div class="eyebrow">Who adopts Provenant</div>
-    <h2>Who uses<br/>Provenant.</h2>
-    <div class="prow-list" id="personas-grid">
-
-      <div class="prow">
-        <div class="prow-body">
-          <div class="prow-who">Platform engineers</div>
-          <div class="prow-statement">Ship product,<br/>not substrate.</div>
-          <div class="prow-desc">Stop rebuilding what Provenant already ships. Token minting, audit logs, and replay, all handled.</div>
-        </div>
-        <div class="prow-visual">
-          <div><span class="pv-mid">k, _ := kernel.New(Config{</span></div>
-          <div><span class="pv-mid">&nbsp;&nbsp;Store:&nbsp;&nbsp;</span><span class="pv-bright">myPostgres,</span></div>
-          <div><span class="pv-mid">&nbsp;&nbsp;Skills:</span><span class="pv-bright"> skills.Load(</span><span class="pv-key">"recon"</span><span class="pv-bright">),</span></div>
-          <div><span class="pv-mid">})</span></div>
-          <div><span class="pv-mid">run, _ := k.Run(ctx, input)</span></div>
-          <div>&nbsp;</div>
-          <div><span class="pv-ok">&#10003; audit logs&nbsp;&nbsp;&#10003; tokens&nbsp;&nbsp;&#10003; replay</span></div>
-        </div>
-      </div>
-
-      <div class="prow">
-        <div class="prow-body">
-          <div class="prow-who">MCP host authors</div>
-          <div class="prow-statement">Finance-grade<br/>in one command.</div>
-          <div class="prow-desc">One command and your host has full audit enforcement. Zero code changes. Your users get compliance coverage.</div>
-        </div>
-        <div class="prow-visual">
-          <div><span class="pv-dim">$ </span><span class="pv-bright">docker run -p 8080:8080 \</span></div>
-          <div><span class="pv-bright">&nbsp;&nbsp;provenant/provenant:v0</span></div>
-          <div>&nbsp;</div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> 14 tools registered</span></div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> audit chain active</span></div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> zero code changes</span></div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> bypass impossible</span></div>
-        </div>
-      </div>
-
-      <div class="prow">
-        <div class="prow-body">
-          <div class="prow-who">Controllers &amp; audit leads</div>
-          <div class="prow-statement">The chain is<br/>always there.</div>
-          <div class="prow-desc">Every run produces a self-contained audit pack. When an examiner asks, you answer with the full derivation instantly.</div>
-        </div>
-        <div class="prow-visual">
-          <div><span class="pv-dim">run: </span><span class="pv-bright">01HW9KQXJR8M</span></div>
-          <div><span class="pv-dim">&nbsp;&nbsp;tokens: </span><span class="pv-ok">14</span><span class="pv-dim"> &middot; ungrounded: </span><span class="pv-ok">0</span></div>
-          <div><span class="pv-dim">&nbsp;&nbsp;chain: </span><span class="pv-mid">9b2e74d1c8a3f4&hellip;</span></div>
-          <div>&nbsp;</div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> verifiable without original system</span></div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> bit-identical replay on demand</span></div>
-          <div><span class="pv-ok">&#10003;</span><span class="pv-mid"> tamper-evident chain</span></div>
-        </div>
-      </div>
-
     </div>
   </div>
 </section>
