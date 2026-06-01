@@ -9,7 +9,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
 <br />
-<sub>Supported MCP hosts</sub>
+<p><strong>Supported MCP hosts</strong></p>
 <br />
 ![Claude_Code](https://img.shields.io/badge/Claude_Code-supported-5B5BD6?style=flat-square)
 ![Cursor](https://img.shields.io/badge/Cursor-supported-5B5BD6?style=flat-square)
@@ -22,7 +22,7 @@
 ![Kiro](https://img.shields.io/badge/Kiro-supported-5B5BD6?style=flat-square)
 ![Kimi_CLI](https://img.shields.io/badge/Kimi_CLI-supported-5B5BD6?style=flat-square)
 ![Pi.dev_agent](https://img.shields.io/badge/Pi.dev_agent-supported-5B5BD6?style=flat-square)
-
+<br />
 </div>
 
 Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger, a database, a workflow engine, or a complete accounting product. It is the enforcement layer that sits between source files, agent/tool reads, numeric claims, and the final answer that a finance team is willing to release.
