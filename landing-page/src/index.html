@@ -33,8 +33,8 @@ button{font-family:inherit;cursor:pointer;}
 /* ── nav ── */
 .nav{display:flex;align-items:center;justify-content:space-between;padding:18px 40px;border-bottom:1px solid var(--green-soft);position:sticky;top:0;z-index:60;background:var(--green-tint);box-shadow:0 1px 3px rgba(0,0,0,.04);transition:background .25s ease,box-shadow .25s ease,border-color .25s ease,backdrop-filter .25s ease;}
 .nav.scrolled{background:rgba(255,255,255,.72);backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);border-bottom-color:var(--border);box-shadow:0 2px 12px rgba(0,0,0,.07);}
-.nav-logo{font-weight:700;font-size:15px;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
-.nav-logo-mark{width:22px;height:22px;display:block;}
+.nav-logo{font-weight:700;font-size:17px;letter-spacing:-.02em;display:flex;align-items:center;gap:9px;}
+.nav-logo-mark{width:32px;height:32px;display:block;flex-shrink:0;}
 .nav-links{display:flex;gap:28px;font-size:14px;font-weight:600;color:var(--muted);}
 .nav-links a{position:relative;display:inline-block;transition:color .2s ease;}
 .nav-links a::after{content:'';position:absolute;left:0;bottom:-4px;width:100%;height:2px;background:var(--green);border-radius:1px;transform:scaleX(0);transform-origin:left;transition:transform .25s cubic-bezier(.4,0,.2,1);}
@@ -534,7 +534,7 @@ p{color:var(--muted);}
 <body>
 
 <nav class="nav" id="nav">
-  <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="22" height="22" alt=""/>Provenant</div>
+  <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
   <div class="nav-links"><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a><a href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Thesis</a><a href="#s-mech">How it works</a></div>
   <div class="nav-right">
     <a class="footer-star nav-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
@@ -545,7 +545,7 @@ p{color:var(--muted);}
 <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
 <aside class="mobile-nav" id="mobile-nav" aria-hidden="true">
   <div class="mobile-nav-head">
-    <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="22" height="22" alt=""/>Provenant</div>
+    <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
     <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu"><i data-lucide="x"></i></button>
   </div>
   <nav class="mobile-nav-links">
@@ -881,7 +881,7 @@ p{color:var(--muted);}
   <div class="container">
     <div class="footer-cols">
       <div>
-        <div class="nav-logo" style="margin-bottom:16px"><img class="nav-logo-mark" src="logo.svg" width="22" height="22" alt=""/>Provenant</div>
+        <div class="nav-logo" style="margin-bottom:16px"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
         <p class="footer-desc">Open-source enforcement substrate for LLM agents in financial services.</p>
         <a class="footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="16" height="16" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
       </div>
