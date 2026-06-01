@@ -8,20 +8,20 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
-<br>
-![Claude Code](https://img.shields.io/badge/Claude%20Code-Supported-111111.svg)
-![Cursor](https://img.shields.io/badge/Cursor-Supported-111111.svg)
-![Codex CLI](https://img.shields.io/badge/Codex%20CLI-Supported-111111.svg)
-![opencode](https://img.shields.io/badge/opencode-Supported-111111.svg)
-![Hermes Agent](https://img.shields.io/badge/Hermes%20Agent-Supported-111111.svg)
-<br>
-<span>Works with your agent stack</span>
-<br>
-![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-Supported-111111.svg)
-![Antigravity IDE](https://img.shields.io/badge/Antigravity%20IDE-Supported-111111.svg)
-![Kiro](https://img.shields.io/badge/Kiro-Supported-111111.svg)
-![Kimi CLI](https://img.shields.io/badge/Kimi%20CLI-Supported-111111.svg)
-![Pi.dev agent](https://img.shields.io/badge/Pi.dev%20agent-Supported-111111.svg)
+<br />
+<sub>Supported MCP hosts</sub>
+<br />
+![Claude_Code](https://img.shields.io/badge/Claude_Code-supported-5B5BD6?style=flat-square)
+![Cursor](https://img.shields.io/badge/Cursor-supported-5B5BD6?style=flat-square)
+![Codex_CLI](https://img.shields.io/badge/Codex_CLI-supported-5B5BD6?style=flat-square)
+![opencode](https://img.shields.io/badge/opencode-supported-5B5BD6?style=flat-square)
+![Hermes_Agent](https://img.shields.io/badge/Hermes_Agent-supported-5B5BD6?style=flat-square)
+<br />
+![Gemini_CLI](https://img.shields.io/badge/Gemini_CLI-supported-5B5BD6?style=flat-square)
+![Antigravity_IDE](https://img.shields.io/badge/Antigravity_IDE-supported-5B5BD6?style=flat-square)
+![Kiro](https://img.shields.io/badge/Kiro-supported-5B5BD6?style=flat-square)
+![Kimi_CLI](https://img.shields.io/badge/Kimi_CLI-supported-5B5BD6?style=flat-square)
+![Pi.dev_agent](https://img.shields.io/badge/Pi.dev_agent-supported-5B5BD6?style=flat-square)
 
 </div>
 
