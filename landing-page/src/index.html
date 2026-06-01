@@ -244,7 +244,7 @@ p{color:var(--muted);}
 .recon-stage.playing .recon-actions{transition-delay:4.8s;opacity:1;}
 
 /* ── mechanism — SAGE ── */
-.mech-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:48px;}
+.mech-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:28px;margin-top:48px;}
 .mech-card{display:flex;flex-direction:column;background:#fff;border-radius:12px;overflow:hidden;opacity:0;transform:translateY(22px);transition:opacity .6s cubic-bezier(.16,1,.3,1),transform .6s cubic-bezier(.16,1,.3,1);box-shadow:0 1px 3px rgba(0,0,0,.05),0 6px 20px rgba(0,0,0,.05);}
 .mech-card.in{opacity:1;transform:translateY(0);}
 .mech-card:nth-child(2){transition-delay:.13s;}
@@ -256,7 +256,6 @@ p{color:var(--muted);}
 .mt-dim{color:#485060;}
 .mt-key{color:#A090D0;}
 .mech-content{display:flex;flex-direction:column;flex:1;padding:22px 24px 26px;}
-.mech-num{font-family:var(--mono);font-size:11px;font-weight:600;color:#7BAA90;letter-spacing:.07em;margin-bottom:10px;}
 .mech-title{font-weight:700;font-size:17px;letter-spacing:-.025em;color:#0F2B20;margin-bottom:10px;line-height:1.2;}
 .mech-desc{font-size:14px;line-height:1.65;color:#3A6252;}
 .mech-desc em{font-style:italic;color:#0F2B20;}
@@ -649,7 +648,6 @@ p{color:var(--muted);}
           <div><span class="mt-ok">&#10003; grounded &middot; replayable</span></div>
         </div>
         <div class="mech-content">
-          <div class="mech-num">01</div>
           <div class="mech-title">Every number is tagged</div>
           <div class="mech-desc">Each number is tied to the exact data and step that produced it.</div>
           <div class="mech-tag">Catches made-up numbers</div>
@@ -665,7 +663,6 @@ p{color:var(--muted);}
           <div><span class="mt-ok">&#10003; released &middot; chain sealed</span></div>
         </div>
         <div class="mech-content">
-          <div class="mech-num">02</div>
           <div class="mech-title">One way out</div>
           <div class="mech-desc">Numbers can only leave through one verified exit. Every other path is blocked.</div>
           <div class="mech-tag">Can&rsquo;t be bypassed</div>
@@ -682,7 +679,6 @@ p{color:var(--muted);}
           <div><span class="mt-ok">&#10003; released</span></div>
         </div>
         <div class="mech-content">
-          <div class="mech-num">03</div>
           <div class="mech-title">No proof, no output</div>
           <div class="mech-desc">If a number can&rsquo;t be proven, the run stops and logs it. Nothing slips through.</div>
           <div class="mech-tag">Never fails silently</div>
