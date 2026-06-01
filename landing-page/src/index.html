@@ -371,14 +371,15 @@ p{color:var(--muted);}
 .footer li a:hover{color:var(--green);font-weight:600;}
 .footer li a:hover::after{transform:scaleX(1);}
 .footer-desc{font-family:var(--sans);font-size:15px;color:var(--muted);max-width:280px;line-height:1.6;}
-.footer-star{display:inline-flex;align-items:center;gap:7px;margin-top:20px;font-family:var(--sans);font-size:13px;font-weight:600;color:var(--text);padding:8px 14px;border:1px solid var(--border-strong);border-radius:6px;background:var(--surface);transition:background .2s ease,border-color .2s ease,box-shadow .2s ease,transform .2s ease;}
-.footer-star:hover{background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.08);transform:translateY(-1px);}
+.footer-star{display:inline-flex;align-items:center;gap:8px;margin-top:20px;font-family:var(--sans);font-size:13px;font-weight:600;color:#fff;padding:9px 16px;border:1px solid #191919;border-radius:6px;background:#24292F;box-shadow:0 1px 2px rgba(0,0,0,.12);transition:background .18s ease,box-shadow .18s ease,transform .18s ease;}
+.footer-star:hover{background:#000;box-shadow:0 3px 10px rgba(0,0,0,.18);transform:translateY(-1px);}
 .footer-star-gh{width:16px;height:16px;}
-.footer-star-arrow{color:var(--faint);transition:transform .2s ease;}
+.footer-star-arrow{color:#fff;transition:transform .2s ease;}
 .footer-star:hover .footer-star-arrow{transform:translateX(3px);}
-.footer-star-icon{display:inline-flex;}
-.footer-star-icon svg{width:13px;height:13px;color:#E3B341;animation:starPulse 1.8s ease-in-out infinite;}
-@keyframes starPulse{0%,100%{fill:transparent;}50%{fill:#E3B341;}}
+@media (prefers-color-scheme:dark){
+  .footer-star{background:var(--green);border-color:var(--green-hover);}
+  .footer-star:hover{background:var(--green-hover);}
+}
 .footer-bot{margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--faint);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
 .footer-copy{font-family:var(--sans);font-weight:400;font-size:15px;color:var(--muted);}
 .footer-built{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13px;color:var(--muted);}
@@ -806,7 +807,7 @@ p{color:var(--muted);}
       <div>
         <div class="nav-logo" style="margin-bottom:16px"><span class="nav-logo-mark"></span>Provenant</div>
         <p class="footer-desc">Open-source enforcement substrate for LLM agents in financial services.</p>
-        <a class="footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/191919" width="16" height="16" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span> <i data-lucide="star" class="footer-star-icon"></i></a>
+        <a class="footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="16" height="16" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
       </div>
       <div><h4>Product</h4><ul>
         <li><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a></li>
