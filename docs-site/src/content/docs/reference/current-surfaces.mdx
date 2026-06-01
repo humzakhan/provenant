@@ -11,6 +11,8 @@ import SourceReferences from '../../../components/SourceReferences.astro';
 
 Compact, scannable inventory of what Provenant ships today. See the [Status Matrix](/reference/status-matrix/) for label definitions and maintenance rules.
 
+Mode B hosts can access tools, but official answers are only attested through `provenant.submit_answer`.
+
 ---
 
 ## CLI Commands
@@ -104,7 +106,7 @@ Document-AI readers (`bank_statement`, `invoice`, `receipt`, `kv_pairs`) are spe
 
 | Surface | Status |
 |---|---|
-| Mode A `submit_answer` enforcement | <StatusBadge status="Architecture contract" /> |
+| Mode A `provenant.submit_answer` enforcement | <StatusBadge status="Architecture contract" /> |
 | Mode B / MCP host-channel text | <StatusBadge status="Architecture contract" /> |
 | Runtime storage bindings (SQLite/Postgres/S3) | <StatusBadge status="Architecture contract" /> |
 

@@ -3,21 +3,27 @@ package mcpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/humzakhan/provenant/access/corepath"
 	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/bundle"
 	"github.com/humzakhan/provenant/kernel/public/extractjson"
+	"github.com/humzakhan/provenant/kernel/public/grounding"
 	"github.com/humzakhan/provenant/kernel/public/memio"
 )
 
 const (
 	ToolReadMintBundle    = "provenant.read_mint_bundle"
+	ToolSubmitAnswer      = "provenant.submit_answer"
 	PromptReadMintBundle  = "provenant.read_mint_bundle"
 	ResourceRequestSchema = "provenant://access/mcp/read-mint-bundle/request-schema"
 
@@ -38,11 +44,14 @@ var (
 	ErrUnsupportedReader   = errors.New("mcpapi: unsupported reader")
 	ErrRequestTooLarge     = errors.New("mcpapi: request exceeds size limit")
 	ErrSourceTooLarge      = errors.New("mcpapi: source bytes exceed size limit")
+	ErrUngroundedClaims    = errors.New("mcpapi: ungrounded numeric claims")
+	ErrBundleRequired      = errors.New("mcpapi: bundle_bytes or bundle_path is required")
 )
 
 type Surface struct {
 	Now          func() time.Time
 	Dependencies DependencyBuilder
+	BundlePath   string
 }
 
 type DependencyBuilder func(ReadMintBundleRequest, time.Time) (corepath.Dependencies, error)
@@ -75,8 +84,8 @@ type ContentBlock struct {
 }
 
 type ToolResult struct {
-	Content           []ContentBlock                `json:"content"`
-	StructuredContent corepath.ReadMintBundleResult `json:"structured_content"`
+	Content           []ContentBlock `json:"content"`
+	StructuredContent any            `json:"structured_content"`
 }
 
 type PromptResult struct {
@@ -97,12 +106,31 @@ type ReadMintBundleRequest struct {
 	Read   kernel.ReadAndMintRequest `json:"read"`
 }
 
+type SubmitAnswerRequest struct {
+	BundleBytes []byte `json:"bundle_bytes,omitempty"`
+	BundlePath  string `json:"bundle_path,omitempty"`
+	Answer      string `json:"answer"`
+}
+
+type SubmitAnswerResult struct {
+	OK          bool              `json:"ok"`
+	Attested    bool              `json:"attested"`
+	Attestation string            `json:"attestation,omitempty"`
+	BundleSHA256 string           `json:"bundle_sha256"`
+	Verdict     grounding.Verdict `json:"verdict"`
+}
+
 func Tools() []Tool {
 	return []Tool{
 		{
 			Name:        ToolReadMintBundle,
 			Description: "Run the verified read, mint, and bundle core path for extract.json input.",
 			InputSchema: json.RawMessage(readMintBundleInputSchema),
+		},
+		{
+			Name:        ToolSubmitAnswer,
+			Description: "Gate a final answer against a Provenant bundle. Returns an attestation only when every numeric claim is grounded by a minted token.",
+			InputSchema: json.RawMessage(submitAnswerInputSchema),
 		},
 	}
 }
@@ -134,10 +162,17 @@ func (Surface) Initialize() InitializeResult {
 }
 
 func (s Surface) CallTool(ctx context.Context, name string, arguments json.RawMessage) (ToolResult, error) {
-	if name != ToolReadMintBundle {
+	switch name {
+	case ToolReadMintBundle:
+		return s.callReadMintBundle(ctx, arguments)
+	case ToolSubmitAnswer:
+		return s.callSubmitAnswer(arguments)
+	default:
 		return ToolResult{}, fmt.Errorf("%w: %s", ErrUnsupportedTool, name)
 	}
+}
 
+func (s Surface) callReadMintBundle(ctx context.Context, arguments json.RawMessage) (ToolResult, error) {
 	request, err := decodeRequest(arguments)
 	if err != nil {
 		return ToolResult{}, err
@@ -166,6 +201,60 @@ func (s Surface) CallTool(ctx context.Context, name string, arguments json.RawMe
 					result.BundleSHA256,
 					result.ReadAndMint.Token.ID,
 				),
+			},
+		},
+		StructuredContent: result,
+	}, nil
+}
+
+func (s Surface) callSubmitAnswer(arguments json.RawMessage) (ToolResult, error) {
+	request, err := decodeSubmitAnswerRequest(arguments)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	bundleBytes := request.BundleBytes
+	if len(bundleBytes) == 0 {
+		bundlePath := request.BundlePath
+		if bundlePath == "" {
+			bundlePath = s.BundlePath
+		}
+		if bundlePath == "" {
+			return ToolResult{}, ErrBundleRequired
+		}
+		bundleBytes, err = os.ReadFile(bundlePath)
+		if err != nil {
+			return ToolResult{}, fmt.Errorf("mcpapi: read bundle: %w", err)
+		}
+	}
+
+	state, err := bundle.Replay(bundleBytes)
+	if err != nil {
+		return ToolResult{}, err
+	}
+	verdict, err := grounding.CheckAnswer(request.Answer, state.Tokens)
+	if err != nil {
+		return ToolResult{}, err
+	}
+
+	sum := sha256.Sum256(bundleBytes)
+	bundleSHA := hex.EncodeToString(sum[:])
+	result := SubmitAnswerResult{
+		OK:           verdict.OK,
+		Attested:     verdict.OK,
+		BundleSHA256: bundleSHA,
+		Verdict:      verdict,
+	}
+	if verdict.OK {
+		result.Attestation = fmt.Sprintf("[PROVENANT-ATTESTED v1 bundle_sha256=%s grounded_claims=%d]", bundleSHA, len(verdict.GroundedClaims))
+	}
+	if !verdict.OK {
+		return ToolResult{}, ErrUngroundedClaims
+	}
+	return ToolResult{
+		Content: []ContentBlock{
+			{
+				Type: "text",
+				Text: result.Attestation,
 			},
 		},
 		StructuredContent: result,
@@ -217,6 +306,34 @@ func decodeRequest(input json.RawMessage) (ReadMintBundleRequest, error) {
 	}
 	if err := validateRequest(request); err != nil {
 		return ReadMintBundleRequest{}, err
+	}
+	return request, nil
+}
+
+func decodeSubmitAnswerRequest(input json.RawMessage) (SubmitAnswerRequest, error) {
+	if len(input) == 0 {
+		return SubmitAnswerRequest{}, fmt.Errorf("%w: arguments are required", ErrInvalidArguments)
+	}
+	if len(input) > maxRequestBytes {
+		return SubmitAnswerRequest{}, ErrRequestTooLarge
+	}
+	input, err := stripMCPArgumentMeta(input)
+	if err != nil {
+		return SubmitAnswerRequest{}, err
+	}
+
+	dec := json.NewDecoder(bytes.NewReader(input))
+	dec.DisallowUnknownFields()
+
+	var request SubmitAnswerRequest
+	if err := dec.Decode(&request); err != nil {
+		return SubmitAnswerRequest{}, fmt.Errorf("%w: %v", ErrInvalidArguments, err)
+	}
+	if err := rejectTrailingJSON(dec); err != nil {
+		return SubmitAnswerRequest{}, err
+	}
+	if strings.TrimSpace(request.Answer) == "" {
+		return SubmitAnswerRequest{}, fmt.Errorf("%w: answer is required", ErrInvalidArguments)
 	}
 	return request, nil
 }
@@ -377,6 +494,24 @@ const readMintBundleInputSchema = `{
     },
     "read": {
       "type": "object"
+    }
+  }
+}`
+
+const submitAnswerInputSchema = `{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer"],
+  "properties": {
+    "bundle_bytes": {
+      "type": "string",
+      "contentEncoding": "base64"
+    },
+    "bundle_path": {
+      "type": "string"
+    },
+    "answer": {
+      "type": "string"
     }
   }
 }`

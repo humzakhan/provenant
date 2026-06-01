@@ -101,7 +101,11 @@ func TestPhaseThreeCrossSurfaceSmokeMatrix(t *testing.T) {
 				if err != nil {
 					return corepath.ReadMintBundleResult{}, err
 				}
-				return result.StructuredContent, nil
+				typed, ok := result.StructuredContent.(corepath.ReadMintBundleResult)
+				if !ok {
+					return corepath.ReadMintBundleResult{}, fmt.Errorf("unexpected structured content type %T", result.StructuredContent)
+				}
+				return typed, nil
 			},
 		},
 	}
@@ -250,7 +254,11 @@ func BenchmarkPhaseThreeReadMintBundleCrossSurface(b *testing.B) {
 				if err != nil {
 					return corepath.ReadMintBundleResult{}, err
 				}
-				return result.StructuredContent, nil
+				typed, ok := result.StructuredContent.(corepath.ReadMintBundleResult)
+				if !ok {
+					return corepath.ReadMintBundleResult{}, fmt.Errorf("unexpected structured content type %T", result.StructuredContent)
+				}
+				return typed, nil
 			},
 		},
 	}

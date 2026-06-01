@@ -1,9 +1,31 @@
-# Provenant
+<div align="center">
+
+<h1>Provenant</h1>
+
+<p>Provenance for finance workflows, with evidence you can verify and replay.</p>
 
 [![CI](https://github.com/humzakhan/provenant/actions/workflows/ci.yml/badge.svg)](https://github.com/humzakhan/provenant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
+<br />
+<p><strong>Supported MCP hosts</strong></p>
+<p>
+  <img alt="Claude_Code" src="https://img.shields.io/badge/Claude_Code-supported-5B5BD6?style=flat-square" />
+  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-supported-5B5BD6?style=flat-square" />
+  <img alt="Codex_CLI" src="https://img.shields.io/badge/Codex_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="opencode" src="https://img.shields.io/badge/opencode-supported-5B5BD6?style=flat-square" />
+  <img alt="Hermes_Agent" src="https://img.shields.io/badge/Hermes_Agent-supported-5B5BD6?style=flat-square" />
+</p>
+<p>
+  <img alt="Gemini_CLI" src="https://img.shields.io/badge/Gemini_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="Antigravity_IDE" src="https://img.shields.io/badge/Antigravity_IDE-supported-5B5BD6?style=flat-square" />
+  <img alt="Kiro" src="https://img.shields.io/badge/Kiro-supported-5B5BD6?style=flat-square" />
+  <img alt="Kimi_CLI" src="https://img.shields.io/badge/Kimi_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="Pi.dev_agent" src="https://img.shields.io/badge/Pi.dev_agent-supported-5B5BD6?style=flat-square" />
+</p>
+<br />
+</div>
 
 Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger, a database, a workflow engine, or a complete accounting product. It is the enforcement layer that sits between source files, agent/tool reads, numeric claims, and the final answer that a finance team is willing to release.
 
@@ -134,13 +156,29 @@ go build ./...
 go test ./...
 ```
 
-**Claude Code integration in a project workspace:**
+**Install into an MCP host:**
 
 ```bash
-provenant install --claude
+provenant install --target claude
+provenant install --target codex,cursor
+provenant install --target all
+provenant install --print-config codex
 ```
 
-That writes the local Claude Code project settings needed to enable the Provenant MCP server and install the SessionStart and Stop hooks. Example runners can add domain-specific MCP servers when they need generated or external source material.
+That writes the local host config needed to expose the Provenant MCP server. Claude Code also gets project hooks and Stop-hook enforcement. Other MCP hosts get tool access plus official answer attestation through `provenant.submit_answer`; arbitrary host text is not Provenant-attested.
+
+| Host | Compatibility | Notes |
+|---|---|---|
+| Claude Code | Supported | Project hooks plus Stop-hook enforcement. |
+| Cursor | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Codex CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| opencode | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Hermes Agent | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Gemini CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Antigravity IDE | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Kiro | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Kimi CLI | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
+| Pi.dev agent | Supported | MCP tool access; use `provenant.submit_answer` for attested answers. |
 
 ---
 
@@ -152,6 +190,7 @@ That writes the local Claude Code project settings needed to enable the Provenan
 - CLI `read-mint-bundle` with `extract.json` reader.
 - MCP surface for `provenant.read_mint_bundle`.
 - Claude Code install path with SessionStart and Stop hooks.
+- `provenant.submit_answer` as the attestation boundary for official answers.
 - `provenant check-answer` for detecting ungrounded numeric claims in final answers.
 - CLI `reconcile` fixture with `extract.csv_rows` and `extract.spreadsheet` readers.
 - Audit bundle verify and replay through Go APIs and CLI commands.
@@ -414,8 +453,8 @@ Provenant is intentionally conservative in v0.
 - MCP grounding currently uses `extract.json` for the read/mint path.
 - CSV and spreadsheet readers exist in the kernel and reconciliation fixture path, but arbitrary customer CSV reasoning is not a complete product surface.
 - The Fauxbooks user-scenario runner mints final numeric values from generated expected JSON summaries while separately verifying those summaries against generated CSVs.
-- Host-channel text in MCP mode is not official unless it goes through the passing check-answer/Stop-hook path.
-- Host conformance outside the controlled Claude Code integration is an integration responsibility.
+- Host-channel text in MCP mode is not Provenant-attested unless it goes through `provenant.submit_answer` or the passing check-answer/Stop-hook path.
+- Claude Code gets project hooks and Stop-hook enforcement; other MCP hosts only get tool access plus `provenant.submit_answer` attestation.
 - Provenant provides verifiable evidence and replay, not legal advice, regulatory advice, or external tamper-proofing against root compromise.
 
 ---

@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/humzakhan/provenant/access/corepath"
 	"github.com/humzakhan/provenant/access/mcpapi"
 )
 
@@ -32,7 +33,11 @@ func (r Runner) runMCP(ctx context.Context, args []string, stdin io.Reader, stdo
 	}
 
 	server := mcpStdioServer{
-		surface:    mcpapi.Surface{Now: r.now, Dependencies: mcpapi.NewStatefulDependencyBuilder()},
+		surface: mcpapi.Surface{
+			Now:          r.now,
+			Dependencies: mcpapi.NewStatefulDependencyBuilder(),
+			BundlePath:   os.Getenv("PROVENANT_BUNDLE_PATH"),
+		},
 		stdin:      stdin,
 		stdout:     stdout,
 		bundlePath: os.Getenv("PROVENANT_BUNDLE_PATH"),
@@ -260,10 +265,14 @@ func (s mcpStdioServer) persistToolBundle(name string, result mcpapi.ToolResult)
 	if s.bundlePath == "" || name != mcpapi.ToolReadMintBundle {
 		return nil
 	}
-	if len(result.StructuredContent.BundleBytes) == 0 {
+	readMint, ok := result.StructuredContent.(corepath.ReadMintBundleResult)
+	if !ok {
+		return fmt.Errorf("mcp: %s returned unexpected structured content", name)
+	}
+	if len(readMint.BundleBytes) == 0 {
 		return fmt.Errorf("mcp: %s returned an empty bundle", name)
 	}
-	if err := writeFileAtomically(s.bundlePath, result.StructuredContent.BundleBytes, 0o600); err != nil {
+	if err := writeFileAtomically(s.bundlePath, readMint.BundleBytes, 0o600); err != nil {
 		return fmt.Errorf("mcp: write bundle %s: %w", s.bundlePath, err)
 	}
 	return nil

@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -40,6 +42,7 @@ func TestSurfaceReadMintBundleSmoke(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error = %v", err)
 	}
+	gotReadMint := got.StructuredContent.(corepath.ReadMintBundleResult)
 
 	wantCorepath, err := corepath.ExecuteReadMintBundle(context.Background(), fixture.Dependencies(), corepath.ReadMintBundleRequest{
 		Surface: corepath.SurfaceMCP,
@@ -79,19 +82,19 @@ func TestSurfaceReadMintBundleSmoke(t *testing.T) {
 		t.Fatalf("Unmarshal(http response) error = %v", err)
 	}
 
-	if got.StructuredContent.Surface != corepath.SurfaceMCP {
-		t.Fatalf("Surface = %q, want %q", got.StructuredContent.Surface, corepath.SurfaceMCP)
+	if gotReadMint.Surface != corepath.SurfaceMCP {
+		t.Fatalf("Surface = %q, want %q", gotReadMint.Surface, corepath.SurfaceMCP)
 	}
-	if got.StructuredContent.BundleSHA256 != wantCorepath.BundleSHA256 || got.StructuredContent.BundleSHA256 != wantCLI.BundleSHA256 || got.StructuredContent.BundleSHA256 != wantHTTP.BundleSHA256 {
-		t.Fatalf("BundleSHA256 = %s, want corepath %s cli %s http %s", got.StructuredContent.BundleSHA256, wantCorepath.BundleSHA256, wantCLI.BundleSHA256, wantHTTP.BundleSHA256)
+	if gotReadMint.BundleSHA256 != wantCorepath.BundleSHA256 || gotReadMint.BundleSHA256 != wantCLI.BundleSHA256 || gotReadMint.BundleSHA256 != wantHTTP.BundleSHA256 {
+		t.Fatalf("BundleSHA256 = %s, want corepath %s cli %s http %s", gotReadMint.BundleSHA256, wantCorepath.BundleSHA256, wantCLI.BundleSHA256, wantHTTP.BundleSHA256)
 	}
-	if !bytes.Equal(got.StructuredContent.BundleBytes, wantCorepath.BundleBytes) || !bytes.Equal(got.StructuredContent.BundleBytes, wantCLI.BundleBytes) || !bytes.Equal(got.StructuredContent.BundleBytes, wantHTTP.BundleBytes) {
+	if !bytes.Equal(gotReadMint.BundleBytes, wantCorepath.BundleBytes) || !bytes.Equal(gotReadMint.BundleBytes, wantCLI.BundleBytes) || !bytes.Equal(gotReadMint.BundleBytes, wantHTTP.BundleBytes) {
 		t.Fatal("BundleBytes mismatch with canonical corepath, cli, or http output")
 	}
-	if got.StructuredContent.ReadAndMint.Token.ID != wantCorepath.ReadAndMint.Token.ID || got.StructuredContent.ReadAndMint.Token.ID != wantCLI.ReadAndMint.Token.ID || got.StructuredContent.ReadAndMint.Token.ID != wantHTTP.ReadAndMint.Token.ID {
-		t.Fatalf("Token.ID = %s, want corepath %s cli %s http %s", got.StructuredContent.ReadAndMint.Token.ID, wantCorepath.ReadAndMint.Token.ID, wantCLI.ReadAndMint.Token.ID, wantHTTP.ReadAndMint.Token.ID)
+	if gotReadMint.ReadAndMint.Token.ID != wantCorepath.ReadAndMint.Token.ID || gotReadMint.ReadAndMint.Token.ID != wantCLI.ReadAndMint.Token.ID || gotReadMint.ReadAndMint.Token.ID != wantHTTP.ReadAndMint.Token.ID {
+		t.Fatalf("Token.ID = %s, want corepath %s cli %s http %s", gotReadMint.ReadAndMint.Token.ID, wantCorepath.ReadAndMint.Token.ID, wantCLI.ReadAndMint.Token.ID, wantHTTP.ReadAndMint.Token.ID)
 	}
-	if len(got.Content) != 1 || got.Content[0].Type != "text" || !strings.Contains(got.Content[0].Text, got.StructuredContent.BundleSHA256) {
+	if len(got.Content) != 1 || got.Content[0].Type != "text" || !strings.Contains(got.Content[0].Text, gotReadMint.BundleSHA256) {
 		t.Fatalf("content = %#v, want one summary block containing bundle sha", got.Content)
 	}
 }
@@ -120,8 +123,131 @@ func TestSurfaceReadMintBundleIgnoresMCPArgumentMeta(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool() error = %v", err)
 	}
-	if got.StructuredContent.ReadAndMint.Token.ValueCanonical != "123.450000000" {
-		t.Fatalf("ValueCanonical = %q, want 123.450000000", got.StructuredContent.ReadAndMint.Token.ValueCanonical)
+	gotReadMint := got.StructuredContent.(corepath.ReadMintBundleResult)
+	if gotReadMint.ReadAndMint.Token.ValueCanonical != "123.450000000" {
+		t.Fatalf("ValueCanonical = %q, want 123.450000000", gotReadMint.ReadAndMint.Token.ValueCanonical)
+	}
+}
+
+func TestSurfaceSubmitAnswerGroundedPasses(t *testing.T) {
+	t.Parallel()
+
+	fixture := newMCPRequestFixture()
+	readMintBytes, err := json.Marshal(fixture.Request())
+	if err != nil {
+		t.Fatalf("Marshal(read mint request) error = %v", err)
+	}
+
+	surface := mcpapi.Surface{
+		Now: func() time.Time { return fixture.now },
+	}
+	readMint, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, readMintBytes)
+	if err != nil {
+		t.Fatalf("CallTool(read mint) error = %v", err)
+	}
+	bundleBytes := readMint.StructuredContent.(corepath.ReadMintBundleResult).BundleBytes
+
+	answerRequest := mcpapi.SubmitAnswerRequest{
+		BundleBytes: bundleBytes,
+		Answer:      "The amount is 123.45 USD.",
+	}
+	answerBytes, err := json.Marshal(answerRequest)
+	if err != nil {
+		t.Fatalf("Marshal(submit answer request) error = %v", err)
+	}
+
+	got, err := surface.CallTool(context.Background(), mcpapi.ToolSubmitAnswer, answerBytes)
+	if err != nil {
+		t.Fatalf("CallTool(submit answer) error = %v", err)
+	}
+	result, ok := got.StructuredContent.(mcpapi.SubmitAnswerResult)
+	if !ok {
+		t.Fatalf("StructuredContent type = %T, want mcpapi.SubmitAnswerResult", got.StructuredContent)
+	}
+	if !result.OK || !result.Attested {
+		t.Fatalf("result = %#v, want OK and Attested", result)
+	}
+	if result.Attestation == "" || !strings.Contains(result.Attestation, result.BundleSHA256) {
+		t.Fatalf("Attestation = %q, want bundle sha", result.Attestation)
+	}
+	if len(result.Verdict.GroundedClaims) == 0 {
+		t.Fatalf("Verdict.GroundedClaims = %#v, want grounded claims", result.Verdict.GroundedClaims)
+	}
+	if len(got.Content) != 1 || got.Content[0].Type != "text" || got.Content[0].Text != result.Attestation {
+		t.Fatalf("Content = %#v, want attestation text", got.Content)
+	}
+}
+
+func TestSurfaceSubmitAnswerRejectsUngroundedNumbers(t *testing.T) {
+	t.Parallel()
+
+	fixture := newMCPRequestFixture()
+	readMintBytes, err := json.Marshal(fixture.Request())
+	if err != nil {
+		t.Fatalf("Marshal(read mint request) error = %v", err)
+	}
+
+	surface := mcpapi.Surface{
+		Now: func() time.Time { return fixture.now },
+	}
+	readMint, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, readMintBytes)
+	if err != nil {
+		t.Fatalf("CallTool(read mint) error = %v", err)
+	}
+	bundleBytes := readMint.StructuredContent.(corepath.ReadMintBundleResult).BundleBytes
+
+	answerBytes, err := json.Marshal(mcpapi.SubmitAnswerRequest{
+		BundleBytes: bundleBytes,
+		Answer:      "The amount is 999.99 USD.",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(submit answer request) error = %v", err)
+	}
+
+	_, err = surface.CallTool(context.Background(), mcpapi.ToolSubmitAnswer, answerBytes)
+	if !errors.Is(err, mcpapi.ErrUngroundedClaims) {
+		t.Fatalf("CallTool(submit answer) error = %v, want %v", err, mcpapi.ErrUngroundedClaims)
+	}
+}
+
+func TestSurfaceSubmitAnswerUsesBundlePathFallback(t *testing.T) {
+	t.Parallel()
+
+	fixture := newMCPRequestFixture()
+	readMintBytes, err := json.Marshal(fixture.Request())
+	if err != nil {
+		t.Fatalf("Marshal(read mint request) error = %v", err)
+	}
+
+	surface := mcpapi.Surface{
+		Now: func() time.Time { return fixture.now },
+	}
+	readMint, err := surface.CallTool(context.Background(), mcpapi.ToolReadMintBundle, readMintBytes)
+	if err != nil {
+		t.Fatalf("CallTool(read mint) error = %v", err)
+	}
+	bundleBytes := readMint.StructuredContent.(corepath.ReadMintBundleResult).BundleBytes
+
+	dir := t.TempDir()
+	bundlePath := filepath.Join(dir, "bundle.json")
+	if err := os.WriteFile(bundlePath, bundleBytes, 0o600); err != nil {
+		t.Fatalf("WriteFile(bundle) error = %v", err)
+	}
+
+	answerBytes, err := json.Marshal(mcpapi.SubmitAnswerRequest{
+		Answer: "The amount is 123.45 USD.",
+	})
+	if err != nil {
+		t.Fatalf("Marshal(submit answer request) error = %v", err)
+	}
+
+	surface.BundlePath = bundlePath
+	got, err := surface.CallTool(context.Background(), mcpapi.ToolSubmitAnswer, answerBytes)
+	if err != nil {
+		t.Fatalf("CallTool(submit answer) error = %v", err)
+	}
+	if got.StructuredContent.(mcpapi.SubmitAnswerResult).BundleSHA256 == "" {
+		t.Fatal("BundleSHA256 = empty, want hash")
 	}
 }
 
@@ -168,7 +294,8 @@ func TestStatefulDependencyBuilderAccumulatesTokens(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CallTool(second) error = %v", err)
 	}
-	state, err := bundle.Replay(got.StructuredContent.BundleBytes)
+	gotReadMint := got.StructuredContent.(corepath.ReadMintBundleResult)
+	state, err := bundle.Replay(gotReadMint.BundleBytes)
 	if err != nil {
 		t.Fatalf("Replay(bundle) error = %v", err)
 	}
@@ -206,6 +333,18 @@ func TestSurfaceRejectsMalformedInput(t *testing.T) {
 			name:      "unknown field",
 			toolName:  mcpapi.ToolReadMintBundle,
 			raw:       `{"reader":"extract.json","source":{"source":{"path":"fixture://invoice.json","sha256":"abc"},"bytes":"AQ=="},"run":{"id":"run_1","tenant_id":"tenant_1","status":"running"},"read":{"source_path":"fixture://invoice.json","selector":{"json_pointer":"/invoice/total"},"output_path":"$.value"},"extra":true}`,
+			wantError: mcpapi.ErrInvalidArguments,
+		},
+		{
+			name:      "submit answer unknown field",
+			toolName:  mcpapi.ToolSubmitAnswer,
+			raw:       `{"answer":"The amount is 123.45.","extra":true}`,
+			wantError: mcpapi.ErrInvalidArguments,
+		},
+		{
+			name:      "submit answer missing answer",
+			toolName:  mcpapi.ToolSubmitAnswer,
+			raw:       `{"bundle_bytes":"AA=="}`,
 			wantError: mcpapi.ErrInvalidArguments,
 		},
 		{
@@ -318,14 +457,16 @@ func TestMetadataExposure(t *testing.T) {
 	t.Parallel()
 
 	tools := mcpapi.Tools()
-	if len(tools) != 1 {
-		t.Fatalf("len(Tools()) = %d, want 1", len(tools))
+	if len(tools) != 2 {
+		t.Fatalf("len(Tools()) = %d, want 2", len(tools))
 	}
-	if tools[0].Name != mcpapi.ToolReadMintBundle {
-		t.Fatalf("Tools()[0].Name = %q, want %q", tools[0].Name, mcpapi.ToolReadMintBundle)
+	if tools[0].Name != mcpapi.ToolReadMintBundle || tools[1].Name != mcpapi.ToolSubmitAnswer {
+		t.Fatalf("Tools() = %#v, want read_mint_bundle then submit_answer", tools)
 	}
-	if !json.Valid(tools[0].InputSchema) {
-		t.Fatal("Tools()[0].InputSchema is not valid JSON")
+	for i, tool := range tools {
+		if !json.Valid(tool.InputSchema) {
+			t.Fatalf("Tools()[%d].InputSchema is not valid JSON", i)
+		}
 	}
 
 	prompts := mcpapi.Prompts()

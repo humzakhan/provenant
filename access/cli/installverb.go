@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
+	"strings"
 )
 
 const (
@@ -19,19 +19,29 @@ const (
 	claudeStopHookScript     = "${CLAUDE_PROJECT_DIR}/hack/hooks/answer-grounding-stop-hook.sh"
 )
 
-func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, _ io.Writer) error {
+func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, stdout io.Writer) error {
 	fs := flag.NewFlagSet(commandInstall, flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 
 	claude := fs.Bool("claude", false, "install Claude Code integration")
+	var targets csvTargets
+	fs.Var(&targets, "target", "install target, csv list, or all")
+	printConfig := fs.String("print-config", "", "print merged config for a target without writing files")
 	if err := fs.Parse(args); err != nil {
 		return userError(fmt.Errorf("%w: %v", ErrUsage, err))
 	}
 	if fs.NArg() != 0 {
 		return userError(fmt.Errorf("%w: install takes no positional arguments", ErrUsage))
 	}
-	if !*claude {
-		return userError(fmt.Errorf("%w: install requires --claude", ErrUsage))
+	var selectedTargets []string
+	var err error
+	if *printConfig != "" {
+		selectedTargets, err = resolveInstallTargetNames(false, csvTargets{*printConfig})
+	} else {
+		selectedTargets, err = resolveInstallTargetNames(*claude, targets)
+	}
+	if err != nil {
+		return userError(fmt.Errorf("%w: %v", ErrUsage, err))
 	}
 
 	cwd, err := os.Getwd()
@@ -39,27 +49,28 @@ func (r Runner) runInstall(_ context.Context, args []string, _ io.Reader, _ io.W
 		return fmt.Errorf("install: getwd: %w", err)
 	}
 
-	settingsPath := filepath.Join(cwd, ".claude", "settings.json")
-	if err := ensureDir(filepath.Dir(settingsPath)); err != nil {
-		return fmt.Errorf("install: mkdir settings dir: %w", err)
+	if *printConfig != "" {
+		if len(selectedTargets) != 1 {
+			return fmt.Errorf("install: print-config requires exactly one target")
+		}
+		target, ok := installTargetByName[selectedTargets[0]]
+		if !ok {
+			return fmt.Errorf("install: unknown target %q", selectedTargets[0])
+		}
+		preview, err := target.preview(cwd)
+		if err != nil {
+			return fmt.Errorf("install: preview target: %w", err)
+		}
+		return writeInstallPreview(stdout, preview)
 	}
-	settings, err := readJSONObject(settingsPath)
-	if err != nil {
-		return fmt.Errorf("install: read settings: %w", err)
-	}
-	mergeClaudeSettings(settings)
-	if err := writeJSONObject(settingsPath, settings); err != nil {
-		return fmt.Errorf("install: write settings: %w", err)
-	}
-
-	mcpPath := filepath.Join(cwd, ".mcp.json")
-	mcpDoc, err := readJSONObject(mcpPath)
-	if err != nil {
-		return fmt.Errorf("install: read .mcp.json: %w", err)
-	}
-	mergeClaudeMCP(mcpDoc)
-	if err := writeJSONObject(mcpPath, mcpDoc); err != nil {
-		return fmt.Errorf("install: write .mcp.json: %w", err)
+	for _, targetName := range selectedTargets {
+		target, ok := installTargetByName[targetName]
+		if !ok {
+			return fmt.Errorf("install: unknown target %q", targetName)
+		}
+		if err := target.apply(cwd); err != nil {
+			return fmt.Errorf("install: apply %s: %w", targetName, err)
+		}
 	}
 
 	return nil
@@ -87,16 +98,114 @@ func mergeClaudeSettings(doc map[string]any) {
 	hooks["Stop"] = stopGroups
 }
 
-func mergeClaudeMCP(doc map[string]any) {
+func mergeProvenantMCP(doc map[string]any) {
+	mergeProvenantMCPWithType(doc, true)
+}
+
+func mergeProvenantMCPWithoutType(doc map[string]any) {
+	mergeProvenantMCPWithType(doc, false)
+}
+
+func mergeProvenantMCPWithType(doc map[string]any, includeType bool) {
 	servers := nestedObject(doc, "mcpServers")
 	server := nestedObject(servers, provenantServerName)
-	setDefaultString(server, "type", "stdio")
+	if includeType {
+		setDefaultString(server, "type", "stdio")
+	}
 	setDefaultString(server, "command", "${PROVENANT_BIN:-provenant}")
 	if _, ok := server["args"]; !ok {
 		server["args"] = []any{"mcp"}
 	}
 	env := nestedObject(server, "env")
 	setDefaultString(env, "PROVENANT_BUNDLE_PATH", "${PROVENANT_BUNDLE_PATH:-}")
+}
+
+func mergeOpenCodeMCP(doc map[string]any) {
+	mcp := nestedObject(doc, "mcp")
+	server := nestedObject(mcp, provenantServerName)
+	setDefaultString(server, "type", "local")
+	if _, ok := server["command"]; !ok {
+		server["command"] = []any{"${PROVENANT_BIN:-provenant}", "mcp"}
+	}
+	if _, ok := server["enabled"]; !ok {
+		server["enabled"] = true
+	}
+}
+
+func mergeHermesConfig(existing string) string {
+	mcpSection := strings.Join([]string{
+		"mcp_servers:",
+		"  provenant:",
+		`    command: "${PROVENANT_BIN:-provenant}"`,
+		"    args:",
+		"      - mcp",
+		"    env:",
+		`      PROVENANT_BUNDLE_PATH: "${PROVENANT_BUNDLE_PATH:-}"`,
+	}, "\n")
+	toolsetSection := strings.Join([]string{
+		"platform_toolsets:",
+		"  cli:",
+		"    - mcp-provenant",
+	}, "\n")
+
+	updated := replaceTopLevelYAMLSection(existing, "mcp_servers:", mcpSection)
+	updated = replaceTopLevelYAMLSection(updated, "platform_toolsets:", toolsetSection)
+	return normalizeTopLevelYAMLSpacing(updated)
+}
+
+func replaceTopLevelYAMLSection(existing, header, replacement string) string {
+	if strings.TrimSpace(existing) == "" {
+		return replacement
+	}
+
+	lines := strings.Split(existing, "\n")
+	for i, line := range lines {
+		if strings.TrimSpace(line) != strings.TrimSpace(header) || strings.HasPrefix(line, " ") || strings.HasPrefix(line, "\t") {
+			continue
+		}
+		end := len(lines)
+		for j := i + 1; j < len(lines); j++ {
+			trimmed := strings.TrimSpace(lines[j])
+			if trimmed == "" {
+				continue
+			}
+			if !strings.HasPrefix(lines[j], " ") && !strings.HasPrefix(lines[j], "\t") && strings.HasSuffix(trimmed, ":") {
+				end = j
+				break
+			}
+		}
+		merged := append([]string{}, lines[:i]...)
+		merged = append(merged, strings.Split(replacement, "\n")...)
+		merged = append(merged, lines[end:]...)
+		return strings.Join(trimTrailingEmptyLine(merged), "\n")
+	}
+
+	trimmed := strings.TrimRight(existing, "\n")
+	if trimmed == "" {
+		return replacement
+	}
+	return trimmed + "\n\n" + replacement
+}
+
+func normalizeTopLevelYAMLSpacing(existing string) string {
+	lines := strings.Split(strings.TrimRight(existing, "\n"), "\n")
+	if len(lines) == 1 && strings.TrimSpace(lines[0]) == "" {
+		return "\n"
+	}
+
+	out := make([]string, 0, len(lines)+len(lines)/2)
+	for _, line := range lines {
+		if len(out) > 0 && isTopLevelYAMLHeader(line) && out[len(out)-1] != "" {
+			out = append(out, "")
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n") + "\n"
+}
+
+func isTopLevelYAMLHeader(line string) bool {
+	trimmed := strings.TrimSpace(line)
+	return trimmed != "" && trimmed == line && strings.HasSuffix(trimmed, ":")
 }
 
 type hookCommand struct {
