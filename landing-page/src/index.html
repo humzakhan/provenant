@@ -31,8 +31,11 @@ button{font-family:inherit;cursor:pointer;}
 .nav.scrolled{border-bottom-color:var(--border);}
 .nav-logo{font-weight:700;font-size:15px;letter-spacing:-.02em;display:flex;align-items:center;gap:8px;}
 .nav-logo-mark{width:14px;height:14px;background:var(--green);border-radius:3px;transform:rotate(45deg);}
-.nav-links{display:flex;gap:24px;font-size:14px;font-weight:500;color:var(--muted);}
-.nav-links a:hover{color:var(--text);}
+.nav-links{display:flex;gap:28px;font-size:14px;font-weight:600;color:var(--muted);}
+.nav-links a{position:relative;display:inline-block;transition:color .2s ease;}
+.nav-links a::after{content:'';position:absolute;left:0;bottom:-4px;width:100%;height:2px;background:var(--green);border-radius:1px;transform:scaleX(0);transform-origin:left;transition:transform .25s cubic-bezier(.4,0,.2,1);}
+.nav-links a:hover{color:var(--green);}
+.nav-links a:hover::after{transform:scaleX(1);}
 .nav-right{display:flex;align-items:center;gap:10px;}
 .nav-gh{color:var(--muted);font-size:14px;font-weight:500;display:flex;align-items:center;gap:4px;}
 .nav-gh:hover{color:var(--text);}
@@ -376,6 +379,7 @@ p{color:var(--muted);}
 .footer-star-gh{width:16px;height:16px;}
 .footer-star-arrow{color:#fff;transition:transform .2s ease;}
 .footer-star:hover .footer-star-arrow{transform:translateX(3px);}
+.nav-star{margin-top:0;}
 @media (prefers-color-scheme:dark){
   .footer-star{background:var(--green);border-color:var(--green-hover);}
   .footer-star:hover{background:var(--green-hover);}
@@ -476,9 +480,9 @@ p{color:var(--muted);}
 
 <nav class="nav" id="nav">
   <div class="nav-logo"><span class="nav-logo-mark"></span>Provenant</div>
-  <div class="nav-links"><span class="nav-cs"><a href="#">Docs</a><span class="cs-tip">Coming soon</span></span><span class="nav-cs"><a href="#">Architecture</a><span class="cs-tip">Coming soon</span></span><span class="nav-cs"><a href="#">Thesis</a><span class="cs-tip">Coming soon</span></span><span class="nav-cs"><a href="#">Blog</a><span class="cs-tip">Coming soon</span></span></div>
+  <div class="nav-links"><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a><a href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Thesis</a></div>
   <div class="nav-right">
-    <a class="btn btn-primary btn-sm gh-btn" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> GitHub <i data-lucide="arrow-right" class="btn-arrow"></i></a>
+    <a class="footer-star nav-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
   </div>
 </nav>
 
@@ -501,7 +505,7 @@ p{color:var(--muted);}
     <h1>Financial numbers with<br/><em>verifiable provenance.</em></h1>
     <p class="hero-sub">An open-source enforcement kernel for LLM agents in financial services. Every numeric output is bound to a verifiable computation chain, or it never leaves the system.</p>
     <div class="hero-ctas">
-      <span class="cs-wrap"><a class="btn btn-ghost" href="#">Read the thesis</a><span class="cs-tip">Coming soon</span></span>
+      <a class="btn btn-ghost" href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Read the thesis</a>
       <a class="btn btn-primary gh-btn" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img src="https://cdn.simpleicons.org/github/ffffff" width="16" height="16" alt=""/> GitHub <i data-lucide="arrow-right" class="btn-arrow"></i></a>
     </div>
     <div class="artifact">
@@ -789,7 +793,7 @@ p{color:var(--muted);}
     <h2>Ship numbers that survive <em>any audit.</em></h2>
     <div class="closing-ctarow">
       <a class="btn btn-white gh-btn" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img src="https://cdn.simpleicons.org/github/191919" width="16" height="16" alt=""/> View on GitHub <i data-lucide="arrow-right" class="btn-arrow"></i></a>
-      <span class="cs-wrap"><a class="btn btn-outline-white" href="#">Read the thesis &rarr;</a><span class="cs-tip">Coming soon</span></span>
+      <a class="btn btn-outline-white" href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Read the thesis &rarr;</a>
     </div>
     <div class="closing-badges">
       <span class="closing-badge">Apache 2.0</span>
@@ -1256,7 +1260,7 @@ const panel=document.getElementById('file-panel');
 const panelContent=document.getElementById('panel-content');
 function openPanel(key){
   const d=fileData[key];
-  panelContent.innerHTML=`<div class="file-panel-header"><div class="file-panel-title"><span class="file-panel-ext">${d.ext}</span><span>${d.name}</span></div><button class="file-panel-close" id="pc">\u2715</button></div><div class="file-panel-meta"><div class="file-panel-meta-row"><span class="key">source</span><span>${d.source}</span></div><div class="file-panel-meta-row"><span class="key">as_of</span><span>${d.asOf}</span></div><div class="file-panel-meta-row"><span class="key">sha256</span><span>${d.sha}\u2026</span></div></div><div class="file-panel-table-wrap"><table class="file-panel-table"><thead><tr>${d.headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr class="${!r[0].includes('\u2026')?'hl':''}">${r.map((c,i)=>`<td class="${i===r.length-1?'amt':''}">${c}</td>`).join('')}</tr>`).join('')}<tr class="tot"><td colspan="${d.headers.length-1}">Total contributing to token</td><td class="amt">${d.total}</td></tr></tbody></table></div><div class="file-panel-footer"><span>Captured read \u00B7 audit pack</span><a href="#" style="color:var(--green)">View full file \u2192</a></div>`;
+  panelContent.innerHTML=`<div class="file-panel-header"><div class="file-panel-title"><span class="file-panel-ext">${d.ext}</span><span>${d.name}</span></div><button class="file-panel-close" id="pc">\u2715</button></div><div class="file-panel-meta"><div class="file-panel-meta-row"><span class="key">source</span><span>${d.source}</span></div><div class="file-panel-meta-row"><span class="key">as_of</span><span>${d.asOf}</span></div><div class="file-panel-meta-row"><span class="key">sha256</span><span>${d.sha}\u2026</span></div></div><div class="file-panel-table-wrap"><table class="file-panel-table"><thead><tr>${d.headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${d.rows.map(r=>`<tr class="${!r[0].includes('\u2026')?'hl':''}">${r.map((c,i)=>`<td class="${i===r.length-1?'amt':''}">${c}</td>`).join('')}</tr>`).join('')}<tr class="tot"><td colspan="${d.headers.length-1}">Total contributing to token</td><td class="amt">${d.total}</td></tr></tbody></table></div><div class="file-panel-footer"><span>Captured read \u00B7 audit pack</span><a href="https://github.com/humzakhan/provenant/blob/main/landing-page/src/audit-pack-sample.json" target="_blank" rel="noopener" style="color:var(--green)">View full file \u2192</a></div>`;
   panel.classList.add('open');panel.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';
   document.getElementById('pc').addEventListener('click',closePanel);
 }
