@@ -1,9 +1,29 @@
-# Provenant
+<div align="center">
+
+<h1>Provenant</h1>
+
+<p>Provenance for finance workflows, with evidence you can verify and replay.</p>
 
 [![CI](https://github.com/humzakhan/provenant/actions/workflows/ci.yml/badge.svg)](https://github.com/humzakhan/provenant/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Go Reference](https://pkg.go.dev/badge/github.com/humzakhan/provenant.svg)](https://pkg.go.dev/github.com/humzakhan/provenant)
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
+<br>
+![Claude Code](https://img.shields.io/badge/Claude%20Code-Supported-111111.svg)
+![Cursor](https://img.shields.io/badge/Cursor-Supported-111111.svg)
+![Codex CLI](https://img.shields.io/badge/Codex%20CLI-Supported-111111.svg)
+![opencode](https://img.shields.io/badge/opencode-Supported-111111.svg)
+![Hermes Agent](https://img.shields.io/badge/Hermes%20Agent-Supported-111111.svg)
+<br>
+<span>Works with your agent stack</span>
+<br>
+![Gemini CLI](https://img.shields.io/badge/Gemini%20CLI-Supported-111111.svg)
+![Antigravity IDE](https://img.shields.io/badge/Antigravity%20IDE-Supported-111111.svg)
+![Kiro](https://img.shields.io/badge/Kiro-Supported-111111.svg)
+![Kimi CLI](https://img.shields.io/badge/Kimi%20CLI-Supported-111111.svg)
+![Pi.dev agent](https://img.shields.io/badge/Pi.dev%20agent-Supported-111111.svg)
+
+</div>
 
 Provenant is a provenance layer for finance workflows: it records where every output number came from and packages the evidence for verify/replay. It is not a logger, a database, a workflow engine, or a complete accounting product. It is the enforcement layer that sits between source files, agent/tool reads, numeric claims, and the final answer that a finance team is willing to release.
 
