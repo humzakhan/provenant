@@ -37,6 +37,20 @@ button{font-family:inherit;cursor:pointer;}
 .nav-links a:hover{color:var(--green);}
 .nav-links a:hover::after{transform:scaleX(1);}
 .nav-right{display:flex;align-items:center;gap:10px;}
+.nav-toggle{display:none;align-items:center;justify-content:center;width:40px;height:40px;border:1px solid var(--border-strong);border-radius:8px;background:transparent;color:var(--text);cursor:pointer;}
+.nav-toggle svg{width:22px;height:22px;}
+/* mobile slide-in nav */
+.mobile-nav-overlay{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4);opacity:0;pointer-events:none;transition:opacity .25s ease;}
+.mobile-nav-overlay.open{opacity:1;pointer-events:auto;}
+.mobile-nav{position:fixed;top:0;right:0;bottom:0;z-index:80;width:280px;max-width:84vw;background:#fff;box-shadow:-8px 0 32px rgba(0,0,0,.16);padding:20px 24px;display:flex;flex-direction:column;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);overflow-y:auto;}
+.mobile-nav.open{transform:translateX(0);}
+.mobile-nav-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:28px;}
+.mobile-nav-close{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:none;background:transparent;color:var(--text);cursor:pointer;border-radius:8px;}
+.mobile-nav-close svg{width:22px;height:22px;}
+.mobile-nav-links{display:flex;flex-direction:column;gap:4px;}
+.mobile-nav-links a{font-family:var(--sans);font-size:16px;font-weight:600;color:var(--text);padding:12px 10px;border-radius:8px;transition:background .15s ease,color .15s ease;}
+.mobile-nav-links a:hover{background:var(--green-tint);color:var(--green);}
+.mobile-nav-star{margin-top:24px;justify-content:center;}
 .nav-gh{color:var(--muted);font-size:14px;font-weight:500;display:flex;align-items:center;gap:4px;}
 .nav-gh:hover{color:var(--text);}
 .star{color:var(--amber);}
@@ -465,19 +479,23 @@ p{color:var(--muted);}
 }
 @media(max-width:640px){
   .nav-links{display:none;}
+  .nav-star{display:none;}
+  .nav-toggle{display:inline-flex;}
   .snav-inner{justify-content:flex-start;}
-  .nav-star{padding:7px 12px;font-size:12px;}
   .hero h1{font-size:32px;}
   .hero-sub{font-size:16px;}
   h2{font-size:26px;}
   .closing h2{font-size:28px;}
-  .footer-cols{grid-template-columns:1fr;gap:32px;}
-  .footer-bot{flex-direction:column;align-items:flex-start;gap:8px;}
+  .footer-cols{grid-template-columns:1fr;gap:36px;text-align:center;justify-items:center;}
+  .footer-cols>div{display:flex;flex-direction:column;align-items:center;}
+  .footer-desc{max-width:320px;}
+  .footer ul{display:flex;flex-direction:column;align-items:center;}
+  .footer-bot{flex-direction:column;align-items:center;text-align:center;gap:10px;}
+  .footer-copy,.footer-built{justify-content:center;}
 }
 @media(max-width:380px){
   .container,.snav-inner{padding:0 16px;}
   .nav{padding:12px 16px;}
-  .nav-star{padding:6px 10px;font-size:11px;gap:5px;}
   .hero h1{font-size:28px;}
   .hero{padding:48px 0 40px;}
   h2{font-size:23px;}
@@ -516,8 +534,25 @@ p{color:var(--muted);}
   <div class="nav-links"><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a><a href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Thesis</a><a href="#s-mech">How it works</a></div>
   <div class="nav-right">
     <a class="footer-star nav-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
+    <button class="nav-toggle" id="nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="mobile-nav"><i data-lucide="menu"></i></button>
   </div>
 </nav>
+
+<div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
+<aside class="mobile-nav" id="mobile-nav" aria-hidden="true">
+  <div class="mobile-nav-head">
+    <div class="nav-logo"><span class="nav-logo-mark"></span>Provenant</div>
+    <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu"><i data-lucide="x"></i></button>
+  </div>
+  <nav class="mobile-nav-links">
+    <a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a>
+    <a href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Thesis</a>
+    <a href="#s-mech">How it works</a>
+    <a href="#s-recon">Walkthrough</a>
+    <a href="#s-compliance">Compliance</a>
+  </nav>
+  <a class="footer-star mobile-nav-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
+</aside>
 
 <div class="section-nav" id="section-nav">
   <div class="snav-inner">
@@ -885,6 +920,22 @@ window.addEventListener('scroll',()=>{
   const hb=document.querySelector('.hero').getBoundingClientRect().bottom;
   snavEl.classList.toggle('visible',hb<0);
 });
+
+/* ── mobile slide-in nav ── */
+(function(){
+  const toggle=document.getElementById('nav-toggle');
+  const panel=document.getElementById('mobile-nav');
+  const overlay=document.getElementById('mobile-nav-overlay');
+  const closeBtn=document.getElementById('mobile-nav-close');
+  if(!toggle||!panel||!overlay)return;
+  function open(){panel.classList.add('open');overlay.classList.add('open');panel.setAttribute('aria-hidden','false');toggle.setAttribute('aria-expanded','true');document.body.style.overflow='hidden';}
+  function close(){panel.classList.remove('open');overlay.classList.remove('open');panel.setAttribute('aria-hidden','true');toggle.setAttribute('aria-expanded','false');document.body.style.overflow='';}
+  toggle.addEventListener('click',open);
+  closeBtn.addEventListener('click',close);
+  overlay.addEventListener('click',close);
+  panel.querySelectorAll('a').forEach(a=>a.addEventListener('click',close));
+  document.addEventListener('keydown',e=>{if(e.key==='Escape')close();});
+})();
 
 /* ── section nav active tab ── */
 const snavObs=new IntersectionObserver(entries=>{
