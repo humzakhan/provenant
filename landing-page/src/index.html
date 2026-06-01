@@ -380,6 +380,10 @@ p{color:var(--muted);}
 .footer-star-arrow{color:#fff;transition:transform .2s ease;}
 .footer-star:hover .footer-star-arrow{transform:translateX(3px);}
 .nav-star{margin-top:0;}
+.footer-by{display:flex;width:fit-content;align-items:center;gap:3px;margin-top:18px;font-family:var(--sans);font-size:13px;color:var(--faint);transition:color .2s ease;}
+.footer-by .footer-by-arrow{transition:transform .2s ease;}
+.footer-by:hover{color:var(--green);}
+.footer-by:hover .footer-by-arrow{transform:translate(2px,-2px);}
 @media (prefers-color-scheme:dark){
   .footer-star{background:var(--green);border-color:var(--green-hover);}
   .footer-star:hover{background:var(--green-hover);}
@@ -812,6 +816,7 @@ p{color:var(--muted);}
         <div class="nav-logo" style="margin-bottom:16px"><span class="nav-logo-mark"></span>Provenant</div>
         <p class="footer-desc">Open-source enforcement substrate for LLM agents in financial services.</p>
         <a class="footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="16" height="16" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
+        <a class="footer-by" href="https://humza.io/?utm_source=provenant&amp;utm_medium=referral&amp;utm_campaign=landing" target="_blank" rel="noopener">By Humza Khan <span class="footer-by-arrow">&#8599;</span></a>
       </div>
       <div><h4>Product</h4><ul>
         <li><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a></li>
