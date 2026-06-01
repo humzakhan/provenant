@@ -10,18 +10,20 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/humzakhan/provenant)](https://goreportcard.com/report/github.com/humzakhan/provenant)
 <br />
 <p><strong>Supported MCP hosts</strong></p>
-<br />
-![Claude_Code](https://img.shields.io/badge/Claude_Code-supported-5B5BD6?style=flat-square)
-![Cursor](https://img.shields.io/badge/Cursor-supported-5B5BD6?style=flat-square)
-![Codex_CLI](https://img.shields.io/badge/Codex_CLI-supported-5B5BD6?style=flat-square)
-![opencode](https://img.shields.io/badge/opencode-supported-5B5BD6?style=flat-square)
-![Hermes_Agent](https://img.shields.io/badge/Hermes_Agent-supported-5B5BD6?style=flat-square)
-<br />
-![Gemini_CLI](https://img.shields.io/badge/Gemini_CLI-supported-5B5BD6?style=flat-square)
-![Antigravity_IDE](https://img.shields.io/badge/Antigravity_IDE-supported-5B5BD6?style=flat-square)
-![Kiro](https://img.shields.io/badge/Kiro-supported-5B5BD6?style=flat-square)
-![Kimi_CLI](https://img.shields.io/badge/Kimi_CLI-supported-5B5BD6?style=flat-square)
-![Pi.dev_agent](https://img.shields.io/badge/Pi.dev_agent-supported-5B5BD6?style=flat-square)
+<p>
+  <img alt="Claude_Code" src="https://img.shields.io/badge/Claude_Code-supported-5B5BD6?style=flat-square" />
+  <img alt="Cursor" src="https://img.shields.io/badge/Cursor-supported-5B5BD6?style=flat-square" />
+  <img alt="Codex_CLI" src="https://img.shields.io/badge/Codex_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="opencode" src="https://img.shields.io/badge/opencode-supported-5B5BD6?style=flat-square" />
+  <img alt="Hermes_Agent" src="https://img.shields.io/badge/Hermes_Agent-supported-5B5BD6?style=flat-square" />
+</p>
+<p>
+  <img alt="Gemini_CLI" src="https://img.shields.io/badge/Gemini_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="Antigravity_IDE" src="https://img.shields.io/badge/Antigravity_IDE-supported-5B5BD6?style=flat-square" />
+  <img alt="Kiro" src="https://img.shields.io/badge/Kiro-supported-5B5BD6?style=flat-square" />
+  <img alt="Kimi_CLI" src="https://img.shields.io/badge/Kimi_CLI-supported-5B5BD6?style=flat-square" />
+  <img alt="Pi.dev_agent" src="https://img.shields.io/badge/Pi.dev_agent-supported-5B5BD6?style=flat-square" />
+</p>
 <br />
 </div>
 
