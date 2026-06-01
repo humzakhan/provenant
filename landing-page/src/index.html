@@ -371,8 +371,12 @@ p{color:var(--muted);}
 .footer li a:hover{color:var(--green);font-weight:600;}
 .footer li a:hover::after{transform:scaleX(1);}
 .footer-desc{font-family:var(--sans);font-size:15px;color:var(--muted);max-width:280px;line-height:1.6;}
+.footer-star{margin-top:20px;}
+.footer-star-icon{display:inline-flex;}
+.footer-star-icon svg{width:15px;height:15px;}
+.footer-star:hover .footer-star-icon svg{fill:var(--amber);color:var(--amber);}
 .footer-bot{margin-top:48px;padding-top:24px;border-top:1px solid var(--border);color:var(--faint);font-size:12px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:12px;}
-.footer-copy{font-family:var(--sans);font-weight:400;color:var(--muted);}
+.footer-copy{font-family:var(--sans);font-weight:400;font-size:15px;color:var(--muted);}
 .footer-built{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:13px;color:var(--muted);}
 .footer-built i{display:inline-flex;}
 .footer-built i svg{width:11px;height:11px;color:#2E7D5B;}
@@ -798,6 +802,7 @@ p{color:var(--muted);}
       <div>
         <div class="nav-logo" style="margin-bottom:16px"><span class="nav-logo-mark"></span>Provenant</div>
         <p class="footer-desc">Open-source enforcement substrate for LLM agents in financial services.</p>
+        <a class="btn btn-ghost btn-sm gh-btn footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><i data-lucide="star" class="footer-star-icon"></i> Star on GitHub</a>
       </div>
       <div><h4>Product</h4><ul>
         <li><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a></li>
