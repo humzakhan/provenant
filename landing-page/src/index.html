@@ -129,6 +129,12 @@ p{color:var(--muted);}
 .int-tab.active::after{transform:scaleX(1);}
 .int-tab img,.int-tab svg{width:15px;height:15px;opacity:.55;transition:opacity .2s;}
 .int-tab.active img,.int-tab.active svg{opacity:.9;}
+.int-soon{font-family:var(--mono);font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--green);background:var(--green-tint);border:1px solid var(--green-soft);padding:2px 6px;border-radius:999px;line-height:1;}
+.int-info{display:flex;gap:12px;align-items:flex-start;margin-top:24px;padding:16px 18px;background:var(--green-tint);border:1px solid var(--green-soft);border-radius:var(--r);}
+.int-info-icon{flex-shrink:0;color:var(--green);display:inline-flex;}
+.int-info-icon svg{width:18px;height:18px;}
+.int-info p{font-size:14px;line-height:1.6;color:#3A6252;margin:0;}
+.int-info strong{color:var(--green);font-weight:700;}
 .int-tab:first-child{padding-left:0;}
 .int-tab:first-child::after{left:0;}
 .int-panel{display:grid;grid-template-columns:1fr 1fr;min-height:420px;margin-top:24px;background:#fff;border-radius:var(--rl);box-shadow:var(--sh-lg);overflow:hidden;position:relative;}
@@ -348,9 +354,11 @@ p{color:var(--muted);}
 /* ── closing — BLACK ── */
 .closing{padding:140px 0;text-align:center;background:radial-gradient(ellipse at 65% 30%,#163D28 0%,#0A1F14 38%,#060C08 100%);}
 .closing h2{font-size:56px;max-width:860px;margin:0 auto 36px;line-height:1.02;letter-spacing:-.04em;color:#fff;}
-.closing h2 em{font-family:var(--serif);font-style:italic;font-weight:600;color:#5ED48A;}
+.closing h2 em{font-family:inherit;font-style:normal;font-weight:inherit;color:#5ED48A;}
 .closing-ctarow{display:flex;gap:12px;justify-content:center;flex-wrap:wrap;}
 .closing .meta{font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.28);margin-top:28px;}
+.closing-badges{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:32px;}
+.closing-badge{font-family:var(--mono);font-size:12px;font-weight:500;color:rgba(255,255,255,.72);padding:6px 14px;border:1px solid rgba(255,255,255,.2);border-radius:999px;background:rgba(255,255,255,.05);letter-spacing:.02em;}
 
 /* ── footer ── */
 .footer{padding:52px 0 64px;font-family:var(--mono);font-size:13px;}
@@ -618,10 +626,14 @@ p{color:var(--muted);}
     <h2>One kernel. Multiple entry points.</h2>
     <div class="int-tabs" id="int-tabs">
       <button class="int-tab active" data-int="mcp"><img src="https://cdn.simpleicons.org/anthropic/1F4D3A" width="16" height="16" alt="" onerror="this.style.display='none'"/> MCP server</button>
-      <button class="int-tab" data-int="go"><img src="https://cdn.simpleicons.org/go/00ACD7" width="16" height="16" alt=""/> Go library</button>
-      <button class="int-tab" data-int="python"><img src="https://cdn.simpleicons.org/python/3776AB" width="16" height="16" alt=""/> Python</button>
+      <button class="int-tab" data-int="go"><img src="https://cdn.simpleicons.org/go/00ACD7" width="16" height="16" alt=""/> Go library <span class="int-soon">Soon</span></button>
+      <button class="int-tab" data-int="python"><img src="https://cdn.simpleicons.org/python/3776AB" width="16" height="16" alt=""/> Python <span class="int-soon">Soon</span></button>
       <button class="int-tab" data-int="http">HTTP API</button>
       <button class="int-tab" data-int="cli"><img src="https://cdn.simpleicons.org/docker/2496ED" width="16" height="16" alt=""/> CLI · Docker</button>
+    </div>
+    <div class="int-info">
+      <span class="int-info-icon"><i data-lucide="info"></i></span>
+      <p><strong>Starting with the MCP server.</strong> We&rsquo;re proving the model out on the MCP server first. Once the core is solid, the Go and Python libraries open up so you can build agents natively on Provenant.</p>
     </div>
     <div class="int-panel" id="int-panel">
       <div class="int-left" id="int-left"></div>
@@ -760,12 +772,17 @@ p{color:var(--muted);}
 <!-- ═══ CLOSING — BLACK ═══ -->
 <section class="closing">
   <div class="container reveal">
-    <h2>Agent outputs that hold up under <em>any audit.</em></h2>
+    <h2>Ship numbers that survive <em>any audit.</em></h2>
     <div class="closing-ctarow">
-      <span class="cs-wrap"><a class="btn btn-white" href="#">Run the demo</a><span class="cs-tip">Coming soon</span></span>
+      <a class="btn btn-white gh-btn" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img src="https://cdn.simpleicons.org/github/191919" width="16" height="16" alt=""/> View on GitHub <i data-lucide="arrow-right" class="btn-arrow"></i></a>
       <span class="cs-wrap"><a class="btn btn-outline-white" href="#">Read the thesis &rarr;</a><span class="cs-tip">Coming soon</span></span>
     </div>
-    <div class="meta">Open source &middot; Apache 2.0 &middot; Single-tenant &middot; Air-gappable &middot; v0</div>
+    <div class="closing-badges">
+      <span class="closing-badge">Apache 2.0</span>
+      <span class="closing-badge">Single-tenant</span>
+      <span class="closing-badge">Air-gappable</span>
+      <span class="closing-badge">v0</span>
+    </div>
   </div>
 </section>
 
