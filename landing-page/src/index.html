@@ -33,8 +33,12 @@ button{font-family:inherit;cursor:pointer;}
 /* ── nav ── */
 .nav{display:flex;align-items:center;justify-content:space-between;padding:18px 40px;border-bottom:1px solid var(--green-soft);position:sticky;top:0;z-index:60;background:var(--green-tint);box-shadow:0 1px 3px rgba(0,0,0,.04);transition:background .25s ease,box-shadow .25s ease,border-color .25s ease,backdrop-filter .25s ease;}
 .nav.scrolled{background:rgba(255,255,255,.72);backdrop-filter:blur(16px) saturate(1.4);-webkit-backdrop-filter:blur(16px) saturate(1.4);border-bottom-color:var(--border);box-shadow:0 2px 12px rgba(0,0,0,.07);}
-.nav-logo{font-weight:700;font-size:17px;letter-spacing:-.02em;display:flex;align-items:center;gap:9px;}
-.nav-logo-mark{width:32px;height:32px;display:block;flex-shrink:0;}
+/* brand lockup component: icon + wordmark, size/gap controllable via vars */
+.brand{--brand-mark:26px;--brand-text:18px;--brand-gap:9px;display:inline-flex;align-items:center;gap:var(--brand-gap);text-decoration:none;line-height:1;}
+.brand-mark{width:var(--brand-mark);height:var(--brand-mark);display:block;flex-shrink:0;}
+.brand-text{font-weight:700;font-size:var(--brand-text);letter-spacing:-.02em;color:var(--text);}
+.brand--lg{--brand-mark:34px;--brand-text:22px;--brand-gap:11px;}
+.brand--sm{--brand-mark:22px;--brand-text:16px;--brand-gap:8px;}
 .nav-links{display:flex;gap:28px;font-size:14px;font-weight:600;color:var(--muted);}
 .nav-links a{position:relative;display:inline-block;transition:color .2s ease;}
 .nav-links a::after{content:'';position:absolute;left:0;bottom:-4px;width:100%;height:2px;background:var(--green);border-radius:1px;transform:scaleX(0);transform-origin:left;transition:transform .25s cubic-bezier(.4,0,.2,1);}
@@ -297,6 +301,9 @@ p{color:var(--muted);}
 .term-tab{font-family:var(--mono);font-size:12px;padding:4px 12px;border-radius:4px;color:#5A6070;background:transparent;border:none;cursor:pointer;transition:all .15s;}
 .term-tab:hover{color:#B0B8C8;}
 .term-tab.active{background:#162018;color:#E8EAF0;}
+.term-tab-soon{cursor:default;opacity:.65;display:inline-flex;align-items:center;gap:6px;}
+.term-tab-soon:hover{color:#5A6070;}
+.term-soon{font-size:8.5px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:#7BC99A;background:rgba(123,201,154,.12);border:1px solid rgba(123,201,154,.3);padding:1px 5px;border-radius:999px;line-height:1.4;}
 .terminal-body{padding:24px 28px;font-family:var(--mono);font-size:13.5px;color:#D4DDD8;line-height:1.85;min-height:200px;}
 .term-pane{display:none;}
 .term-pane.active{display:block;animation:fadeIn .2s ease;}
@@ -534,7 +541,7 @@ p{color:var(--muted);}
 <body>
 
 <nav class="nav" id="nav">
-  <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
+  <a class="brand" href="#s-hero" aria-label="Provenant"><img class="brand-mark" src="logo.svg" alt=""/><span class="brand-text">Provenant</span></a>
   <div class="nav-links"><a href="https://docs.provenant.sh" target="_blank" rel="noopener">Docs</a><a href="https://github.com/humzakhan/provenant/blob/main/docs/thesis.md" target="_blank" rel="noopener">Thesis</a><a href="#s-mech">How it works</a></div>
   <div class="nav-right">
     <a class="footer-star nav-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="15" height="15" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
@@ -545,7 +552,7 @@ p{color:var(--muted);}
 <div class="mobile-nav-overlay" id="mobile-nav-overlay"></div>
 <aside class="mobile-nav" id="mobile-nav" aria-hidden="true">
   <div class="mobile-nav-head">
-    <div class="nav-logo"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
+    <a class="brand" href="#s-hero" aria-label="Provenant"><img class="brand-mark" src="logo.svg" alt=""/><span class="brand-text">Provenant</span></a>
     <button class="mobile-nav-close" id="mobile-nav-close" aria-label="Close menu"><i data-lucide="x"></i></button>
   </div>
   <nav class="mobile-nav-links">
@@ -800,8 +807,8 @@ p{color:var(--muted);}
         <span class="term-dot"></span><span class="term-dot"></span><span class="term-dot"></span>
         <div class="term-tabs" id="term-tabs">
           <button class="term-tab active" data-pane="mcp">MCP server</button>
-          <button class="term-tab" data-pane="go">Go library</button>
-          <button class="term-tab" data-pane="demo">Run the demo</button>
+          <button class="term-tab term-tab-soon" data-pane="go">Go library <span class="term-soon">Soon</span></button>
+          <button class="term-tab term-tab-soon" data-pane="demo">Run the demo <span class="term-soon">Soon</span></button>
         </div>
       </div>
       <div class="terminal-body">
@@ -881,7 +888,7 @@ p{color:var(--muted);}
   <div class="container">
     <div class="footer-cols">
       <div>
-        <div class="nav-logo" style="margin-bottom:16px"><img class="nav-logo-mark" src="logo.svg" width="32" height="32" alt=""/>Provenant</div>
+        <div class="brand brand--lg" style="margin-bottom:16px"><img class="brand-mark" src="logo.svg" alt=""/><span class="brand-text">Provenant</span></div>
         <p class="footer-desc">Open-source enforcement substrate for LLM agents in financial services.</p>
         <a class="footer-star" href="https://github.com/humzakhan/provenant" target="_blank" rel="noopener"><img class="footer-star-gh" src="https://cdn.simpleicons.org/github/ffffff" width="16" height="16" alt=""/> Star on GitHub <span class="footer-star-arrow">&rarr;</span></a>
       </div>
@@ -1061,6 +1068,7 @@ function scramble(el,target,frames=28){
 /* ── terminal tabs ── */
 document.querySelectorAll('#term-tabs .term-tab').forEach(tab=>{
   tab.addEventListener('click',()=>{
+    if(tab.classList.contains('term-tab-soon'))return; // coming-soon tabs are inert
     const p=tab.dataset.pane;
     document.querySelectorAll('#term-tabs .term-tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
