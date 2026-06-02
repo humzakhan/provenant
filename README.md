@@ -1,6 +1,10 @@
 <div align="center">
+  <img src="assets/provenant-banner.png" alt="Provenant" width="100%" />
+</div>
 
-<h1>Provenant</h1>
+---
+
+<div align="center">
 
 <p>Provenance for finance workflows, with evidence you can verify and replay.</p>
 
