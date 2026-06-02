@@ -19,9 +19,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/humzakhan/provenant/access/cli"
 	kernel "github.com/humzakhan/provenant/kernel/public"
+	"github.com/humzakhan/provenant/kernel/public/extractcsvrows"
+	"github.com/humzakhan/provenant/kernel/public/runfile"
 )
 
 // RunCLIFileArgs invokes runner.Run with no stdin body (empty reader) and
@@ -197,30 +200,124 @@ func MintCSVRowTokens(
 	outputPath string,
 ) []string {
 	t.Helper()
+
+	clock := fixedClock{t: time.Now().UTC()}
+	if runner.Now != nil {
+		clock = fixedClock{t: runner.Now().UTC()}
+	}
+	runFile, err := runfile.Start(runfile.Options{
+		Path:     bundlePath,
+		Run:      run,
+		Clock:    clock,
+		Tenant:   run.TenantID,
+		PartSync: runfile.PartSyncOnClose,
+	})
+	if err != nil {
+		t.Fatalf("runfile.Start(%s): %v", bundlePath, err)
+	}
+	defer func() {
+		if err := runFile.Close(); err != nil {
+			t.Fatalf("runfile.Close(%s): %v", bundlePath, err)
+		}
+	}()
+
+	sink := &runfileChainSink{run: runFile, kernRun: run}
 	ids := make([]string, rowCount)
 	for i := 1; i <= rowCount; i++ {
-		out := RunCLIInTest(t, runner, []string{"read-mint", "--request", "-"}, map[string]any{
-			"run_file": bundlePath,
-			"reader":   "extract.csv_rows",
-			"source":   src,
-			"run":      run,
-			"read": kernel.ReadAndMintRequest{
+		result, err := kernel.ReadAndMint(
+			context.Background(),
+			sink,
+			singleSourceResolver{source: src},
+			extractcsvrows.Reader{},
+			sink,
+			sink,
+			clock,
+			run,
+			kernel.ReadAndMintRequest{
 				SourcePath: src.Source.Path,
 				Selector:   CSVSelector(i, columnProjection),
 				OutputPath: outputPath,
 				Unit:       "USD",
 			},
-		})
-		var resp struct {
-			Token kernel.Token `json:"token"`
+		)
+		if err != nil {
+			t.Fatalf("read-mint %s row %d col %q: %v", src.Source.Path, i, columnProjection, err)
 		}
-		if err := json.Unmarshal(out, &resp); err != nil {
-			t.Fatalf("unmarshal read-mint response (row %d, col %q): %v", i, columnProjection, err)
+		capturedRead := result.ReadResult.CapturedRead
+		if err := runFile.AppendEntry(result.AuditEntry, &result.Token, &capturedRead); err != nil {
+			t.Fatalf("append read-mint %s row %d col %q: %v", src.Source.Path, i, columnProjection, err)
 		}
-		if resp.Token.ID == "" {
+		if result.Token.ID == "" {
 			t.Fatalf("read-mint %s row %d col %q: empty token ID", src.Source.Path, i, columnProjection)
 		}
-		ids[i-1] = resp.Token.ID
+		ids[i-1] = result.Token.ID
 	}
 	return ids
+}
+
+type fixedClock struct {
+	t time.Time
+}
+
+func (c fixedClock) Now() time.Time {
+	return c.t
+}
+
+type singleSourceResolver struct {
+	source kernel.SourceBytes
+}
+
+func (r singleSourceResolver) ResolveSource(_ context.Context, sourcePath string) (kernel.SourceBytes, error) {
+	if sourcePath != r.source.Source.Path {
+		return kernel.SourceBytes{}, fmt.Errorf("source %q not available", sourcePath)
+	}
+	return r.source, nil
+}
+
+type runfileChainSink struct {
+	run     *runfile.Run
+	kernRun kernel.Run
+}
+
+type runfileTxSentinel struct{}
+
+func (s *runfileChainSink) TransactionalSubstrate() string {
+	return "provenant.substrate/runfile/v1"
+}
+
+func (s *runfileChainSink) WithTx(_ context.Context, fn func(context.Context, kernel.Tx) error) error {
+	return fn(context.Background(), runfileTxSentinel{})
+}
+
+func (s *runfileChainSink) PutToken(_ context.Context, _ kernel.Tx, _ kernel.Token) error {
+	return nil
+}
+
+func (s *runfileChainSink) Tokens(_ context.Context, _ kernel.Tx, runID string) ([]kernel.Token, error) {
+	if runID != s.kernRun.ID {
+		return nil, nil
+	}
+	return s.run.Tokens(), nil
+}
+
+func (s *runfileChainSink) PutCapturedRead(_ context.Context, _ kernel.Tx, _ kernel.CapturedRead) error {
+	return nil
+}
+
+func (s *runfileChainSink) CapturedReads(_ context.Context, _ kernel.Tx, runID string) ([]kernel.CapturedRead, error) {
+	if runID != s.kernRun.ID {
+		return nil, nil
+	}
+	return s.run.CapturedReads(), nil
+}
+
+func (s *runfileChainSink) AppendAuditEntry(_ context.Context, _ kernel.Tx, entry kernel.AuditEntry) (kernel.AuditEntry, error) {
+	return entry, nil
+}
+
+func (s *runfileChainSink) AuditEntries(_ context.Context, _ kernel.Tx, tenantID, runID string) ([]kernel.AuditEntry, error) {
+	if runID != s.kernRun.ID || tenantID != s.kernRun.TenantID {
+		return nil, nil
+	}
+	return s.run.AuditEntries(), nil
 }

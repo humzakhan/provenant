@@ -54,7 +54,28 @@ type Options struct {
 
 	// Tenant must equal Run.TenantID and is validated by Start.
 	Tenant string
+
+	// PartSync controls when the .part staging file is fsynced.
+	// The zero value preserves the default durability contract: every JSONL
+	// record is fsynced before AppendEntry returns. PartSyncOnClose is intended
+	// for in-process bulk appenders that can tolerate losing recent .part
+	// records until Sync, Close, Finish, or Fail establishes a durability
+	// barrier.
+	PartSync PartSyncMode
 }
+
+// PartSyncMode controls fsync frequency for the .part staging file.
+type PartSyncMode int
+
+const (
+	// PartSyncEveryRecord fsyncs every JSONL record before returning.
+	PartSyncEveryRecord PartSyncMode = iota
+
+	// PartSyncOnClose defers .part fsync until Run.Sync, Run.Close,
+	// Run.Finish, or Run.Fail. This reduces syscall overhead for trusted
+	// in-process bulk appenders while keeping default callers fully durable.
+	PartSyncOnClose
+)
 
 // runState tracks whether the Run has been finalized.
 type runState int
@@ -271,6 +292,15 @@ func (r *Run) SetClock(clock kernel.Clock) {
 	r.opts.Clock = clock
 }
 
+// Sync fsyncs pending .part writes. It is a no-op when PartSyncEveryRecord is
+// in use and there are no unsynced records.
+func (r *Run) Sync() error {
+	if r.state != runStateOpen {
+		return nil
+	}
+	return r.partFile.sync()
+}
+
 // Close releases the advisory lock and closes the file handle without removing
 // the .part file. It is intended for callers that created the partfile (via
 // Start) and want to hand it off to a subsequent process or command that will
@@ -279,6 +309,9 @@ func (r *Run) SetClock(clock kernel.Clock) {
 func (r *Run) Close() error {
 	if r.state != runStateOpen {
 		return nil
+	}
+	if err := r.partFile.sync(); err != nil {
+		return err
 	}
 	r.state = runStateAborted // prevent further use; Abort's "aborted" sentinel
 	return r.release()

@@ -230,6 +230,68 @@ func TestStartAppendFinish(t *testing.T) {
 	}
 }
 
+func TestPartSyncOnCloseAppendRecover(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	run := testRun()
+	clock := fixedClock{t: epoch}
+	b := memio.NewBinding()
+	primeBindingWithRunStarted(t, b, run, epoch)
+
+	tok1, entry1, read1 := mintIntoBinding(t, b, run, "15.00", "USD")
+	bundlePath := filepath.Join(dir, "sync_on_close.bundle.json")
+	r, err := runfile.Start(runfile.Options{
+		Path:     bundlePath,
+		Run:      run,
+		Clock:    clock,
+		Tenant:   run.TenantID,
+		PartSync: runfile.PartSyncOnClose,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if err := r.AppendEntry(entry1, &tok1, &read1); err != nil {
+		t.Fatalf("AppendEntry error = %v", err)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	recovered, err := runfile.Recover(bundlePath)
+	if err != nil {
+		t.Fatalf("Recover() error = %v", err)
+	}
+	defer recovered.Abort() //nolint:errcheck
+
+	if got, want := recovered.LastSeq(), entry1.Seq; got != want {
+		t.Fatalf("recovered LastSeq() = %d, want %d", got, want)
+	}
+	if len(recovered.Tokens()) != 1 {
+		t.Fatalf("recovered tokens = %d, want 1", len(recovered.Tokens()))
+	}
+	if len(recovered.CapturedReads()) != 1 {
+		t.Fatalf("recovered captured reads = %d, want 1", len(recovered.CapturedReads()))
+	}
+}
+
+func TestStartRejectsUnsupportedPartSyncMode(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	run := testRun()
+	_, err := runfile.Start(runfile.Options{
+		Path:     filepath.Join(dir, "bad_sync.bundle.json"),
+		Run:      run,
+		Clock:    fixedClock{t: epoch},
+		Tenant:   run.TenantID,
+		PartSync: runfile.PartSyncMode(99),
+	})
+	if err == nil {
+		t.Fatalf("Start() error = nil, want unsupported PartSync error")
+	}
+}
+
 // TestBundleByteIdentityWithDirectEmit verifies that the finalized bundle from
 // runfile is byte-identical to bundle.Emit called on the same logical state.
 //
