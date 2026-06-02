@@ -87,7 +87,7 @@ func readAnswer(path string, stdin io.Reader) (string, error) {
 		return "", err
 	}
 	if closeFn != nil {
-		defer closeFn()
+		defer ignoreCloseError(closeFn)
 	}
 
 	limited := &io.LimitedReader{R: rc, N: maxAnswerBytes + 1}

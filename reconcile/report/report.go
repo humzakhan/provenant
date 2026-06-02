@@ -498,7 +498,7 @@ func writeZip(w io.Writer, artifacts []artifact) error {
 	zw := zip.NewWriter(w)
 	for _, artifact := range artifacts {
 		header := &zip.FileHeader{Name: artifact.name, Method: zip.Store}
-		header.SetModTime(zipModified)
+		header.Modified = zipModified
 		entry, err := zw.CreateHeader(header)
 		if err != nil {
 			_ = zw.Close()

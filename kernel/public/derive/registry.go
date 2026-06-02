@@ -1,9 +1,10 @@
 package derive
 
 import (
+	"github.com/shopspring/decimal"
+
 	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/humzakhan/provenant/kernel/public/internal/ops"
-	"github.com/shopspring/decimal"
 )
 
 // op is a named pure arithmetic function over input tokens. Package-private.

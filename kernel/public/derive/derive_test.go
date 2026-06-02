@@ -105,23 +105,6 @@ func deps(b *memio.Binding, clock kernel.Clock) derive.Dependencies {
 	}
 }
 
-// assertNoAuditEntries checks that no audit entries exist for run in b.
-func assertNoAuditEntries(t *testing.T, b *memio.Binding, run kernel.Run) {
-	t.Helper()
-	if err := b.WithTx(context.Background(), func(ctx context.Context, tx kernel.Tx) error {
-		entries, err := b.AuditEntries(ctx, tx, run.TenantID, run.ID)
-		if err != nil {
-			return err
-		}
-		if len(entries) != 0 {
-			t.Errorf("expected 0 audit entries after error, got %d", len(entries))
-		}
-		return nil
-	}); err != nil {
-		t.Fatalf("assertNoAuditEntries: %v", err)
-	}
-}
-
 // snapshotBindingState collects all tokens, captured reads, and audit entries
 // from b for run into a bundle.State.
 func snapshotBindingState(t *testing.T, b *memio.Binding, run kernel.Run) bundle.State {

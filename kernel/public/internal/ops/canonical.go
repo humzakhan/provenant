@@ -6,8 +6,9 @@ import (
 	"fmt"
 	"strings"
 
-	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/shopspring/decimal"
+
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 const defaultScale = 9

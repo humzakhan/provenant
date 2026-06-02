@@ -96,13 +96,7 @@ func Load(r io.Reader) (*Registry, error) {
 		if e.OutputPath == "" {
 			return nil, fmt.Errorf("%w: source %q: output_path is required", ErrInvalidRegistry, name)
 		}
-		entries[name] = Entry{
-			Reader:     e.Reader,
-			Path:       e.Path,
-			Selector:   e.Selector,
-			OutputPath: e.OutputPath,
-			Unit:       e.Unit,
-		}
+		entries[name] = Entry(e)
 	}
 
 	return &Registry{entries: entries}, nil

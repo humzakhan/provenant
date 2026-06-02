@@ -197,7 +197,7 @@ func decodeJSONRequest[T any](args []string, stdin io.Reader) (T, error) {
 		return zero, newPacketError(packetErrorRequestInvalid, err)
 	}
 	if closeFn != nil {
-		defer closeFn()
+		defer ignoreCloseError(closeFn)
 	}
 
 	limited := &io.LimitedReader{R: rc, N: maxRequestBytes + 1}

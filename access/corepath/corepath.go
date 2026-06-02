@@ -11,6 +11,7 @@ import (
 	"io"
 
 	"github.com/gowebpki/jcs"
+
 	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
@@ -228,10 +229,7 @@ func VerifyExportSource(_ context.Context, request ExportSourceRequest) (ExportS
 }
 
 func GenerateDerivedExport(ctx context.Context, request DerivedExportRequest) (DerivedExportResult, error) {
-	source, err := VerifyExportSource(ctx, ExportSourceRequest{
-		Surface:     request.Surface,
-		BundleBytes: request.BundleBytes,
-	})
+	source, err := VerifyExportSource(ctx, ExportSourceRequest(request))
 	if err != nil {
 		return DerivedExportResult{}, err
 	}

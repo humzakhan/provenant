@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gowebpki/jcs"
+
 	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/humzakhan/provenant/kernel/public/bundle"
 	"github.com/humzakhan/provenant/kernel/public/extractjson"
@@ -171,9 +172,15 @@ func TestDerivedTokenBundleVerifyAndReplay(t *testing.T) {
 	}
 	if derived == nil {
 		t.Fatal("Replay() produced no derived token")
+		return
 	}
-	if derived.Derivation.Operation != "calc.add" {
-		t.Fatalf("Derivation.Operation = %q, want %q", derived.Derivation.Operation, "calc.add")
+	derivation := derived.Derivation
+	if derivation == nil {
+		t.Fatal("Replay() derived token has nil Derivation")
+		return
+	}
+	if derivation.Operation != "calc.add" {
+		t.Fatalf("Derivation.Operation = %q, want %q", derivation.Operation, "calc.add")
 	}
 	if derived.ValueCanonical != "200.000000000" {
 		t.Fatalf("ValueCanonical = %q, want %q", derived.ValueCanonical, "200.000000000")

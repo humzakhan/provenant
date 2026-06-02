@@ -365,7 +365,7 @@ func mustUniqueSpan(data []byte, needle string) string {
 	if idx < 0 {
 		panic("needle not found")
 	}
-	if bytes.Index(data[idx+1:], []byte(needle)) >= 0 {
+	if bytes.Contains(data[idx+1:], []byte(needle)) {
 		panic("needle must be unique")
 	}
 	return strings.Join([]string{

@@ -113,11 +113,11 @@ type SubmitAnswerRequest struct {
 }
 
 type SubmitAnswerResult struct {
-	OK          bool              `json:"ok"`
-	Attested    bool              `json:"attested"`
-	Attestation string            `json:"attestation,omitempty"`
-	BundleSHA256 string           `json:"bundle_sha256"`
-	Verdict     grounding.Verdict `json:"verdict"`
+	OK           bool              `json:"ok"`
+	Attested     bool              `json:"attested"`
+	Attestation  string            `json:"attestation,omitempty"`
+	BundleSHA256 string            `json:"bundle_sha256"`
+	Verdict      grounding.Verdict `json:"verdict"`
 }
 
 func Tools() []Tool {
