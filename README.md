@@ -6,8 +6,6 @@
 
 <div align="center">
 
-<h1>Provenant</h1>
-
 <p>Provenance for finance workflows, with evidence you can verify and replay.</p>
 
 [![CI](https://github.com/humzakhan/provenant/actions/workflows/ci.yml/badge.svg)](https://github.com/humzakhan/provenant/actions/workflows/ci.yml)
