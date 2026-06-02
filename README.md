@@ -53,22 +53,43 @@ The failure mode Provenant is built to prevent: an answer can be directionally c
 
 ## How It Works
 
-The core loop:
+The core loop turns raw source bytes into evidence you can verify and replay
+offline. Each stage enforces one of Provenant's guarantees (right column).
 
 ```text
-source bytes -> SourceReader.Read -> CapturedRead + ReadResult
-                                   |
-                                   v
-                             kernel.MintToken
-                                   |
-                                   v
-                       AuditSink.AppendAuditEntry (hash-chained)
-                                   |
-                                   v
-                       bundle.Snapshot -> bundle bytes + SHA-256
-                                   |
-                                   v
-                      bundle.Verify / bundle.Replay (offline)
+        ┌─────────────────────────────┐
+        │  source bytes               │   CSV · XLSX · JSON exports
+        └──────────────┬──────────────┘
+                       │
+                       ▼
+        ┌─────────────────────────────┐
+        │  SourceReader.Read           │ ─── schema-first validation
+        │    → CapturedRead            │     (bad input never enters)
+        │    → ReadResult              │
+        └──────────────┬──────────────┘
+                       │
+                       ▼
+        ┌─────────────────────────────┐
+        │  kernel.MintToken            │ ─── non-bypassable exit
+        │    → grounded numeric token  │     (no read ⇒ no token)
+        └──────────────┬──────────────┘
+                       │
+                       ▼
+        ┌─────────────────────────────┐
+        │  AuditSink.AppendAuditEntry  │ ─── hash-chained, tamper-evident
+        └──────────────┬──────────────┘
+                       │
+                       ▼
+        ┌─────────────────────────────┐
+        │  bundle.Snapshot             │ ─── fail-closed on any error
+        │    → bundle bytes + SHA-256  │
+        └──────────────┬──────────────┘
+                       │
+                       ▼  offline, no kernel needed
+        ┌─────────────────────────────┐
+        │  bundle.Verify               │ ─── deterministic replay
+        │  bundle.Replay               │     (same bytes ⇒ same result)
+        └─────────────────────────────┘
 ```
 
 For the full provenance model — kernel guarantees, token anatomy, and the distinction from logging — see [docs.provenant.sh/concepts/provenance-model](https://docs.provenant.sh/concepts/provenance-model/).
