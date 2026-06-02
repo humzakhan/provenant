@@ -3,8 +3,9 @@ package ops
 import (
 	"fmt"
 
-	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/shopspring/decimal"
+
+	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
 // Divide implements the calc.divide op: exactly 2 inputs.

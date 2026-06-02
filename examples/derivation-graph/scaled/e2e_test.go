@@ -50,6 +50,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -78,23 +79,59 @@ var scaledRun = kernel.Run{
 // dataDir is the path to the committed CSV source files relative to this package.
 const dataDir = "data"
 
+type scaledDemoFixture struct {
+	tids   scaledTokenIDs
+	bundle []byte
+}
+
+var scaledDemoCache struct {
+	once    sync.Once
+	fixture scaledDemoFixture
+}
+
+func cachedScaledDemo(t *testing.T) scaledDemoFixture {
+	t.Helper()
+
+	scaledDemoCache.once.Do(func() {
+		dir := t.TempDir()
+		bundlePath := filepath.Join(dir, "scaled.bundle.json")
+		runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
+
+		tids := runScaledDemo(t, runner, bundlePath)
+		data, err := os.ReadFile(bundlePath)
+		if err != nil {
+			t.Fatalf("ReadFile(bundle): %v", err)
+		}
+		scaledDemoCache.fixture = scaledDemoFixture{
+			tids:   tids,
+			bundle: append([]byte(nil), data...),
+		}
+	})
+
+	fixture := scaledDemoCache.fixture
+	fixture.bundle = append([]byte(nil), fixture.bundle...)
+	return fixture
+}
+
+func cachedScaledDemoBundleFile(t *testing.T, filename string) (scaledTokenIDs, string) {
+	t.Helper()
+
+	fixture := cachedScaledDemo(t)
+	bundlePath := filepath.Join(t.TempDir(), filename)
+	if err := os.WriteFile(bundlePath, fixture.bundle, 0o644); err != nil {
+		t.Fatalf("WriteFile(bundle): %v", err)
+	}
+	return fixture.tids, bundlePath
+}
+
 // ---------------------------------------------------------------------------
 // TestScaledFauxbooksEndToEnd: full pipeline, golden assertions
 // ---------------------------------------------------------------------------
 
 func TestScaledFauxbooksEndToEnd(t *testing.T) {
-	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "scaled.bundle.json")
-
-	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
-
-	tids := runScaledDemo(t, runner, bundlePath)
-
-	// Assert bundle bytes match golden.
-	got, err := os.ReadFile(bundlePath)
-	if err != nil {
-		t.Fatalf("ReadFile(bundle): %v", err)
-	}
+	fixture := cachedScaledDemo(t)
+	tids := fixture.tids
+	got := fixture.bundle
 
 	goldenPath := filepath.Join(".", "golden.bundle.json")
 	if os.Getenv("UPDATE_GOLDEN") != "" {
@@ -189,16 +226,10 @@ func TestScaledFauxbooksEndToEnd(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestScaledFauxbooksOperatingIncomeValue(t *testing.T) {
-	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "oi.bundle.json")
-	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
+	fixture := cachedScaledDemo(t)
+	tids := fixture.tids
+	got := fixture.bundle
 
-	tids := runScaledDemo(t, runner, bundlePath)
-
-	got, err := os.ReadFile(bundlePath)
-	if err != nil {
-		t.Fatalf("ReadFile(bundle): %v", err)
-	}
 	state, err := bundle.Replay(got)
 	if err != nil {
 		t.Fatalf("bundle.Replay: %v", err)
@@ -307,16 +338,9 @@ func TestScaledFauxbooksLeafCount(t *testing.T) {
 	// so salary and bonus each need 100 mints.  See package doc for details.
 	wantLeafCount := 1980
 
-	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "lc.bundle.json")
-	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
-
-	tids := runScaledDemo(t, runner, bundlePath)
-
-	got, err := os.ReadFile(bundlePath)
-	if err != nil {
-		t.Fatalf("ReadFile(bundle): %v", err)
-	}
+	fixture := cachedScaledDemo(t)
+	tids := fixture.tids
+	got := fixture.bundle
 
 	g, err := trace.Trace(got, tids.operatingIncome)
 	if err != nil {
@@ -333,6 +357,8 @@ func TestScaledFauxbooksLeafCount(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestScaledFauxbooksReplayDeterminism(t *testing.T) {
+	b1 := cachedScaledDemo(t).bundle
+
 	makeBundle := func(t *testing.T) []byte {
 		t.Helper()
 		dir := t.TempDir()
@@ -346,7 +372,6 @@ func TestScaledFauxbooksReplayDeterminism(t *testing.T) {
 		return data
 	}
 
-	b1 := makeBundle(t)
 	b2 := makeBundle(t)
 	if !bytes.Equal(b1, b2) {
 		t.Fatal("two independent runs produced different bundle bytes — non-determinism bug")
@@ -359,12 +384,11 @@ func TestScaledFauxbooksReplayDeterminism(t *testing.T) {
 
 func TestScaledFauxbooksHTMLReport(t *testing.T) {
 	dir := t.TempDir()
-	bundlePath := filepath.Join(dir, "scaled.bundle.json")
 	packPath := filepath.Join(dir, "scaled.pack.json")
 	htmlPath := filepath.Join(dir, "report.html")
 
 	runner := cli.Runner{Now: func() time.Time { return fixedScaledTime }}
-	runScaledDemo(t, runner, bundlePath)
+	_, bundlePath := cachedScaledDemoBundleFile(t, "scaled.bundle.json")
 
 	// Build the audit pack from the bundle.
 	testsupport.RunCLIFileArgs(t, runner, []string{"pack", "--bundle", bundlePath, "--out", packPath})

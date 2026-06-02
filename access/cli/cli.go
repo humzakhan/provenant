@@ -477,7 +477,7 @@ func (r Runner) runReadMintBundle(ctx context.Context, args []string, stdin io.R
 		return err
 	}
 	if closeFn != nil {
-		defer closeFn()
+		defer ignoreCloseError(closeFn)
 	}
 
 	request, err := decodeRequest(requestReader)
@@ -614,6 +614,10 @@ func openRequest(path string, stdin io.Reader) (io.Reader, func() error, error) 
 		return nil, nil, err
 	}
 	return file, file.Close, nil
+}
+
+func ignoreCloseError(closeFn func() error) {
+	_ = closeFn()
 }
 
 func (r Runner) now() time.Time {

@@ -140,34 +140,6 @@ func minimalDoc(t *testing.T) *pack.Document {
 	}
 }
 
-// docWithMismatch returns a doc with a Report section that has one mismatch,
-// which should drive the mismatch tile count to 1 and show VIOLATED banner.
-func docWithMismatch(t *testing.T) *pack.Document {
-	t.Helper()
-	doc := minimalDoc(t)
-
-	// Build reconciliation JSON with one OutcomeMismatch record.
-	reconJSON := json.RawMessage(`{
-		"results": [
-			{
-				"id": "res-001",
-				"outcome": "mismatch",
-				"key_field": "id",
-				"key_value": "ROW-42",
-				"differences": [
-					{"field": "amount", "left": "100.00", "right": "100.01", "reason": "amount delta 0.01 exceeds tolerance 0.00"}
-				]
-			}
-		]
-	}`)
-
-	doc.Report = &pack.ReportSection{
-		Markdown: "# Reconciliation\nOne mismatch found.",
-		JSON:     reconJSON,
-	}
-	return doc
-}
-
 // docInvariantViolated returns a doc where the contribution invariant is
 // structurally violated: the derived token declares ValueCanonical="300.000000000"
 // but its two leaf inputs sum to only "250.000000000" (100 + 150). No

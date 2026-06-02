@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
+
 	kernel "github.com/humzakhan/provenant/kernel/public"
 )
 
@@ -95,10 +96,6 @@ type resolvedSelection struct {
 	selectorMode  string
 	rangeMode     string
 	formulaPolicy string
-}
-
-type selectedCell struct {
-	cell
 }
 
 type outputEnvelope struct {
@@ -701,14 +698,6 @@ func parseColumnLetters(raw string) (int, error) {
 		column = column*26 + int(r-'A'+1)
 	}
 	return column, nil
-}
-
-func normalizeA1(raw string) string {
-	row, col, err := parseA1(raw)
-	if err != nil {
-		return raw
-	}
-	return formatCellRef(row, col)
 }
 
 func formatRange(rng gridRange) string {

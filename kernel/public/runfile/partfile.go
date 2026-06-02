@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"github.com/gowebpki/jcs"
+
 	kernel "github.com/humzakhan/provenant/kernel/public"
 	"github.com/humzakhan/provenant/kernel/public/bundle"
 )
@@ -34,13 +35,15 @@ type partHeader struct {
 	Run    kernel.Run `json:"run"`
 }
 
-// appendFile wraps an open *os.File for append-only writes with per-record fsync.
+// appendFile wraps an open *os.File for append-only writes.
 type appendFile struct {
-	f *os.File
+	f        *os.File
+	syncMode PartSyncMode
+	dirty    bool
 }
 
 // writeRecord marshals rec to JCS-canonicalized JSON, appends a newline, writes
-// in a single Write call, and then calls Sync.
+// in a single Write call, and syncs according to a.syncMode.
 func (a *appendFile) writeRecord(rec partRecord) error {
 	raw, err := json.Marshal(rec)
 	if err != nil {
@@ -54,7 +57,22 @@ func (a *appendFile) writeRecord(rec partRecord) error {
 	if _, err := a.f.Write(line); err != nil {
 		return fmt.Errorf("write partRecord: %w", err)
 	}
-	return a.f.Sync()
+	a.dirty = true
+	if a.syncMode == PartSyncOnClose {
+		return nil
+	}
+	return a.sync()
+}
+
+func (a *appendFile) sync() error {
+	if a.f == nil || !a.dirty {
+		return nil
+	}
+	if err := a.f.Sync(); err != nil {
+		return err
+	}
+	a.dirty = false
+	return nil
 }
 
 // partPath returns the .part file path for a given final bundle path.
@@ -81,6 +99,9 @@ func Start(opts Options) (*Run, error) {
 	}
 	if opts.Clock == nil {
 		return nil, errors.New("runfile: Options.Clock must be non-nil")
+	}
+	if opts.PartSync != PartSyncEveryRecord && opts.PartSync != PartSyncOnClose {
+		return nil, errors.New("runfile: unsupported PartSync mode")
 	}
 
 	// If final path exists, it must be a valid finalized bundle.
@@ -123,7 +144,7 @@ func Start(opts Options) (*Run, error) {
 		opts:     opts,
 		partPath: ppath,
 		lockFile: lh,
-		partFile: appendFile{f: f},
+		partFile: appendFile{f: f, syncMode: opts.PartSync},
 		state:    runStateOpen,
 	}
 
@@ -383,6 +404,10 @@ func (r *Run) writeHeader() error {
 // entries). bundle.Emit / normalizeState now handles lifecycle entries
 // transparently, so the finalized file verifies with bundle.Verify.
 func (r *Run) finalize() error {
+	if err := r.partFile.sync(); err != nil {
+		return fmt.Errorf("runfile: sync part file: %w", err)
+	}
+
 	// Collect tokens from records.
 	tokens := make([]kernel.Token, len(r.tokens))
 	for i, tr := range r.tokens {

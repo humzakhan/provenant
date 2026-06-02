@@ -161,11 +161,11 @@ type TokenSource struct {
 // so that the audit hash binds the computed result to the op identity, not
 // just to the token identity.
 type Derivation struct {
-	Operation string        `json:"operation"`
-	Inputs    []string      `json:"inputs"`
-	FormulaID string        `json:"formula_id,omitempty"`
+	Operation string         `json:"operation"`
+	Inputs    []string       `json:"inputs"`
+	FormulaID string         `json:"formula_id,omitempty"`
 	Rounding  RoundingPolicy `json:"rounding,omitempty"`
-	Evaluated string        `json:"evaluated"`
+	Evaluated string         `json:"evaluated"`
 }
 
 // RoundingPolicy describes the decimal rounding mode and scale applied by a

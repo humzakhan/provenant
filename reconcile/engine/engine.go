@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/humzakhan/provenant/reconcile/request"
 	"github.com/humzakhan/provenant/reconcile/router"
-	"github.com/shopspring/decimal"
 )
 
 type Outcome string
