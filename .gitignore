@@ -19,6 +19,10 @@ coverage.html
 .env
 .env.*
 
+# Node / pnpm
+node_modules/
+.pnpm-store/
+
 docs-site/node_modules/
 docs-site/dist/
 docs-site/.astro/
