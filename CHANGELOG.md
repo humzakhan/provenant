@@ -8,6 +8,10 @@ This project is **pre-1.0**. Breaking changes may occur between any two commits 
 
 ## [Unreleased]
 
+### Docs
+
+- **README**: slimmed from ~510 lines to an entry-point (~165 lines); deep documentation now lives at https://docs.provenant.sh.
+
 ### Added
 
 - **Kernel**: core provenance engine — deterministic token minting from structured input records, with cryptographic chaining across derived values.
