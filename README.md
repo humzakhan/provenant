@@ -1,4 +1,10 @@
 <div align="center">
+  <img src="assets/provenant-banner.png" alt="Provenant" width="100%" />
+</div>
+
+---
+
+<div align="center">
 
 <h1>Provenant</h1>
 
