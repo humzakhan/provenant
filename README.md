@@ -148,6 +148,8 @@ Run a read-mint-bundle against a local request file:
 go run ./cmd/provenant read-mint-bundle --request request.json
 ```
 
+The resulting bundle can be shared with reviewers and verified offline without access to the original Provenant runtime.
+
 Full quickstart — including the request schema, reconcile fixture, verify/replay, and Go API usage — at [docs.provenant.sh/quickstart/current-artifacts](https://docs.provenant.sh/quickstart/current-artifacts/).
 
 ---
